@@ -16,3 +16,4 @@ build/
 # Project
 archive/
 site-docs/
+.env

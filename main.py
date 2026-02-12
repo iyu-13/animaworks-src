@@ -6,6 +6,10 @@ import logging
 import os
 import sys
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from core.init import ensure_runtime_dir
 from core.paths import get_data_dir, get_persons_dir, get_shared_dir
 
