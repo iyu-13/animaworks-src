@@ -28,7 +28,6 @@
    - identity.md
    - injection.md
    - permissions.md
-   - config.md
    - heartbeat.md
    - cron.md
 
@@ -144,23 +143,26 @@ Read, Write, Edit, Bash, Grep, Glob
 rm -rf, システム設定の変更
 ```
 
-### config.md
+### config.json への設定追加
 
-```markdown
-# Config: {英名}
+新しい社員のモデル設定は統合設定ファイル（config.json）に追加する。
+Bash ツールで以下のコマンドを実行:
 
-## モデル設定
+```bash
+# 使用モデルを設定（デフォルトから変える場合のみ）
+python main.py config set persons.{英名}.model claude-sonnet-4-20250514
 
-- model: claude-sonnet-4-20250514
-- fallback_model: claude-haiku-4-20250414
-- max_tokens: 4096
-- max_turns: 20
-
-## API接続
-
-- api_key_env: ANTHROPIC_API_KEY
-- api_base_url:
+# 使用するクレデンシャルを設定（デフォルトから変える場合のみ）
+python main.py config set persons.{英名}.credential anthropic
 ```
+
+設定が正しく追加されたか確認:
+```bash
+python main.py config list --section persons.{英名}
+```
+
+※ 大半のケースではデフォルト設定（person_defaults）が適用されるため、
+特別な設定が不要であればこの手順はスキップしてよい。
 
 ### heartbeat.md
 

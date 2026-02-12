@@ -67,7 +67,34 @@ class MemoryManager:
         return self._read(self.person_dir / "cron.md")
 
     def read_model_config(self) -> ModelConfig:
-        """Parse config.md and return ModelConfig with API key and model settings."""
+        """Load model config from unified config.json, with config.md fallback."""
+        from core.config import get_config_path, load_config, resolve_person_config
+
+        config_path = get_config_path()
+        if config_path.exists():
+            config = load_config(config_path)
+            person_name = self.person_dir.name
+            resolved, credential = resolve_person_config(config, person_name)
+            # Derive env var name from credential name (e.g. "anthropic" -> "ANTHROPIC_API_KEY")
+            cred_name = resolved.credential
+            api_key_env = f"{cred_name.upper()}_API_KEY"
+            return ModelConfig(
+                model=resolved.model,
+                fallback_model=resolved.fallback_model,
+                max_tokens=resolved.max_tokens,
+                max_turns=resolved.max_turns,
+                api_key=credential.api_key or None,
+                api_key_env=api_key_env,
+                api_base_url=credential.base_url,
+                context_threshold=resolved.context_threshold,
+                max_chains=resolved.max_chains,
+            )
+
+        # Legacy fallback: parse config.md
+        return self._read_model_config_from_md()
+
+    def _read_model_config_from_md(self) -> ModelConfig:
+        """Legacy parser for config.md (fallback when config.json absent)."""
         raw = self._read(self.person_dir / "config.md")
         if not raw:
             return ModelConfig()
@@ -94,8 +121,10 @@ class MemoryManager:
         )
 
     def resolve_api_key(self, config: ModelConfig | None = None) -> str | None:
-        """Resolve the actual API key from the environment variable name."""
+        """Resolve the actual API key (config.json direct value, then env var fallback)."""
         cfg = config or self.read_model_config()
+        if cfg.api_key:
+            return cfg.api_key
         return os.environ.get(cfg.api_key_env)
 
     def read_today_episodes(self) -> str:
