@@ -49,11 +49,33 @@ def cmd_serve(args: argparse.Namespace) -> None:
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 
 
+# ── Integrated start mode ──────────────────────────────────
+
+
+def cmd_start(args: argparse.Namespace) -> None:
+    """Start gateway with integrated worker management (supervisor)."""
+    import uvicorn
+
+    from gateway.app import GatewayConfig, create_gateway_app
+
+    ensure_runtime_dir()
+    redis_url = args.redis_url or os.environ.get("ANIMAWORKS_REDIS_URL")
+    config = GatewayConfig(
+        redis_url=redis_url,
+        host=args.host,
+        port=args.port,
+        supervisor_enabled=True,
+        supervisor_auto_restart=not args.no_auto_restart,
+    )
+    app = create_gateway_app(config)
+    uvicorn.run(app, host=config.host, port=config.port, log_level="info")
+
+
 # ── Gateway mode ───────────────────────────────────────────
 
 
 def cmd_gateway(args: argparse.Namespace) -> None:
-    """Start the gateway process."""
+    """Start the gateway process (no supervisor — for Docker/remote)."""
     import uvicorn
 
     from gateway.app import GatewayConfig, create_gateway_app
@@ -243,7 +265,12 @@ def cmd_status(args: argparse.Namespace) -> None:
         print(f"Workers: {data.get('workers', 0)}")
         print(f"Broker:  {data.get('broker_connected', False)}")
         for w in data.get("workers_detail", []):
-            print(f"  Worker {w['worker_id']}: {w['persons']} ({w['status']})")
+            print(f"  Worker {w['worker_id']}: {w['person_names']} ({w['status']})")
+        if data.get("supervisor_enabled"):
+            print(f"Supervisor: enabled")
+            for mw in data.get("managed_workers", []):
+                pid = mw.get("pid") or "-"
+                print(f"  [{mw['status']}] {mw['worker_id']} (PID {pid}, port {mw['port']})")
     except httpx.ConnectError:
         print(f"Cannot connect to gateway at {gateway}.")
         sys.exit(1)
@@ -268,6 +295,18 @@ def cli_main() -> None:
     p_init = sub.add_parser("init", help="Initialize runtime directory from templates")
     p_init.add_argument("--force", action="store_true", help="Re-initialize even if exists")
     p_init.set_defaults(func=cmd_init)
+
+    # Start (integrated mode with supervisor)
+    p_start = sub.add_parser("start", help="Start gateway + auto-managed workers")
+    p_start.add_argument("--host", default="0.0.0.0")
+    p_start.add_argument("--port", type=int, default=18500)
+    p_start.add_argument("--redis-url", default=None, help="Redis URL")
+    p_start.add_argument(
+        "--no-auto-restart",
+        action="store_true",
+        help="Disable auto-restart of crashed workers",
+    )
+    p_start.set_defaults(func=cmd_start)
 
     # Legacy standalone
     p_serve = sub.add_parser("serve", help="Standalone mode (legacy)")
