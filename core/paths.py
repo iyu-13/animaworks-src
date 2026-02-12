@@ -41,3 +41,30 @@ def get_company_dir() -> Path:
 
 def get_tmp_dir() -> Path:
     return get_data_dir() / "tmp"
+
+
+# --- Prompt templates ---
+
+PROMPTS_DIR = TEMPLATES_DIR / "prompts"
+
+# Cache loaded templates to avoid repeated disk reads
+_prompt_cache: dict[str, str] = {}
+
+
+def load_prompt(name: str, **kwargs: object) -> str:
+    """Load a prompt template from templates/prompts/{name}.md and format it.
+
+    Templates use Python str.format_map() placeholders like {person_dir}.
+    Literal braces in templates should be doubled: {{ and }}.
+
+    Args:
+        name: Template file name without extension (e.g. "behavior_rules").
+        **kwargs: Values to substitute into the template placeholders.
+    """
+    if name not in _prompt_cache:
+        path = PROMPTS_DIR / f"{name}.md"
+        _prompt_cache[name] = path.read_text(encoding="utf-8")
+    template = _prompt_cache[name]
+    if kwargs:
+        return template.format_map(kwargs)
+    return template

@@ -8,6 +8,7 @@ from pathlib import Path
 from core.agent import AgentCore
 from core.memory import MemoryManager
 from core.messenger import Messenger
+from core.paths import load_prompt
 from core.schemas import CycleResult, PersonStatus
 
 logger = logging.getLogger("animaworks.person")
@@ -56,9 +57,8 @@ class DigitalPerson:
             self._status = "thinking"
             self._current_task = f"Responding to {from_person}"
 
-            prompt = (
-                f"あなたに{from_person}からメッセージが届きました:\n\n"
-                f"{content}"
+            prompt = load_prompt(
+                "chat_message", from_person=from_person, content=content
             )
 
             try:
@@ -77,22 +77,15 @@ class DigitalPerson:
             self._last_heartbeat = datetime.now()
 
             hb_config = self.memory.read_heartbeat_config()
-            parts = [
-                "ハートビートです。以下を確認してください:",
-                hb_config
-                or (
-                    "- Inboxに未読メッセージがあるか\n"
-                    "- 進行中タスクにブロッカーがないか\n"
-                    "- 何もなければ何もしない（HEARTBEAT_OK）"
-                ),
-            ]
+            checklist = hb_config or load_prompt("heartbeat_default_checklist")
+            parts = [load_prompt("heartbeat", checklist=checklist)]
 
             if self.messenger.has_unread():
                 messages = self.messenger.receive_and_archive()
                 summary = "\n".join(
                     f"- {m.from_person}: {m.content[:100]}" for m in messages
                 )
-                parts.append(f"\n## 未読メッセージ\n{summary}")
+                parts.append(load_prompt("unread_messages", summary=summary))
 
             try:
                 result = await self.agent.run_cycle(
@@ -111,10 +104,8 @@ class DigitalPerson:
             self._status = "working"
             self._current_task = task_name
 
-            prompt = (
-                f"定時タスク「{task_name}」を実行してください。\n\n"
-                f"{description}\n\n"
-                "必ず結果を出力してください。"
+            prompt = load_prompt(
+                "cron_task", task_name=task_name, description=description
             )
 
             try:
