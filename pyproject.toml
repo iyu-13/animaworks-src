@@ -38,5 +38,7 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
     "live: tests making real API calls (skip with --mock or no API key)",
+    "azure: tests requiring Azure OpenAI API key",
+    "ollama: tests requiring Ollama server access",
 ]
 timeout = 120

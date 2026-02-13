@@ -241,3 +241,29 @@ class TestModeA2Live:
 
         assert result.summary
         assert result.action == "responded"
+
+
+class TestModeA2AzureLive:
+    """Mode A2 tests using Azure OpenAI API."""
+
+    @pytest.mark.live
+    @pytest.mark.azure
+    @pytest.mark.timeout(60)
+    async def test_live_azure_basic_response(self, make_agent_core):
+        """Live A2: Azure OpenAI gpt-4.1 call via LiteLLM."""
+        import os
+
+        agent = make_agent_core(
+            name="a2-azure-live",
+            model="azure/gpt-4.1",
+            credential="azure",
+            api_base_url=os.environ.get("AZURE_API_BASE", ""),
+        )
+        agent._sdk_available = False
+
+        result = await agent.run_cycle(
+            "Reply with exactly: ANIMAWORKS_AZURE_TEST_OK"
+        )
+
+        assert result.summary
+        assert result.action == "responded"

@@ -12,11 +12,16 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from dotenv import load_dotenv
 
 from tests.helpers.filesystem import (
     create_person_dir,
     create_test_data_dir,
 )
+
+# Load .env at module level so API keys are available before fixtures run.
+# main.py calls load_dotenv() for CLI usage; tests need it here.
+load_dotenv()
 
 
 # ── CLI options ───────────────────────────────────────────
@@ -49,9 +54,20 @@ def use_mock(request: pytest.FixtureRequest) -> bool:
 
 @pytest.fixture(autouse=True)
 def _skip_live_without_key(request: pytest.FixtureRequest, use_mock: bool) -> None:
-    """Auto-skip ``@pytest.mark.live`` tests when in mock mode."""
+    """Auto-skip ``@pytest.mark.live`` tests when in mock mode.
+
+    Additional skip rules:
+      - ``@pytest.mark.azure`` requires ``AZURE_API_KEY`` in environment
+      - ``@pytest.mark.ollama`` requires ``OLLAMA_API_BASE`` in environment
+    """
     if request.node.get_closest_marker("live") and use_mock:
         pytest.skip("Skipping live test: no API key or --mock flag set")
+    if request.node.get_closest_marker("azure"):
+        if not os.environ.get("AZURE_API_KEY"):
+            pytest.skip("Skipping Azure test: AZURE_API_KEY not set")
+    if request.node.get_closest_marker("ollama"):
+        if not os.environ.get("OLLAMA_API_BASE"):
+            pytest.skip("Skipping Ollama test: OLLAMA_API_BASE not set")
 
 
 @pytest.fixture

@@ -125,3 +125,55 @@ class TestModeBLive:
         today = date.today().isoformat()
         episode_path = agent.person_dir / "episodes" / f"{today}.md"
         assert episode_path.exists()
+
+
+class TestModeBOllamaLive:
+    """Mode B tests using Ollama on remote GPU server."""
+
+    @pytest.mark.live
+    @pytest.mark.ollama
+    @pytest.mark.timeout(120)
+    async def test_live_ollama_basic_response(self, make_agent_core):
+        """Live Mode B: Ollama model produces an assisted response."""
+        import os
+
+        agent = make_agent_core(
+            name="b-ollama-live",
+            model="ollama/glm-flash-q8:16k",
+            credential="ollama",
+            execution_mode="assisted",
+            api_base_url=os.environ.get("OLLAMA_API_BASE", ""),
+        )
+
+        result = await agent.run_cycle(
+            "Reply with exactly: ANIMAWORKS_OLLAMA_TEST_OK"
+        )
+
+        assert result.summary
+        assert result.action == "responded"
+
+
+class TestModeBAzureLive:
+    """Mode B tests using Azure OpenAI API."""
+
+    @pytest.mark.live
+    @pytest.mark.azure
+    @pytest.mark.timeout(60)
+    async def test_live_azure_assisted_response(self, make_agent_core):
+        """Live Mode B: Azure OpenAI gpt-4.1 in assisted mode."""
+        import os
+
+        agent = make_agent_core(
+            name="b-azure-live",
+            model="azure/gpt-4.1",
+            credential="azure",
+            execution_mode="assisted",
+            api_base_url=os.environ.get("AZURE_API_BASE", ""),
+        )
+
+        result = await agent.run_cycle(
+            "Reply with exactly: ANIMAWORKS_AZURE_B_TEST_OK"
+        )
+
+        assert result.summary
+        assert result.action == "responded"

@@ -18,3 +18,4 @@ archive/
 site-docs/
 mkdocs.yml
 .env
+tmp/

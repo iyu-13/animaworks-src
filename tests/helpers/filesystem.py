@@ -17,6 +17,7 @@ DEFAULT_TEST_CONFIG: dict[str, Any] = {
     "credentials": {
         "anthropic": {"api_key": "", "base_url": None},
         "openai": {"api_key": "", "base_url": None},
+        "azure": {"api_key": "", "base_url": None},
         "ollama": {"api_key": "", "base_url": "http://localhost:11434"},
     },
     "person_defaults": {
@@ -82,8 +83,10 @@ def create_person_dir(
     model: str = "claude-sonnet-4-20250514",
     execution_mode: str | None = None,
     role: str | None = None,
+    credential: str | None = None,
     api_key: str | None = None,
     api_key_env: str = "ANTHROPIC_API_KEY",
+    api_base_url: str | None = None,
     context_threshold: float = 0.50,
     max_chains: int = 2,
     max_turns: int = 5,
@@ -123,6 +126,8 @@ def create_person_dir(
         person_config["execution_mode"] = execution_mode
     if role is not None:
         person_config["role"] = role
+    if credential is not None:
+        person_config["credential"] = credential
     person_config["context_threshold"] = context_threshold
     person_config["max_chains"] = max_chains
     person_config["max_turns"] = max_turns
@@ -130,8 +135,14 @@ def create_person_dir(
 
     config["persons"][name] = person_config
 
+    # Update credentials for the appropriate credential type
+    cred_name = credential or "anthropic"
+    if cred_name not in config["credentials"]:
+        config["credentials"][cred_name] = {"api_key": "", "base_url": None}
     if api_key:
-        config["credentials"]["anthropic"]["api_key"] = api_key
+        config["credentials"][cred_name]["api_key"] = api_key
+    if api_base_url:
+        config["credentials"][cred_name]["base_url"] = api_base_url
 
     config_path.write_text(
         json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8"
