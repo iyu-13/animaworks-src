@@ -35,8 +35,16 @@ class AgentSDKExecutor(BaseExecutor):
     when token usage crosses the configured threshold.
     """
 
-    def __init__(self, model_config: ModelConfig, person_dir: Path) -> None:
+    def __init__(
+        self,
+        model_config: ModelConfig,
+        person_dir: Path,
+        tool_registry: list[str] | None = None,
+        personal_tools: dict[str, str] | None = None,
+    ) -> None:
         super().__init__(model_config, person_dir)
+        self._tool_registry = tool_registry or []
+        self._personal_tools = personal_tools or {}
 
     def _resolve_agent_sdk_model(self) -> str:
         """Return the model name suitable for Agent SDK (strip provider prefix)."""
@@ -46,8 +54,14 @@ class AgentSDKExecutor(BaseExecutor):
         return m
 
     def _build_env(self) -> dict[str, str]:
-        """Build env dict so the child process uses per-person credentials."""
-        env: dict[str, str] = {}
+        """Build env dict so the child process uses per-person credentials.
+
+        Also sets ``ANIMAWORKS_PERSON_DIR`` so that ``animaworks-tool``
+        can discover personal tools in the person's ``tools/`` directory.
+        """
+        env: dict[str, str] = {
+            "ANIMAWORKS_PERSON_DIR": str(self._person_dir),
+        }
         api_key = self._resolve_api_key()
         if api_key:
             env["ANTHROPIC_API_KEY"] = api_key

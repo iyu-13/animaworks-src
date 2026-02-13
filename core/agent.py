@@ -172,6 +172,8 @@ class AgentCore:
             return AgentSDKExecutor(
                 model_config=self.model_config,
                 person_dir=self.person_dir,
+                tool_registry=self._tool_registry,
+                personal_tools=self._personal_tools,
             )
         if mode == "a2":
             return LiteLLMExecutor(
