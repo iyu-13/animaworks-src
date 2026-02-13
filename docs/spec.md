@@ -143,8 +143,8 @@ animaworks/
     "conversation_history_threshold": 0.30
   },
   "persons": {
-    "sakura": { "role": "commander" },
-    "tanaka": { "model": "gpt-4o", "credential": "openai", "role": "worker", "supervisor": "sakura" }
+    "alice": { "role": "commander" },
+    "bob": { "model": "gpt-4o", "credential": "openai", "role": "worker", "supervisor": "alice" }
   }
 }
 ```
@@ -517,7 +517,7 @@ Digital Personは「空の器」。役割・理念はMarkdownで注入する。
 - **統合設定** — config.json + Pydanticバリデーション。person単位のオーバーライド
 - **FastAPIサーバー** — REST + WebSocket + Web UI（3Dオフィス・会話画面）
 - **外部ツール9種** — web_search, slack, chatwork, gmail, github, x_search, transcribe, aws_collector, local_llm
-- **Person生成** — テンプレート（sakura）/ 空白（_blank）/ MDファイルからの生成
+- **Person生成** — テンプレート / 空白（_blank）/ MDファイルからの生成
 - **スキルシステム** — 個人スキル + 共通スキル（Markdownベースのプロシージャ）
 
 -----

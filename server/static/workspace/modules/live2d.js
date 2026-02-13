@@ -1508,7 +1508,7 @@ export function disposeBustup() {
  * Switch the displayed character by name.
  * If an AI-generated bust-up image exists, display it instead of the Canvas
  * procedural drawing.  Falls back to Canvas rendering when no image is available.
- * @param {string} name - Character name (e.g. "sakura", "kotoha")
+ * @param {string} name - Character name (e.g. "alice", "bob")
  */
 export async function setCharacter(name) {
   if (!name || typeof name !== "string") {

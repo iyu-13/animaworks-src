@@ -35,7 +35,7 @@ curl -s http://localhost:18500/api/system/status | python3 -m json.tool
   "persons": 2,
   "scheduler_running": true,
   "jobs": [
-    {"id": "heartbeat_sakura", "name": "heartbeat_sakura", "next_run": "2026-01-26 10:30:00+09:00"}
+    {"id": "heartbeat_alice", "name": "heartbeat_alice", "next_run": "2026-01-26 10:30:00+09:00"}
   ]
 }
 ```
@@ -50,7 +50,7 @@ curl -s -X POST http://localhost:18500/api/system/reload | python3 -m json.tool
 ```json
 {
   "added": [],
-  "refreshed": ["sakura", "kotoha"],
+  "refreshed": ["alice", "bob"],
   "removed": [],
   "total": 2
 }

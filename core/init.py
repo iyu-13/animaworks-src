@@ -94,11 +94,12 @@ def _legacy_copy_default_person(data_dir: Path) -> None:
     """Legacy fallback: create a blank person when auto-initialising for server."""
     from core.person_factory import create_blank
 
+    default_name = "default"
     persons_dir = data_dir / "persons"
     persons_dir.mkdir(parents=True, exist_ok=True)
     try:
-        create_blank(persons_dir, "sakura")
-        logger.info("Legacy fallback: created blank default person 'sakura'")
+        create_blank(persons_dir, default_name)
+        logger.info("Legacy fallback: created blank default person '%s'", default_name)
     except Exception:
         logger.warning("Could not create default person", exc_info=True)
 

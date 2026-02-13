@@ -36,7 +36,7 @@ def _env_name_to_credential_name(env_name: str) -> str:
     """Derive a credential name from an env var name.
 
     ANTHROPIC_API_KEY -> anthropic
-    ANTHROPIC_API_KEY_SAKURA -> anthropic_sakura
+    ANTHROPIC_API_KEY_MYNAME -> anthropic_myname
     OLLAMA_API_KEY -> ollama
     """
     name = env_name.lower()
