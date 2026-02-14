@@ -7,37 +7,88 @@ performance according to the research protocol defined in:
 docs/research/memory-performance-evaluation-protocol.md
 """
 
-from .config import (
-    ConversationLength,
-    ConversationMetrics,
-    Domain,
-    ExperimentConfig,
-    MemorySize,
-    ScenarioType,
-    SearchConfig,
-    SearchMethod,
-    TurnMetrics,
+# Phase 2: Dataset Generation (standalone, no numpy dependency)
+from .dataset_generator import DatasetGenerator
+from .ground_truth import GroundTruthManager
+from .schemas import (
+    AnnotationSet,
+    ConversationTurn,
+    GroundTruth,
+    MemoryBase,
+    MemoryFile,
+    RelevantMemory,
+    ScenarioTypeConfig,
+    SizeConfig,
 )
-from .framework import MemoryExperiment, Scenario, Turn
-from .logger import ExperimentLogger
-from .metrics import MetricsCollector
+
+# Phase 1: Experiment framework (requires numpy for metrics)
+try:
+    from .config import (
+        ConversationLength,
+        ConversationMetrics,
+        Domain,
+        ExperimentConfig,
+        MemorySize,
+        ScenarioType,
+        SearchConfig,
+        SearchMethod,
+        TurnMetrics,
+    )
+    from .framework import MemoryExperiment, Scenario, Turn
+    from .logger import ExperimentLogger
+    from .metrics import MetricsCollector
+
+    _PHASE1_AVAILABLE = True
+except ImportError:
+    # Phase 1 components not available (missing numpy or other deps)
+    _PHASE1_AVAILABLE = False
+    ConversationLength = None  # type: ignore
+    ConversationMetrics = None  # type: ignore
+    Domain = None  # type: ignore
+    ExperimentConfig = None  # type: ignore
+    MemorySize = None  # type: ignore
+    ScenarioType = None  # type: ignore
+    SearchConfig = None  # type: ignore
+    SearchMethod = None  # type: ignore
+    TurnMetrics = None  # type: ignore
+    MemoryExperiment = None  # type: ignore
+    Scenario = None  # type: ignore
+    Turn = None  # type: ignore
+    ExperimentLogger = None  # type: ignore
+    MetricsCollector = None  # type: ignore
 
 __all__ = [
-    # Config
-    "ConversationLength",
-    "ConversationMetrics",
-    "Domain",
-    "ExperimentConfig",
-    "MemorySize",
-    "ScenarioType",
-    "SearchConfig",
-    "SearchMethod",
-    "TurnMetrics",
-    # Framework
-    "MemoryExperiment",
-    "Scenario",
-    "Turn",
-    # Tools
-    "ExperimentLogger",
-    "MetricsCollector",
+    # Phase 2: Dataset Generation (always available)
+    "DatasetGenerator",
+    "GroundTruthManager",
+    "MemoryFile",
+    "MemoryBase",
+    "ConversationTurn",
+    "GroundTruth",
+    "RelevantMemory",
+    "AnnotationSet",
+    "SizeConfig",
+    "ScenarioTypeConfig",
 ]
+
+# Add Phase 1 components if available
+if _PHASE1_AVAILABLE:
+    __all__.extend([
+        # Config
+        "ConversationLength",
+        "ConversationMetrics",
+        "Domain",
+        "ExperimentConfig",
+        "MemorySize",
+        "ScenarioType",
+        "SearchConfig",
+        "SearchMethod",
+        "TurnMetrics",
+        # Framework
+        "MemoryExperiment",
+        "Scenario",
+        "Turn",
+        # Tools
+        "ExperimentLogger",
+        "MetricsCollector",
+    ])

@@ -274,31 +274,198 @@ async def _measure_response(self, agent: DigitalPerson, message: str):
     return response, latency
 ```
 
-## Next Steps (Phase 2+)
+## Phase 2 Implementation (✅ COMPLETED - 2026-02-14)
 
-Phase 2 and beyond will add:
+Phase 2 provides dataset generation and ground truth management:
 
-1. **Dataset Generation** (`dataset_generator.py`)
-   - Memory base generation (knowledge, episodes, skills)
-   - Scenario generation (factual, episodic, multihop, long)
-   - Domain-specific templates
+### 1. Data Schemas (`schemas.py`)
 
-2. **Ground Truth Management** (`ground_truth.py`)
-   - Annotation interface
-   - Inter-annotator agreement (Cohen's κ)
-   - Ground truth validation
+Data structures for memory files, scenarios, and annotations:
 
-3. **Statistical Analysis** (`analysis.py`)
+```python
+from framework import MemoryBase, MemoryFile, Scenario, ConversationTurn, GroundTruth
+
+# Memory file representation
+memory_file = MemoryFile(
+    path=Path("knowledge/company_vision.md"),
+    content="# Company Vision\n...",
+    tokens=500,
+    metadata={"topic": "Company Vision", "index": 0}
+)
+
+# Memory base (full dataset)
+memory_base = MemoryBase(
+    domain="business",
+    size="small",
+    knowledge_files=[...],  # 50 files
+    episode_files=[...],    # 30 files
+    skill_files=[...]       # 10 files
+)
+
+# Conversation scenario
+scenario = Scenario(
+    scenario_id="business_factual_001",
+    scenario_type="factual",
+    domain="business",
+    turns=[
+        ConversationTurn(
+            message="What information do you have about Company Vision?",
+            relevant_memories=[Path("knowledge/company_vision_0000.md")],
+            expected_answer=None
+        )
+    ]
+)
+```
+
+**Key classes**:
+- `MemoryFile`: Individual memory file with content and metadata
+- `MemoryBase`: Complete dataset (knowledge + episodes + skills)
+- `Scenario`: Conversation scenario with multiple turns
+- `ConversationTurn`: Single turn with query and ground truth
+- `GroundTruth`: Annotated relevant/irrelevant memories
+- `SizeConfig`: Dataset size specifications (small/medium/large)
+
+### 2. Dataset Generator (`dataset_generator.py`)
+
+Generates realistic memory bases and scenarios:
+
+```python
+from framework import DatasetGenerator
+
+# Initialize generator
+generator = DatasetGenerator(
+    output_dir=Path("datasets"),
+    use_llm=False  # Template mode (fast)
+    # use_llm=True, model="anthropic/claude-sonnet-4-20250514"  # LLM mode (high quality)
+)
+
+# Generate memory base
+memory_base = generator.generate_memory_base(
+    domain="business",  # or "tech_support", "education"
+    size="small"        # or "medium", "large"
+)
+# Result: 90 files (50 knowledge + 30 episodes + 10 skills)
+
+# Generate scenarios
+scenarios = generator.generate_scenarios(
+    domain="business",
+    memory_base=memory_base,
+    total_count=50
+)
+# Result: 50 scenarios (factual: 40%, episodic: 30%, multihop: 20%, long: 10%)
+
+# Save scenarios
+saved_paths = generator.save_scenarios(scenarios, Path("scenarios"))
+```
+
+**Features**:
+- **Two modes**: Template (fast, deterministic) or LLM (high quality, varied)
+- **Three domains**: Business, Tech Support, Education
+- **Three sizes**: Small (90 files, ~50K tokens), Medium (900 files, ~500K tokens), Large (9000 files, ~5M tokens)
+- **Four scenario types**: Factual (5 turns), Episodic (5 turns), Multihop (10 turns), Long (20 turns)
+- **Realistic file sizes**: Knowledge (500-5000 chars), Episodes (1000-3000 chars), Skills (300-1000 chars)
+
+### 3. Ground Truth Manager (`ground_truth.py`)
+
+Manages annotation and inter-annotator agreement:
+
+```python
+from framework import GroundTruthManager
+
+# Initialize manager
+gt_manager = GroundTruthManager(output_dir=Path("ground_truth"))
+
+# Create annotations
+annotation_set = gt_manager.create_annotations(
+    scenarios=scenarios,
+    memory_base=memory_base,
+    annotator_id="annotator1"
+)
+
+# Save annotations
+saved_path = gt_manager.save_annotations(annotation_set)
+
+# Load annotations
+loaded_set = gt_manager.load_annotations("annotations_annotator1.json")
+
+# Calculate inter-annotator agreement
+annotation_set2 = gt_manager.create_annotations(scenarios, memory_base, "annotator2")
+agreement = gt_manager.calculate_agreement(annotation_set, annotation_set2)
+
+print(f"Cohen's κ: {agreement['cohens_kappa']:.3f}")
+print(f"Agreement rate: {agreement['agreement_rate']:.1%}")
+print(f"Interpretation: {gt_manager._interpret_kappa(agreement['cohens_kappa'])}")
+```
+
+**Features**:
+- **Automatic annotation**: From scenario relevant_memories
+- **Manual annotation support**: JSON structure for human annotators
+- **Cohen's κ calculation**: Inter-annotator agreement metric
+- **Interpretation**: Landis & Koch (1977) guidelines
+- **JSON storage**: Portable, human-readable format
+
+### 4. Quick Start: Generate Sample Dataset
+
+```bash
+cd /home/main/dev/animaworks-memory-eval
+python3 scripts/generate_small_dataset.py
+```
+
+**Output**:
+```
+✓ Generated 90 files (13,455 tokens)
+✓ Generated 20 scenarios
+  - factual: 8
+  - episodic: 6
+  - multihop: 4
+  - long: 2
+✓ Created 150 annotations
+✓ Saved to:
+  - datasets/business/small/
+  - scenarios/
+  - ground_truth/annotations_auto_generator.json
+```
+
+### 5. Dataset Sizes
+
+| Size | Knowledge | Episodes | Skills | Total | Target Tokens |
+|------|-----------|----------|--------|-------|---------------|
+| Small | 50 | 30 | 10 | 90 | ~50K |
+| Medium | 500 | 300 | 100 | 900 | ~500K |
+| Large | 5000 | 3000 | 1000 | 9000 | ~5M |
+
+### 6. Scenario Type Distribution
+
+Default distribution (for 50 total scenarios):
+
+| Type | Ratio | Count | Turns | Description |
+|------|-------|-------|-------|-------------|
+| Factual | 40% | 20 | 5 | Simple fact recall |
+| Episodic | 30% | 15 | 5 | Episode memory recall |
+| Multihop | 20% | 10 | 10 | Multi-step reasoning |
+| Long | 10% | 5 | 20 | Extended conversation |
+
+## Next Steps (Phase 3+)
+
+Phase 3 and beyond will add:
+
+1. **Metrics Collection** (Phase 3)
+   - Search precision/recall measurement
+   - Latency profiling
+   - Token consumption tracking
+   - Memory retention testing
+
+2. **Statistical Analysis** (`analysis.py`)
    - Hypothesis testing (t-test, ANOVA, logistic regression)
    - Effect size calculation
    - Power analysis
 
-4. **Visualization** (`visualization.py`)
+3. **Visualization** (`visualization.py`)
    - Latency distribution plots
    - Precision/Recall curves
    - Comparison charts across conditions
 
-5. **Execution Scripts**
+4. **Execution Scripts**
    - `run_experiment.py`: Run full experiments
    - `run_analysis.py`: Statistical analysis
    - `generate_paper_figures.py`: Publication-quality figures
