@@ -8,6 +8,7 @@ from __future__ import annotations
 
 
 import asyncio
+import json
 import logging
 from collections.abc import AsyncGenerator, Callable
 from datetime import datetime
@@ -41,6 +42,8 @@ class DigitalPerson:
         )
 
         self._lock = asyncio.Lock()
+        self._user_waiting = asyncio.Event()
+        # Event NOT set = no user waiting (default state)
         self._status = "idle"
         self._current_task = ""
         self._last_heartbeat: datetime | None = None
@@ -70,6 +73,50 @@ class DigitalPerson:
             except Exception:
                 logger.exception("[%s] on_lock_released callback failed", self.name)
 
+    # ── Heartbeat history ────────────────────────────────────
+
+    _HEARTBEAT_HISTORY_FILE = "shortterm/heartbeat_history.jsonl"
+    _HEARTBEAT_HISTORY_N = 3
+    _HEARTBEAT_HISTORY_MAX_LINES = 20
+
+    def _save_heartbeat_history(self, result: CycleResult) -> None:
+        """Append heartbeat result summary to JSONL history file."""
+        path = self.person_dir / self._HEARTBEAT_HISTORY_FILE
+        path.parent.mkdir(parents=True, exist_ok=True)
+        entry = json.dumps({
+            "timestamp": result.timestamp.isoformat(),
+            "trigger": result.trigger,
+            "action": result.action,
+            "summary": result.summary[:500],
+            "duration_ms": result.duration_ms,
+        }, ensure_ascii=False)
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(entry + "\n")
+        # Keep file bounded
+        lines = path.read_text(encoding="utf-8").strip().splitlines()
+        if len(lines) > self._HEARTBEAT_HISTORY_MAX_LINES:
+            path.write_text(
+                "\n".join(lines[-self._HEARTBEAT_HISTORY_MAX_LINES:]) + "\n",
+                encoding="utf-8",
+            )
+
+    def _load_heartbeat_history(self) -> str:
+        """Load last N heartbeat history entries as formatted text."""
+        path = self.person_dir / self._HEARTBEAT_HISTORY_FILE
+        if not path.exists():
+            return ""
+        lines = path.read_text(encoding="utf-8").strip().splitlines()
+        entries: list[str] = []
+        for line in lines[-self._HEARTBEAT_HISTORY_N:]:
+            try:
+                e = json.loads(line)
+                entries.append(
+                    f"- {e['timestamp']}: [{e['action']}] {e['summary'][:200]}"
+                )
+            except (json.JSONDecodeError, KeyError):
+                continue
+        return "\n".join(entries)
+
     @property
     def needs_bootstrap(self) -> bool:
         """True if this person has not completed the first-run bootstrap."""
@@ -90,11 +137,16 @@ class DigitalPerson:
         self, content: str, from_person: str = "human"
     ) -> str:
         logger.info(
-            "[%s] process_message START from=%s content_len=%d",
+            "[%s] process_message WAITING from=%s content_len=%d",
             self.name, from_person, len(content),
         )
+        self._user_waiting.set()
         try:
             async with self._lock:
+                logger.info(
+                    "[%s] process_message START (lock acquired) from=%s",
+                    self.name, from_person,
+                )
                 self._status = "thinking"
                 self._current_task = f"Responding to {from_person}"
 
@@ -126,6 +178,7 @@ class DigitalPerson:
                     self._status = "idle"
                     self._current_task = ""
         finally:
+            self._user_waiting.clear()
             self._notify_lock_released()
 
     async def process_message_stream(
@@ -136,11 +189,16 @@ class DigitalPerson:
         Yields stream event dicts. The lock is held for the entire duration.
         """
         logger.info(
-            "[%s] process_message_stream START from=%s content_len=%d",
+            "[%s] process_message_stream WAITING from=%s content_len=%d",
             self.name, from_person, len(content),
         )
+        self._user_waiting.set()
         try:
             async with self._lock:
+                logger.info(
+                    "[%s] process_message_stream START (lock acquired) from=%s",
+                    self.name, from_person,
+                )
                 self._status = "thinking"
                 self._current_task = f"Responding to {from_person}"
 
@@ -173,9 +231,19 @@ class DigitalPerson:
                     self._status = "idle"
                     self._current_task = ""
         finally:
+            self._user_waiting.clear()
             self._notify_lock_released()
 
     async def run_heartbeat(self) -> CycleResult:
+        # Defer to user messages: skip heartbeat if a user is waiting for the lock
+        if self._user_waiting.is_set():
+            logger.info("[%s] run_heartbeat SKIPPED: user message waiting", self.name)
+            return CycleResult(
+                trigger="heartbeat",
+                action="skipped",
+                summary="User message priority: heartbeat deferred",
+            )
+
         logger.info("[%s] run_heartbeat START", self.name)
         try:
             async with self._lock:
@@ -185,6 +253,13 @@ class DigitalPerson:
                 hb_config = self.memory.read_heartbeat_config()
                 checklist = hb_config or load_prompt("heartbeat_default_checklist")
                 parts = [load_prompt("heartbeat", checklist=checklist)]
+
+                # Inject recent heartbeat history for continuity
+                history_text = self._load_heartbeat_history()
+                if history_text:
+                    parts.append(load_prompt(
+                        "heartbeat_history", history=history_text,
+                    ))
 
                 # Read unread messages but do NOT archive yet.
                 # Messages stay in inbox until the agent replies to each sender.
@@ -211,6 +286,7 @@ class DigitalPerson:
                         "\n\n".join(parts), trigger="heartbeat"
                     )
                     self._last_activity = datetime.now()
+                    self._save_heartbeat_history(result)
 
                     # Archive all messages that were injected into the prompt.
                     # In A1 mode agents send replies via Bash (not the
