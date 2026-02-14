@@ -4,7 +4,20 @@ from __future__ import annotations
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
 # NOTE: With process isolation, DigitalPerson instances are no longer
-# in the parent process. All routes should use ProcessSupervisor IPC
-# or read files directly from disk instead of using get_person dependency.
-#
-# This file is kept for reference but the dependency is no longer used.
+# in the parent process. This file provides stub dependencies for
+# backwards compatibility during transition.
+
+from typing import Any
+
+
+def get_person(person_name: str) -> Any:
+    """
+    Stub dependency for compatibility.
+
+    With process isolation, this should not be used.
+    Routes should use ProcessSupervisor IPC instead.
+    """
+    raise NotImplementedError(
+        "get_person() is deprecated with process isolation. "
+        "Use ProcessSupervisor IPC instead."
+    )

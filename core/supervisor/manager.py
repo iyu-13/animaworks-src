@@ -55,12 +55,14 @@ class ProcessSupervisor:
         persons_dir: Path,
         shared_dir: Path,
         run_dir: Path,
+        log_dir: Path | None = None,
         restart_policy: RestartPolicy | None = None,
         health_config: HealthConfig | None = None
     ):
         self.persons_dir = persons_dir
         self.shared_dir = shared_dir
         self.run_dir = run_dir
+        self.log_dir = log_dir
 
         self.restart_policy = restart_policy or RestartPolicy()
         self.health_config = health_config or HealthConfig()
@@ -105,7 +107,8 @@ class ProcessSupervisor:
             person_name=person_name,
             socket_path=socket_path,
             persons_dir=self.persons_dir,
-            shared_dir=self.shared_dir
+            shared_dir=self.shared_dir,
+            log_dir=self.log_dir
         )
 
         try:

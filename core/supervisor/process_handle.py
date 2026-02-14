@@ -57,12 +57,14 @@ class ProcessHandle:
         person_name: str,
         socket_path: Path,
         persons_dir: Path,
-        shared_dir: Path
+        shared_dir: Path,
+        log_dir: Path | None = None
     ):
         self.person_name = person_name
         self.socket_path = socket_path
         self.persons_dir = persons_dir
         self.shared_dir = shared_dir
+        self.log_dir = log_dir
 
         self.state = ProcessState.STOPPED
         self.process: subprocess.Popen | None = None
@@ -88,7 +90,8 @@ class ProcessHandle:
             "--person-name", self.person_name,
             "--socket-path", str(self.socket_path),
             "--persons-dir", str(self.persons_dir),
-            "--shared-dir", str(self.shared_dir)
+            "--shared-dir", str(self.shared_dir),
+            "--log-dir", str(self.log_dir) if self.log_dir else "/tmp"
         ]
 
         logger.info(f"Starting process: {self.person_name}")
@@ -115,6 +118,18 @@ class ProcessHandle:
 
         except Exception as e:
             logger.error(f"Failed to start process {self.person_name}: {e}")
+
+            # Capture and log subprocess output if available
+            if self.process:
+                try:
+                    stdout, stderr = self.process.communicate(timeout=1.0)
+                    if stderr:
+                        logger.error(f"Subprocess stderr:\n{stderr}")
+                    if stdout:
+                        logger.debug(f"Subprocess stdout:\n{stdout}")
+                except Exception:
+                    pass
+
             self.state = ProcessState.FAILED
             await self._cleanup()
             raise
@@ -199,8 +214,13 @@ class ProcessHandle:
         """
         Stop the child process gracefully.
 
-        Sends shutdown request and waits for process to exit.
-        If timeout exceeded, sends SIGKILL.
+        Shutdown flow:
+        1. Send IPC shutdown command (wait 5s)
+        2. If not exited, send SIGTERM (wait timeout/2)
+        3. If still not exited, send SIGKILL
+
+        Args:
+            timeout: Total timeout in seconds for graceful shutdown
         """
         if self.state in (ProcessState.STOPPED, ProcessState.FAILED):
             logger.debug(f"Process already stopped: {self.person_name}")
@@ -209,24 +229,43 @@ class ProcessHandle:
         self.state = ProcessState.STOPPING
         logger.info(f"Stopping process: {self.person_name}")
 
-        # Send shutdown request
+        if not self.process:
+            self.state = ProcessState.STOPPED
+            await self._cleanup()
+            return
+
+        # Step 1: Send IPC shutdown request
         try:
+            logger.debug(f"Sending shutdown request to {self.person_name}")
             await self.send_request("shutdown", {}, timeout=5.0)
         except Exception as e:
             logger.warning(f"Shutdown request failed for {self.person_name}: {e}")
 
-        # Wait for process to exit
-        if self.process:
+        # Step 2: Wait for graceful exit
+        try:
+            grace_period = min(timeout / 2, 5.0)
+            async with asyncio.timeout(grace_period):
+                while self.process.poll() is None:
+                    await asyncio.sleep(0.1)
+
+            self.stats.exit_code = self.process.returncode
+            logger.info(f"Process exited gracefully: {self.person_name} (code={self.stats.exit_code})")
+
+        except asyncio.TimeoutError:
+            # Step 3: Send SIGTERM
+            logger.warning(f"Process did not exit gracefully, sending SIGTERM: {self.person_name}")
             try:
-                async with asyncio.timeout(timeout):
+                self.process.terminate()
+                async with asyncio.timeout(timeout / 2):
                     while self.process.poll() is None:
                         await asyncio.sleep(0.1)
 
                 self.stats.exit_code = self.process.returncode
-                logger.info(f"Process exited: {self.person_name} (code={self.stats.exit_code})")
+                logger.info(f"Process terminated: {self.person_name} (code={self.stats.exit_code})")
 
             except asyncio.TimeoutError:
-                logger.warning(f"Process did not exit gracefully: {self.person_name}")
+                # Step 4: Force SIGKILL
+                logger.error(f"Process did not respond to SIGTERM, sending SIGKILL: {self.person_name}")
                 await self.kill()
 
         self.state = ProcessState.STOPPED

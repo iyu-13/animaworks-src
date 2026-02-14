@@ -258,13 +258,15 @@ class PersonRunner:
 
 # ── CLI Entry Point ────────────────────────────────────────────────
 
-def setup_logging(person_name: str) -> None:
-    """Setup logging for child process."""
-    # TODO: Phase 4 - Setup person-specific log file with rotation
-    logging.basicConfig(
-        level=logging.INFO,
-        format=f"%(asctime)s [{person_name}] [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
+def setup_logging(person_name: str, log_dir: Path) -> None:
+    """Setup logging for child process with person-specific log files."""
+    from core.logging_config import setup_person_logging
+
+    setup_person_logging(
+        person_name=person_name,
+        log_dir=log_dir,
+        level="INFO",
+        also_to_console=False  # Child processes log to file only
     )
 
 
@@ -296,6 +298,12 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Path to shared directory"
     )
+    parser.add_argument(
+        "--log-dir",
+        required=True,
+        type=Path,
+        help="Path to log directory"
+    )
     return parser.parse_args()
 
 
@@ -303,7 +311,7 @@ async def main() -> None:
     """Main entry point."""
     args = parse_args()
 
-    setup_logging(args.person_name)
+    setup_logging(args.person_name, args.log_dir)
 
     runner = PersonRunner(
         person_name=args.person_name,
