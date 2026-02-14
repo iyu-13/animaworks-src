@@ -9,6 +9,7 @@ import logging
 import subprocess
 import sys
 import uuid
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -179,6 +180,44 @@ class ProcessHandle:
         )
 
         return await self.ipc_client.send_request(request, timeout=timeout)
+
+    async def send_request_stream(
+        self,
+        method: str,
+        params: dict,
+        timeout: float = 120.0
+    ) -> AsyncIterator[IPCResponse]:
+        """
+        Send IPC request to child process and yield streaming responses.
+
+        Args:
+            method: The method name
+            params: Request parameters (should include stream=True)
+            timeout: Timeout in seconds for the entire stream
+
+        Yields:
+            IPCResponse objects (chunks and final result)
+
+        Raises:
+            RuntimeError: If process is not running
+            asyncio.TimeoutError: If timeout exceeded
+        """
+        if self.state != ProcessState.RUNNING:
+            raise RuntimeError(f"Process not running: {self.state}")
+
+        if not self.ipc_client:
+            raise RuntimeError("IPC client not connected")
+
+        request = IPCRequest(
+            id=f"req_{uuid.uuid4().hex[:8]}",
+            method=method,
+            params=params
+        )
+
+        async for response in self.ipc_client.send_request_stream(
+            request, timeout=timeout
+        ):
+            yield response
 
     async def ping(self, timeout: float = 5.0) -> bool:
         """

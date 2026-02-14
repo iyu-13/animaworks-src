@@ -6,11 +6,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable
 
+from core.supervisor.ipc import IPCResponse
 from core.supervisor.process_handle import ProcessHandle, ProcessState
 
 logger = logging.getLogger(__name__)
@@ -200,6 +202,42 @@ class ProcessSupervisor:
             )
 
         return response.result or {}
+
+    async def send_request_stream(
+        self,
+        person_name: str,
+        method: str,
+        params: dict,
+        timeout: float = 120.0
+    ) -> AsyncIterator[IPCResponse]:
+        """
+        Send IPC request to a Person process and yield streaming responses.
+
+        Args:
+            person_name: Target person name
+            method: Method name
+            params: Request parameters (should include stream=True)
+            timeout: Timeout in seconds for the entire stream
+
+        Yields:
+            IPCResponse objects (chunks and final result)
+
+        Raises:
+            KeyError: If person not found
+            RuntimeError: If process not running
+        """
+        handle = self.processes.get(person_name)
+        if not handle:
+            raise KeyError(f"Person not found: {person_name}")
+
+        async for response in handle.send_request_stream(
+            method, params, timeout
+        ):
+            if response.error:
+                raise ValueError(
+                    f"Stream error: {response.error.get('message', 'Unknown error')}"
+                )
+            yield response
 
     async def _health_check_loop(self) -> None:
         """

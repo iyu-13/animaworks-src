@@ -147,12 +147,75 @@ def create_chat_router() -> APIRouter:
 
     @router.post("/persons/{name}/chat/stream")
     async def chat_stream(name: str, body: ChatRequest, request: Request):
-        # Streaming not yet implemented in IPC layer
-        # TODO: Implement streaming support in Phase 4
-        from fastapi import HTTPException
-        raise HTTPException(
-            status_code=501,
-            detail="Streaming not yet implemented with process isolation"
+        """Stream chat response via SSE over IPC."""
+        supervisor = request.app.state.supervisor
+
+        # Verify person exists before starting the stream
+        if name not in supervisor.processes:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail=f"Person not found: {name}")
+
+        async def _ipc_stream_events() -> AsyncIterator[str]:
+            """Async generator that converts IPC stream to SSE frames."""
+            full_response = ""
+            try:
+                await emit(request, "person.status", {"name": name, "status": "thinking"})
+
+                async for ipc_response in supervisor.send_request_stream(
+                    person_name=name,
+                    method="process_message",
+                    params={
+                        "message": body.message,
+                        "from_person": body.from_person,
+                        "stream": True,
+                    },
+                    timeout=120.0,
+                ):
+                    if ipc_response.done:
+                        # Final response with full result
+                        result = ipc_response.result or {}
+                        full_response = result.get("response", full_response)
+                        cycle_result = result.get("cycle_result", {})
+                        yield _format_sse("done", cycle_result or {"summary": full_response})
+                        break
+
+                    if ipc_response.chunk:
+                        # Parse the chunk JSON from the IPC layer
+                        try:
+                            chunk_data = json.loads(ipc_response.chunk)
+                            frame, response_text = _handle_chunk(chunk_data)
+                            if response_text:
+                                full_response = response_text
+                            if frame:
+                                yield frame
+                        except json.JSONDecodeError:
+                            # Raw text chunk fallback
+                            full_response += ipc_response.chunk
+                            yield _format_sse("text_delta", {"text": ipc_response.chunk})
+
+                if full_response:
+                    await emit(
+                        request, "chat.response",
+                        {"name": name, "message": full_response},
+                    )
+
+            except KeyError:
+                logger.error("Person not found during stream: %s", name)
+                yield _format_sse("error", {"message": f"Person not found: {name}"})
+            except Exception:
+                logger.exception("IPC stream error for person=%s", name)
+                yield _format_sse("error", {"message": "Internal server error"})
+            finally:
+                await emit(request, "person.status", {"name": name, "status": "idle"})
+
+        return StreamingResponse(
+            _ipc_stream_events(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
         )
 
     return router

@@ -8,7 +8,8 @@ import asyncio
 import json
 import logging
 from pathlib import Path
-from typing import Any, Callable, Awaitable
+from collections.abc import AsyncIterator
+from typing import Any, Callable, Awaitable, Union
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +121,12 @@ class IPCEvent:
 
 # ── IPC Server (Child Process) ────────────────────────────────────────
 
-RequestHandler = Callable[[IPCRequest], Awaitable[IPCResponse]]
+# Handler may return a single IPCResponse OR an AsyncIterator of IPCResponse
+# for streaming.
+RequestHandler = Callable[
+    [IPCRequest],
+    Awaitable[Union[IPCResponse, AsyncIterator[IPCResponse]]]
+]
 
 
 class IPCServer:
@@ -129,6 +135,11 @@ class IPCServer:
 
     Listens on a socket file and handles incoming requests by dispatching
     to registered handlers.
+
+    Supports both single-response and streaming-response handlers:
+    - If handler returns an IPCResponse, a single JSON line is sent.
+    - If handler returns an AsyncIterator[IPCResponse], each item is sent
+      as a separate JSON line (streaming protocol).
     """
 
     def __init__(
@@ -176,11 +187,18 @@ class IPCServer:
                     request = IPCRequest.from_json(line)
                     logger.debug(f"IPC request: {request.method} (id={request.id})")
 
-                    response = await self.request_handler(request)
+                    handler_result = await self.request_handler(request)
 
-                    response_line = response.to_json() + "\n"
-                    writer.write(response_line.encode("utf-8"))
-                    await writer.drain()
+                    # Check if result is an async iterator (streaming)
+                    if hasattr(handler_result, "__aiter__"):
+                        async for response in handler_result:
+                            response_line = response.to_json() + "\n"
+                            writer.write(response_line.encode("utf-8"))
+                            await writer.drain()
+                    else:
+                        response_line = handler_result.to_json() + "\n"
+                        writer.write(response_line.encode("utf-8"))
+                        await writer.drain()
 
                 except json.JSONDecodeError as e:
                     logger.error(f"Invalid JSON in IPC request: {e}")
@@ -283,6 +301,63 @@ class IPCClient:
                 logger.debug(f"IPC response received: id={response.id}")
 
                 return response
+
+    async def send_request_stream(
+        self,
+        request: IPCRequest,
+        timeout: float = 120.0
+    ) -> AsyncIterator[IPCResponse]:
+        """
+        Send a request and yield streaming responses.
+
+        Reads JSON lines until a response with done=True is received.
+        Each intermediate chunk has stream=True and a chunk field.
+        The final response has stream=True, done=True, and a result field.
+
+        Args:
+            request: The request to send
+            timeout: Total timeout in seconds for the entire stream
+
+        Yields:
+            IPCResponse objects (chunks and final result)
+
+        Raises:
+            asyncio.TimeoutError: If timeout exceeded
+            RuntimeError: If not connected
+        """
+        if not self.reader or not self.writer:
+            raise RuntimeError("Not connected")
+
+        async with self._lock:
+            # Send request
+            request_line = request.to_json() + "\n"
+            self.writer.write(request_line.encode("utf-8"))
+            await self.writer.drain()
+            logger.debug(f"IPC stream request sent: {request.method} (id={request.id})")
+
+            # Read streaming responses until done
+            async with asyncio.timeout(timeout):
+                while True:
+                    response_line_bytes = await self.reader.readline()
+                    if not response_line_bytes:
+                        raise RuntimeError("Connection closed during stream")
+
+                    response_line = response_line_bytes.decode("utf-8").strip()
+                    if not response_line:
+                        continue
+
+                    response = IPCResponse.from_json(response_line)
+
+                    # Non-streaming response (error or unexpected)
+                    if not response.stream:
+                        yield response
+                        return
+
+                    yield response
+
+                    # Final chunk with done=True ends the stream
+                    if response.done:
+                        return
 
     async def close(self) -> None:
         """Close the connection."""

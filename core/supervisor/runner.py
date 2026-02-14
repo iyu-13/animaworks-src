@@ -13,9 +13,13 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
 import sys
 from pathlib import Path
+
+from collections.abc import AsyncIterator
+from typing import Union
 
 from core.person import DigitalPerson
 from core.supervisor.ipc import IPCServer, IPCRequest, IPCResponse
@@ -91,13 +95,24 @@ class PersonRunner:
         finally:
             await self._cleanup()
 
-    async def _handle_request(self, request: IPCRequest) -> IPCResponse:
+    async def _handle_request(
+        self, request: IPCRequest
+    ) -> Union[IPCResponse, AsyncIterator[IPCResponse]]:
         """
         Handle incoming IPC request.
 
         Dispatches to appropriate handler based on method.
+        For streaming requests (process_message with stream=True), returns
+        an AsyncIterator[IPCResponse] instead of a single IPCResponse.
         """
         try:
+            # Check for streaming process_message
+            if (
+                request.method == "process_message"
+                and request.params.get("stream")
+            ):
+                return self._handle_process_message_stream(request)
+
             handler = self._get_handler(request.method)
             if not handler:
                 return IPCResponse(
@@ -134,23 +149,108 @@ class PersonRunner:
         return handlers.get(method)
 
     async def _handle_process_message(self, params: dict) -> dict:
-        """Handle process_message request."""
+        """Handle non-streaming process_message request."""
         if not self.person:
             raise RuntimeError("Person not initialized")
 
         message = params.get("message", "")
-        stream = params.get("stream", False)
+        from_person = params.get("from_person", "human")
 
-        if stream:
-            # Streaming not yet implemented in Phase 1
-            raise NotImplementedError("Streaming not yet supported")
-
-        result = await self.person.process_message(message)
+        result = await self.person.process_message(message, from_person=from_person)
 
         return {
-            "response": result.response,
-            "replied_to": result.replied_to
+            "response": result,
+            "replied_to": []
         }
+
+    async def _handle_process_message_stream(
+        self, request: IPCRequest
+    ) -> AsyncIterator[IPCResponse]:
+        """Handle streaming process_message request.
+
+        Yields IPCResponse chunks with stream=True, followed by
+        a final response with done=True containing the full result.
+        """
+        if not self.person:
+            yield IPCResponse(
+                id=request.id,
+                error={
+                    "code": "NOT_INITIALIZED",
+                    "message": "Person not initialized"
+                }
+            )
+            return
+
+        message = request.params.get("message", "")
+        from_person = request.params.get("from_person", "human")
+        full_response = ""
+
+        try:
+            async for chunk in self.person.process_message_stream(
+                message, from_person=from_person
+            ):
+                event_type = chunk.get("type", "unknown")
+
+                if event_type == "text_delta":
+                    text = chunk.get("text", "")
+                    full_response += text
+                    yield IPCResponse(
+                        id=request.id,
+                        stream=True,
+                        chunk=json.dumps(chunk, ensure_ascii=False)
+                    )
+
+                elif event_type == "cycle_done":
+                    cycle_result = chunk.get("cycle_result", {})
+                    full_response = cycle_result.get("summary", full_response)
+                    yield IPCResponse(
+                        id=request.id,
+                        stream=True,
+                        done=True,
+                        result={
+                            "response": full_response,
+                            "replied_to": [],
+                            "cycle_result": cycle_result
+                        }
+                    )
+                    return
+
+                elif event_type == "error":
+                    yield IPCResponse(
+                        id=request.id,
+                        stream=True,
+                        chunk=json.dumps(chunk, ensure_ascii=False)
+                    )
+
+                else:
+                    # Forward other event types (tool_start, tool_end,
+                    # chain_start, etc.) as stream chunks
+                    yield IPCResponse(
+                        id=request.id,
+                        stream=True,
+                        chunk=json.dumps(chunk, ensure_ascii=False)
+                    )
+
+            # If the stream ended without a cycle_done, send final done
+            yield IPCResponse(
+                id=request.id,
+                stream=True,
+                done=True,
+                result={
+                    "response": full_response,
+                    "replied_to": []
+                }
+            )
+
+        except Exception as e:
+            logger.exception(f"Error in streaming process_message: {e}")
+            yield IPCResponse(
+                id=request.id,
+                error={
+                    "code": "STREAM_ERROR",
+                    "message": str(e)
+                }
+            )
 
     async def _handle_run_heartbeat(self, params: dict) -> dict:
         """Handle run_heartbeat request."""
