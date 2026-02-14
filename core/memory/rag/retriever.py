@@ -122,7 +122,7 @@ class MemoryRetriever:
         initial_results = results[:top_k]
 
         # 5. Apply spreading activation if enabled
-        if enable_spreading_activation and memory_type == "knowledge":
+        if enable_spreading_activation and memory_type in ("knowledge", "episodes"):
             try:
                 expanded = self._apply_spreading_activation(initial_results, person_name)
                 return expanded
@@ -206,6 +206,8 @@ class MemoryRetriever:
     ) -> list[RetrievalResult]:
         """Apply spreading activation to expand search results.
 
+        Tries loading cached graph first, then falls back to full build.
+
         Args:
             initial_results: Initial search results
             person_name: Person name
@@ -222,9 +224,17 @@ class MemoryRetriever:
                     self.vector_store,
                     self.indexer,
                 )
-                self._knowledge_graph.build_graph(person_name, self.knowledge_dir)
+
+                # Try loading from cache first
+                cache_dir = self.knowledge_dir.parent / "vectordb"
+                if not self._knowledge_graph.load_graph(cache_dir):
+                    # Cache miss: full build and save
+                    self._knowledge_graph.build_graph(person_name, self.knowledge_dir)
+                    cache_dir.mkdir(parents=True, exist_ok=True)
+                    self._knowledge_graph.save_graph(cache_dir)
+
             except Exception as e:
-                logger.warning("Failed to build knowledge graph: %s", e)
+                logger.warning("Failed to initialize knowledge graph: %s", e)
                 return initial_results
 
         # Expand results using graph
