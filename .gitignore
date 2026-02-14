@@ -14,8 +14,6 @@ build/
 .DS_Store
 
 # Project
-archive/
-docs/design/
 site/
 site-docs/
 mkdocs.yml

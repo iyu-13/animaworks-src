@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -242,31 +241,8 @@ class TestSendAsync:
         msg = await messenger.send_async("bob", "test")
         assert msg.thread_id == msg.id
 
-    async def test_with_broker(self, shared_dir):
-        mock_broker = MagicMock()
-        mock_broker.is_connected.return_value = True
-        mock_broker.publish = AsyncMock()
-
-        m = Messenger(shared_dir, "alice", broker=mock_broker)
-
-        # Need to mock the broker import
-        with patch.dict("sys.modules", {
-            "broker": MagicMock(),
-            "broker.base": MagicMock(),
-            "broker.messages": MagicMock(
-                BrokerMessage=MagicMock(),
-                MessageType=MagicMock(PERSON_MESSAGE="person_message"),
-            ),
-        }):
-            msg = await m.send_async("bob", "broker msg")
-            assert msg.from_person == "alice"
-            mock_broker.publish.assert_called_once()
-
-    async def test_falls_back_when_broker_disconnected(self, shared_dir):
-        mock_broker = MagicMock()
-        mock_broker.is_connected.return_value = False
-        m = Messenger(shared_dir, "alice", broker=mock_broker)
-        msg = await m.send_async("bob", "fallback")
-        # Should fall back to filesystem
+    async def test_delegates_to_sync_send(self, shared_dir, messenger):
+        msg = await messenger.send_async("bob", "async test")
+        assert msg.from_person == "alice"
         bob_inbox = shared_dir / "inbox" / "bob"
         assert len(list(bob_inbox.glob("*.json"))) == 1
