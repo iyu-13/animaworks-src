@@ -30,9 +30,12 @@ def create_system_router() -> APIRouter:
         # Get all process statuses
         process_statuses = supervisor.get_all_status()
 
+        scheduler = getattr(supervisor, "scheduler", None)
+
         return {
             "persons": len(person_names),
             "processes": process_statuses,
+            "scheduler_running": scheduler is not None,
         }
 
     @router.post("/system/reload")
