@@ -8,14 +8,12 @@ from __future__ import annotations
 
 """Setup wizard API routes for first-launch configuration."""
 
-import asyncio
-import json
 import logging
 import shutil
 from typing import Any
 
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 logger = logging.getLogger("animaworks.routes.setup")
@@ -62,14 +60,6 @@ class ValidateKeyRequest(BaseModel):
     api_key: str
 
 
-class ChatRequest(BaseModel):
-    model: str | None = None
-    messages: list[dict[str, str]] = []
-    api_key: str | None = None
-    template: str | None = None
-    locale: str = "ja"
-
-
 class SetupCompleteRequest(BaseModel):
     locale: str = "ja"
     credentials: dict[str, dict[str, str]] = {}
@@ -78,8 +68,6 @@ class SetupCompleteRequest(BaseModel):
 
 class PersonSetup(BaseModel):
     name: str
-    template: str | None = None
-    identity_md: str | None = None
 
 
 # ── Router factory ─────────────────────────────────────────
@@ -137,30 +125,6 @@ def create_setup_router() -> APIRouter:
         else:
             return {"valid": False, "message": f"Unknown provider: {provider}"}
 
-    # ── POST /api/setup/chat ───────────────────────────────
-
-    @router.post("/chat")
-    async def setup_chat(body: ChatRequest) -> StreamingResponse:
-        """SSE streaming endpoint for character maker chat via LiteLLM."""
-        return StreamingResponse(
-            _stream_chat(body),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "X-Accel-Buffering": "no",
-            },
-        )
-
-    # ── GET /api/setup/templates ───────────────────────────
-
-    @router.get("/templates")
-    async def list_templates() -> dict[str, Any]:
-        """Return available person templates."""
-        from core.person_factory import list_person_templates
-
-        templates = list_person_templates()
-        return {"templates": templates}
-
     # ── POST /api/setup/complete ───────────────────────────
 
     @router.post("/complete")
@@ -170,7 +134,6 @@ def create_setup_router() -> APIRouter:
     ) -> dict[str, Any]:
         """Finalize setup: save config, create person, mark complete."""
         from core.config import (
-            AnimaWorksConfig,
             CredentialConfig,
             PersonModelConfig,
             invalidate_cache,
@@ -193,28 +156,13 @@ def create_setup_router() -> APIRouter:
 
         # Create person if specified
         if body.person:
+            from core.person_factory import create_blank
+
             persons_dir = get_persons_dir()
             person_name = body.person.name
 
             try:
-                if body.person.template:
-                    from core.person_factory import create_from_template
-
-                    create_from_template(
-                        persons_dir,
-                        body.person.template,
-                        person_name=person_name,
-                    )
-                else:
-                    from core.person_factory import create_blank
-
-                    person_dir = create_blank(persons_dir, person_name)
-                    # If custom identity was provided, write it
-                    if body.person.identity_md:
-                        (person_dir / "identity.md").write_text(
-                            body.person.identity_md, encoding="utf-8"
-                        )
-
+                create_blank(persons_dir, person_name)
                 config.persons[person_name] = PersonModelConfig()
                 logger.info("Created person '%s' during setup", person_name)
             except FileExistsError:
@@ -376,30 +324,3 @@ async def _validate_google_key(api_key: str) -> dict[str, Any]:
         return {"valid": False, "message": f"Unexpected status: {resp.status_code}"}
     except Exception as exc:
         return {"valid": False, "message": f"Connection error: {exc}"}
-
-
-async def _stream_chat(body: ChatRequest):
-    """Generator that yields SSE events from LiteLLM streaming completion."""
-    full_text = ""
-    try:
-        import litellm
-
-        response = await litellm.acompletion(
-            model=body.model,
-            messages=body.messages,
-            api_key=body.api_key,
-            stream=True,
-        )
-
-        async for chunk in response:
-            delta = chunk.choices[0].delta if chunk.choices else None
-            if delta and delta.content:
-                full_text += delta.content
-                yield f"event: text_delta\ndata: {json.dumps({'text': delta.content})}\n\n"
-            # Small yield to allow event loop to process other tasks
-            await asyncio.sleep(0)
-
-        yield f"event: done\ndata: {json.dumps({'summary': full_text})}\n\n"
-    except Exception as exc:
-        logger.error("Chat streaming error: %s", exc)
-        yield f"event: error\ndata: {json.dumps({'message': str(exc)})}\n\n"

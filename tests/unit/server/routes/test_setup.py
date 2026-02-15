@@ -1,11 +1,9 @@
 """Unit tests for server/routes/setup.py — Setup wizard API endpoints."""
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from httpx import ASGITransport, AsyncClient
 
 from server.routes.setup import (
@@ -313,34 +311,6 @@ class TestValidateKey:
         assert "Unknown provider" in data["message"]
 
 
-# ── GET /api/setup/templates ─────────────────────────────
-
-
-class TestListTemplates:
-    async def test_returns_templates(self):
-        app = _make_test_app()
-        transport = ASGITransport(app=app)
-
-        with patch("core.person_factory.list_person_templates", return_value=["assistant", "researcher"]):
-            async with AsyncClient(transport=transport, base_url="http://test") as client:
-                resp = await client.get("/api/setup/templates")
-
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["templates"] == ["assistant", "researcher"]
-
-    async def test_empty_templates(self):
-        app = _make_test_app()
-        transport = ASGITransport(app=app)
-
-        with patch("core.person_factory.list_person_templates", return_value=[]):
-            async with AsyncClient(transport=transport, base_url="http://test") as client:
-                resp = await client.get("/api/setup/templates")
-
-        data = resp.json()
-        assert data["templates"] == []
-
-
 # ── POST /api/setup/complete ─────────────────────────────
 
 
@@ -401,39 +371,6 @@ class TestCompleteSetup:
         assert resp.status_code == 200
         assert "anthropic" in mock_config.credentials
 
-    async def test_complete_with_template_person(self):
-        mock_config = MagicMock()
-        mock_config.locale = "ja"
-        mock_config.credentials = {}
-        mock_config.persons = {}
-
-        app = _make_test_app()
-        transport = ASGITransport(app=app)
-
-        with (
-            patch("core.config.load_config", return_value=mock_config),
-            patch("core.config.save_config"),
-            patch("core.config.invalidate_cache"),
-            patch("core.paths.get_persons_dir", return_value=Path("/tmp/test/persons")),
-            patch("core.person_factory.create_from_template") as mock_create_tmpl,
-        ):
-            async with AsyncClient(transport=transport, base_url="http://test") as client:
-                resp = await client.post(
-                    "/api/setup/complete",
-                    json={
-                        "locale": "ja",
-                        "credentials": {},
-                        "person": {"name": "alice", "template": "assistant"},
-                    },
-                )
-
-        assert resp.status_code == 200
-        mock_create_tmpl.assert_called_once_with(
-            Path("/tmp/test/persons"),
-            "assistant",
-            person_name="alice",
-        )
-
     async def test_complete_with_blank_person(self, tmp_path: Path):
         mock_config = MagicMock()
         mock_config.locale = "ja"
@@ -459,18 +396,11 @@ class TestCompleteSetup:
                     json={
                         "locale": "ja",
                         "credentials": {},
-                        "person": {
-                            "name": "alice",
-                            "identity_md": "# Alice\nA helpful assistant.",
-                        },
+                        "person": {"name": "alice"},
                     },
                 )
 
         assert resp.status_code == 200
-        # identity.md should have been written
-        identity_path = person_dir / "identity.md"
-        assert identity_path.exists()
-        assert identity_path.read_text(encoding="utf-8") == "# Alice\nA helpful assistant."
 
     async def test_complete_updates_app_state(self):
         mock_config = MagicMock()
@@ -511,7 +441,7 @@ class TestCompleteSetup:
             patch("core.config.save_config"),
             patch("core.config.invalidate_cache"),
             patch("core.paths.get_persons_dir", return_value=Path("/tmp/test/persons")),
-            patch("core.person_factory.create_from_template", side_effect=FileExistsError("already exists")),
+            patch("core.person_factory.create_blank", side_effect=FileExistsError("already exists")),
         ):
             async with AsyncClient(transport=transport, base_url="http://test") as client:
                 resp = await client.post(
@@ -519,7 +449,7 @@ class TestCompleteSetup:
                     json={
                         "locale": "ja",
                         "credentials": {},
-                        "person": {"name": "alice", "template": "assistant"},
+                        "person": {"name": "alice"},
                     },
                 )
 
@@ -542,7 +472,7 @@ class TestCompleteSetup:
             patch("core.config.save_config"),
             patch("core.config.invalidate_cache"),
             patch("core.paths.get_persons_dir", return_value=Path("/tmp/test/persons")),
-            patch("core.person_factory.create_from_template", side_effect=RuntimeError("disk error")),
+            patch("core.person_factory.create_blank", side_effect=RuntimeError("disk error")),
         ):
             async with AsyncClient(transport=transport, base_url="http://test") as client:
                 resp = await client.post(
@@ -550,10 +480,41 @@ class TestCompleteSetup:
                     json={
                         "locale": "ja",
                         "credentials": {},
-                        "person": {"name": "alice", "template": "assistant"},
+                        "person": {"name": "alice"},
                     },
                 )
 
         assert resp.status_code == 500
         data = resp.json()
         assert "error" in data
+
+    async def test_complete_with_leader_name_only(self):
+        """Test that complete_setup works with just a name (no template, no identity_md)."""
+        mock_config = MagicMock()
+        mock_config.locale = "ja"
+        mock_config.credentials = {}
+        mock_config.persons = {}
+
+        app = _make_test_app()
+        transport = ASGITransport(app=app)
+
+        with (
+            patch("core.config.load_config", return_value=mock_config),
+            patch("core.config.save_config"),
+            patch("core.config.invalidate_cache"),
+            patch("core.paths.get_persons_dir", return_value=Path("/tmp/test/persons")),
+            patch("core.person_factory.create_blank") as mock_create,
+        ):
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                resp = await client.post(
+                    "/api/setup/complete",
+                    json={
+                        "locale": "ja",
+                        "credentials": {},
+                        "person": {"name": "sakura"},
+                    },
+                )
+
+        assert resp.status_code == 200
+        mock_create.assert_called_once_with(Path("/tmp/test/persons"), "sakura")
+        assert "sakura" in mock_config.persons

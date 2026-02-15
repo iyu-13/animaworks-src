@@ -19,8 +19,7 @@ export function populateConfirm(data) {
 
   const locale = data.language?.locale || "ja";
   const provider = data.environment?.provider || "-";
-  const template = data.character?.template || "-";
-  const personName = data.character?.person_config?.name || template || "-";
+  const leaderName = data.leader?.name || "-";
   const imageKeys = data.environment?.image_keys || {};
 
   // Build API key summary rows
@@ -64,16 +63,12 @@ export function populateConfirm(data) {
       </div>
 
       <div class="summary-section">
-        <div class="summary-title">${t("confirm.person")}
+        <div class="summary-title">${t("confirm.leader")}
           <button class="btn-edit-step" data-step="2">${t("confirm.edit")}</button>
         </div>
         <div class="summary-row">
-          <span class="summary-key">${t("confirm.template")}</span>
-          <span class="summary-val">${template}</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-key">${t("confirm.person")}</span>
-          <span class="summary-val">${personName}</span>
+          <span class="summary-key">${t("confirm.leader")}</span>
+          <span class="summary-val">${leaderName}</span>
         </div>
       </div>
     </div>
@@ -91,11 +86,31 @@ export function populateConfirm(data) {
 export async function completeSetup(data) {
   if (!confirmPanel) return;
 
+  // Build API payload from wizard data
+  const payload = {
+    locale: data.language?.locale || "ja",
+    credentials: {},
+    person: { name: data.leader?.name },
+  };
+
+  // Add credentials from environment step
+  const env = data.environment || {};
+  if (env.provider && env.api_key) {
+    payload.credentials[env.provider] = { api_key: env.api_key };
+  }
+  // Add image generation keys
+  const imageKeys = env.image_keys || {};
+  for (const [key, value] of Object.entries(imageKeys)) {
+    if (value) {
+      payload.credentials[key] = { api_key: value };
+    }
+  }
+
   try {
     const res = await fetch("/api/setup/complete", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
+      body: JSON.stringify(payload),
     });
 
     if (!res.ok) {

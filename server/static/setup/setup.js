@@ -2,7 +2,7 @@
 
 import { initLanguageStep, getLanguageData } from "./steps/language.js";
 import { initEnvironmentStep, getEnvironmentData, validateEnvironment } from "./steps/environment.js";
-import { initCharacterStep, getCharacterData, validateCharacter } from "./steps/character.js";
+import { initLeaderStep, getLeaderData, validateLeader } from "./steps/leader.js";
 import { initConfirmStep, populateConfirm, completeSetup } from "./steps/confirm.js";
 
 // ── State ───────────────────────────────────
@@ -98,7 +98,7 @@ async function goNext() {
     const valid = validateEnvironment();
     if (!valid) return;
   } else if (step === 2) {
-    const valid = validateCharacter();
+    const valid = validateLeader();
     if (!valid) return;
   }
 
@@ -139,7 +139,7 @@ function gatherAllData() {
   return {
     language: getLanguageData(),
     environment: getEnvironmentData(),
-    character: getCharacterData(),
+    leader: getLeaderData(),
   };
 }
 
@@ -150,7 +150,7 @@ async function init() {
   stepContent.innerHTML = `
     <div class="step-panel active" id="stepLanguage"></div>
     <div class="step-panel" id="stepEnvironment"></div>
-    <div class="step-panel" id="stepCharacter"></div>
+    <div class="step-panel" id="stepLeader"></div>
     <div class="step-panel" id="stepConfirm"></div>
   `;
 
@@ -160,7 +160,7 @@ async function init() {
   // Initialize step modules
   initLanguageStep(document.getElementById("stepLanguage"));
   initEnvironmentStep(document.getElementById("stepEnvironment"));
-  initCharacterStep(document.getElementById("stepCharacter"));
+  initLeaderStep(document.getElementById("stepLeader"));
   initConfirmStep(document.getElementById("stepConfirm"));
 
   // Bind navigation

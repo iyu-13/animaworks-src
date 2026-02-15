@@ -2,7 +2,7 @@
 
 Tests the complete setup wizard lifecycle including:
 - Setup guard middleware (route blocking/allowing)
-- Setup API endpoints (environment, locale, templates, validate-key)
+- Setup API endpoints (environment, locale, validate-key)
 - Full wizard flow (fresh config → setup → route switching)
 """
 
@@ -250,17 +250,6 @@ class TestSetupEndpoints:
             assert body["detected"] == "zh-TW"
 
     @pytest.mark.asyncio
-    async def test_list_templates(self, setup_app):
-        """GET /api/setup/templates returns available templates."""
-        transport = ASGITransport(app=setup_app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/api/setup/templates")
-            assert resp.status_code == 200
-            body = resp.json()
-            assert "templates" in body
-            assert isinstance(body["templates"], list)
-
-    @pytest.mark.asyncio
     async def test_validate_key_ollama(self, setup_app):
         """POST /api/setup/validate-key for Ollama always returns valid."""
         transport = ASGITransport(app=setup_app)
@@ -479,31 +468,6 @@ class TestSetupComplete:
         assert "hinata" in config_raw["persons"]
 
     @pytest.mark.asyncio
-    async def test_complete_setup_with_custom_identity(self, data_dir: Path):
-        """Complete setup writes custom identity.md when provided."""
-        _write_config(data_dir, setup_complete=False)
-        app = _create_app(data_dir)
-
-        identity_text = "# Sakura\nA cheerful AI assistant."
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post(
-                "/api/setup/complete",
-                json={
-                    "locale": "ja",
-                    "person": {
-                        "name": "sakura",
-                        "identity_md": identity_text,
-                    },
-                },
-            )
-            assert resp.status_code == 200
-
-        identity_path = data_dir / "persons" / "sakura" / "identity.md"
-        assert identity_path.exists()
-        assert identity_path.read_text("utf-8") == identity_text
-
-    @pytest.mark.asyncio
     async def test_route_switching_after_completion(self, data_dir: Path):
         """After setup completion, middleware switches: setup blocked, API open."""
         _write_config(data_dir, setup_complete=False)
@@ -560,12 +524,7 @@ class TestSetupComplete:
             assert resp.status_code == 200
             assert resp.json()["detected"] == "ja"
 
-            # Step 4: List templates
-            resp = await client.get("/api/setup/templates")
-            assert resp.status_code == 200
-            assert "templates" in resp.json()
-
-            # Step 5: Validate key (Ollama — no external call)
+            # Step 4: Validate key (Ollama — no external call)
             resp = await client.post(
                 "/api/setup/validate-key",
                 json={"provider": "ollama", "api_key": ""},
@@ -573,7 +532,7 @@ class TestSetupComplete:
             assert resp.status_code == 200
             assert resp.json()["valid"] is True
 
-            # Step 6: Complete setup with person creation
+            # Step 5: Complete setup with person creation
             resp = await client.post(
                 "/api/setup/complete",
                 json={
@@ -587,16 +546,16 @@ class TestSetupComplete:
             assert resp.status_code == 200
             assert resp.json()["status"] == "ok"
 
-            # Step 7: Verify setup_complete in config
+            # Step 6: Verify setup_complete in config
             invalidate_cache()
             config_raw = json.loads((data_dir / "config.json").read_text("utf-8"))
             assert config_raw["setup_complete"] is True
 
-            # Step 8: Verify person was created
+            # Step 7: Verify person was created
             assert (data_dir / "persons" / "aoi").is_dir()
             assert "aoi" in config_raw["persons"]
 
-            # Step 9: Verify route switching
+            # Step 8: Verify route switching
             resp = await client.get("/api/setup/environment")
             assert resp.status_code == 403
 
