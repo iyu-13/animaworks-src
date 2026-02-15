@@ -150,6 +150,7 @@ class PersonRunner:
         handlers = {
             "process_message": self._handle_process_message,
             "greet": self._handle_greet,
+            "run_bootstrap": self._handle_run_bootstrap,
             "run_heartbeat": self._handle_run_heartbeat,
             "run_cron_task": self._handle_run_cron_task,
             "get_status": self._handle_get_status,
@@ -179,6 +180,18 @@ class PersonRunner:
             raise RuntimeError("Person not initialized")
 
         return await self.person.process_greet()
+
+    async def _handle_run_bootstrap(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Handle run_bootstrap request (background bootstrap execution)."""
+        if not self.person:
+            raise RuntimeError("Person not initialized")
+
+        result = await self.person.run_bootstrap()
+        return {
+            "status": "completed",
+            "summary": result.summary,
+            "duration_ms": result.duration_ms,
+        }
 
     async def _handle_process_message_stream(
         self, request: IPCRequest
@@ -334,6 +347,7 @@ class PersonRunner:
         return {
             "status": self.person._status,
             "current_task": self.person._current_task or None,
+            "needs_bootstrap": self.person.needs_bootstrap,
         }
 
     async def _handle_ping(self, params: dict[str, Any]) -> dict[str, Any]:

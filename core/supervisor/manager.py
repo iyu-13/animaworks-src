@@ -59,12 +59,14 @@ class ProcessSupervisor:
         run_dir: Path,
         log_dir: Path | None = None,
         restart_policy: RestartPolicy | None = None,
-        health_config: HealthConfig | None = None
+        health_config: HealthConfig | None = None,
+        ws_manager: Any | None = None,
     ):
         self.persons_dir = persons_dir
         self.shared_dir = shared_dir
         self.run_dir = run_dir
         self.log_dir = log_dir
+        self.ws_manager = ws_manager
 
         self.restart_policy = restart_policy or RestartPolicy()
         self.health_config = health_config or HealthConfig()
@@ -74,6 +76,7 @@ class ProcessSupervisor:
         self._shutdown = False
         self._restart_counts: dict[str, int] = {}
         self._restarting: set[str] = set()
+        self._bootstrapping: set[str] = set()
 
     async def start_all(self, person_names: list[str]) -> None:
         """
@@ -100,7 +103,11 @@ class ProcessSupervisor:
         logger.info("All processes started")
 
     async def start_person(self, person_name: str) -> None:
-        """Start a single Person process."""
+        """Start a single Person process.
+
+        After the process is ready, checks if bootstrap is needed and
+        launches it as a background task automatically.
+        """
         if person_name in self.processes:
             logger.warning("Process already exists: %s", person_name)
             return
@@ -122,9 +129,98 @@ class ProcessSupervisor:
             self.processes[person_name] = handle
             logger.info("Person process started: %s (PID %s)", person_name, handle.get_pid())
 
+            # Check if bootstrap is needed and launch in background
+            try:
+                status = await self.send_request(
+                    person_name, "get_status", {}, timeout=10.0,
+                )
+                if status.get("needs_bootstrap"):
+                    logger.info(
+                        "Bootstrap needed for %s, launching background task",
+                        person_name,
+                    )
+                    asyncio.create_task(self._run_bootstrap(person_name))
+            except Exception as e:
+                logger.warning(
+                    "Could not check bootstrap status for %s: %s",
+                    person_name, e,
+                )
+
         except Exception as e:
             logger.error("Failed to start process %s: %s", person_name, e)
             raise
+
+    def is_bootstrapping(self, person_name: str) -> bool:
+        """Check if a person is currently bootstrapping."""
+        return person_name in self._bootstrapping
+
+    async def _run_bootstrap(self, person_name: str) -> None:
+        """Run bootstrap for a person in the background.
+
+        Sends a ``run_bootstrap`` IPC request with a long timeout (600s)
+        and broadcasts progress via WebSocket.
+        """
+        self._bootstrapping.add(person_name)
+        logger.info("Bootstrap started for %s", person_name)
+
+        # Broadcast bootstrap started
+        await self._broadcast_event(
+            "person.bootstrap",
+            {"name": person_name, "status": "started"},
+        )
+
+        try:
+            handle = self.processes.get(person_name)
+            if not handle:
+                logger.error("Bootstrap failed: process not found for %s", person_name)
+                return
+
+            response = await handle.send_request(
+                "run_bootstrap", {}, timeout=600.0,
+            )
+
+            if response.error:
+                logger.error(
+                    "Bootstrap failed for %s: %s",
+                    person_name, response.error.get("message", "Unknown error"),
+                )
+                await self._broadcast_event(
+                    "person.bootstrap",
+                    {"name": person_name, "status": "failed"},
+                )
+                return
+
+            result = response.result or {}
+            logger.info(
+                "Bootstrap completed for %s (duration_ms=%s)",
+                person_name, result.get("duration_ms", "?"),
+            )
+            await self._broadcast_event(
+                "person.bootstrap",
+                {"name": person_name, "status": "completed"},
+            )
+
+        except asyncio.TimeoutError:
+            logger.error("Bootstrap timed out for %s (600s)", person_name)
+            await self._broadcast_event(
+                "person.bootstrap",
+                {"name": person_name, "status": "failed"},
+            )
+        except Exception:
+            logger.exception("Bootstrap error for %s", person_name)
+            await self._broadcast_event(
+                "person.bootstrap",
+                {"name": person_name, "status": "failed"},
+            )
+        finally:
+            self._bootstrapping.discard(person_name)
+
+    async def _broadcast_event(
+        self, event_type: str, data: dict[str, Any],
+    ) -> None:
+        """Broadcast a WebSocket event if ws_manager is available."""
+        if self.ws_manager:
+            await self.ws_manager.broadcast({"type": event_type, "data": data})
 
     async def stop_person(self, person_name: str) -> None:
         """Stop a single Person process."""
@@ -409,15 +505,16 @@ class ProcessSupervisor:
         uptime = (datetime.now() - handle.stats.started_at).total_seconds()
 
         return {
-            "status": handle.state.value,
+            "status": "bootstrapping" if self.is_bootstrapping(person_name) else handle.state.value,
             "pid": handle.get_pid(),
             "uptime_sec": uptime,
             "restart_count": self._restart_counts.get(person_name, 0),
             "missed_pings": handle.stats.missed_pings,
+            "bootstrapping": self.is_bootstrapping(person_name),
             "last_ping_at": (
                 handle.stats.last_ping_at.isoformat()
                 if handle.stats.last_ping_at else None
-            )
+            ),
         }
 
     def get_all_status(self) -> dict[str, dict]:
