@@ -43,7 +43,10 @@ logger = logging.getLogger("animaworks.execution.litellm_loop")
 _WRITE_TOOLS = frozenset({"write_file", "edit_file", "write_memory_file"})
 
 # Thread-pool for running synchronous tool handlers concurrently.
-_tool_executor = ThreadPoolExecutor(max_workers=4)
+_tool_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="tool-quick")
+
+# Dedicated thread-pool for long-running background tools (image gen, local LLM, etc.)
+_bg_tool_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="tool-bg")
 
 
 def _partition_tool_calls(
@@ -148,11 +151,25 @@ class LiteLLMExecutor(BaseExecutor):
         # Then core tools
         return load_external_schemas([category])
 
+    # Tools that use the dedicated background thread pool.
+    _BG_POOL_TOOLS = frozenset({
+        "image_generation", "local_llm", "run_command",
+    })
+
     async def _execute_tool_call(self, tc, fn_args: dict[str, Any]) -> dict[str, Any]:
-        """Execute a single tool call, offloading sync work to a thread."""
+        """Execute a single tool call, offloading sync work to a thread.
+
+        Long-running tools (image gen, local LLM, etc.) use a dedicated
+        background thread pool to avoid starving quick tool calls.
+        """
         loop = asyncio.get_running_loop()
+        executor = (
+            _bg_tool_executor
+            if tc.function.name in self._BG_POOL_TOOLS
+            else _tool_executor
+        )
         result = await loop.run_in_executor(
-            _tool_executor,
+            executor,
             self._tool_handler.handle,
             tc.function.name,
             fn_args,

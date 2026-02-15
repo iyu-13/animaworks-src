@@ -154,6 +154,30 @@ class HumanNotificationConfig(BaseModel):
     channels: list[NotificationChannelConfig] = []
 
 
+class ServerConfig(BaseModel):
+    """Server runtime configuration."""
+
+    ipc_stream_timeout: int = 300  # seconds (default raised from 120)
+
+
+class BackgroundToolConfig(BaseModel):
+    """Per-tool background execution threshold."""
+
+    threshold_s: int = 30
+
+
+class BackgroundTaskConfig(BaseModel):
+    """Configuration for background tool execution."""
+
+    enabled: bool = True
+    eligible_tools: dict[str, BackgroundToolConfig] = {
+        "image_generation": BackgroundToolConfig(threshold_s=30),
+        "local_llm": BackgroundToolConfig(threshold_s=60),
+        "run_command": BackgroundToolConfig(threshold_s=60),
+    }
+    result_retention_hours: int = 24
+
+
 class AnimaWorksConfig(BaseModel):
     version: int = 1
     setup_complete: bool = False
@@ -168,6 +192,8 @@ class AnimaWorksConfig(BaseModel):
     priming: PrimingConfig = PrimingConfig()
     image_gen: ImageGenConfig = ImageGenConfig()
     human_notification: HumanNotificationConfig = HumanNotificationConfig()
+    server: ServerConfig = ServerConfig()
+    background_task: BackgroundTaskConfig = BackgroundTaskConfig()
 
 
 # ---------------------------------------------------------------------------

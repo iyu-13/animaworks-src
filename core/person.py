@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from core.agent import AgentCore
+from core.background import BackgroundTask
 from core.memory.conversation import ConversationMemory
 from core.memory import MemoryManager
 from core.messenger import Messenger
@@ -58,6 +59,11 @@ class DigitalPerson:
         self._last_greet_emotion: str = "neutral"
         self._GREET_COOLDOWN = 300  # seconds
 
+        # Wire background task completion callback
+        self._ws_broadcast: Callable[[dict], Any] | None = None
+        if self.agent.background_manager:
+            self.agent.background_manager.on_complete = self._on_background_task_complete
+
         logger.info("DigitalPerson '%s' initialized from %s", self.name, person_dir)
 
     def set_on_message_sent(
@@ -75,6 +81,61 @@ class DigitalPerson:
     def set_on_lock_released(self, fn: Callable[[], None]) -> None:
         """Inject a callback invoked when the person's lock is released."""
         self._on_lock_released = fn
+
+    def set_ws_broadcast(self, fn: Callable[[dict], Any]) -> None:
+        """Inject a WebSocket broadcast function for background task notifications."""
+        self._ws_broadcast = fn
+
+    async def _on_background_task_complete(self, task: BackgroundTask) -> None:
+        """Callback invoked when a background tool call completes."""
+        logger.info(
+            "[%s] Background task completed: id=%s tool=%s status=%s",
+            self.name, task.task_id, task.tool_name, task.status.value,
+        )
+
+        # Broadcast via WebSocket
+        if self._ws_broadcast:
+            try:
+                await self._ws_broadcast({
+                    "type": "background_task.done",
+                    "data": {
+                        "task_id": task.task_id,
+                        "person": self.name,
+                        "tool_name": task.tool_name,
+                        "status": task.status.value,
+                        "result_summary": task.summary(),
+                    },
+                })
+            except Exception:
+                logger.exception(
+                    "[%s] WebSocket broadcast failed for bg task %s",
+                    self.name, task.task_id,
+                )
+
+        # Notify human via configured channels
+        if self.agent.has_human_notifier:
+            try:
+                notifier = self.agent._tool_handler._human_notifier
+                if notifier:
+                    await notifier.notify(
+                        subject=f"バックグラウンドタスク完了: {task.tool_name}",
+                        body=task.summary(),
+                        priority="normal",
+                        person_name=self.name,
+                    )
+            except Exception:
+                logger.exception(
+                    "[%s] Human notification failed for bg task %s",
+                    self.name, task.task_id,
+                )
+
+    @property
+    def background_tasks(self) -> list[dict[str, Any]]:
+        """Return a list of all background tasks as dicts."""
+        mgr = self.agent.background_manager
+        if not mgr:
+            return []
+        return [t.to_dict() for t in mgr.list_tasks()]
 
     def _notify_lock_released(self) -> None:
         if self._on_lock_released:

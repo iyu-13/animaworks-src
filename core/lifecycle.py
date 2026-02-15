@@ -46,6 +46,9 @@ class LifecycleManager:
 
     def set_broadcast(self, fn: BroadcastFn) -> None:
         self._ws_broadcast = fn
+        # Propagate to already-registered persons for bg task notifications
+        for person in self.persons.values():
+            person.set_ws_broadcast(fn)
 
     def register_person(self, person: DigitalPerson) -> None:
         self.persons[person.name] = person
@@ -57,6 +60,9 @@ class LifecycleManager:
         )
         # Wire up schedule-changed callback for hot-reload
         person.set_on_schedule_changed(self.reload_person_schedule)
+        # Wire up WebSocket broadcast for background task notifications
+        if self._ws_broadcast:
+            person.set_ws_broadcast(self._ws_broadcast)
         self._setup_heartbeat(person)
         self._setup_cron_tasks(person)
         logger.info("Registered '%s' with lifecycle manager", person.name)

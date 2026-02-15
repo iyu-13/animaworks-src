@@ -22,6 +22,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from core.background import BackgroundTaskManager
 from core.tooling.dispatch import ExternalToolDispatcher
 from core.memory import MemoryManager
 from core.messenger import Messenger
@@ -74,6 +75,7 @@ class ToolHandler:
         on_message_sent: OnMessageSentFn | None = None,
         on_schedule_changed: Callable[[str], Any] | None = None,
         human_notifier: HumanNotifier | None = None,
+        background_manager: BackgroundTaskManager | None = None,
     ) -> None:
         self._person_dir = person_dir
         self._person_name = person_dir.name
@@ -82,6 +84,7 @@ class ToolHandler:
         self._on_message_sent = on_message_sent
         self._on_schedule_changed = on_schedule_changed
         self._human_notifier = human_notifier
+        self._background_manager = background_manager
         self._replied_to: set[str] = set()
         self._external = ExternalToolDispatcher(
             tool_registry or [],
@@ -156,6 +159,19 @@ class ToolHandler:
         # Human notification
         if name == "notify_human":
             return self._handle_notify_human(args)
+
+        # ── Background execution for eligible external tools ──
+        if self._background_manager and self._background_manager.is_eligible(name):
+            ext_args = {**args, "person_dir": str(self._person_dir)}
+            task_id = self._background_manager.submit(
+                name, ext_args, self._external.dispatch,
+            )
+            import json as _json
+            return _json.dumps({
+                "status": "background",
+                "task_id": task_id,
+                "message": f"タスクをバックグラウンドで実行開始しました (task_id: {task_id})",
+            }, ensure_ascii=False)
 
         # External tool dispatch -- inject person_dir for tools that need it
         ext_args = {**args, "person_dir": str(self._person_dir)}

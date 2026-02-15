@@ -195,6 +195,48 @@ def create_persons_router() -> APIRouter:
 
         return {"name": name, "enabled": False}
 
+    # ── Background Tasks ────────────────────────────────────
+
+    @router.get("/persons/{name}/background-tasks")
+    async def list_background_tasks(name: str, request: Request):
+        """List background tasks for a person (reads from state dir)."""
+        persons_dir = request.app.state.persons_dir
+        person_dir = persons_dir / name
+        if not person_dir.exists():
+            raise HTTPException(status_code=404, detail=f"Person not found: {name}")
+
+        bg_dir = person_dir / "state" / "background_tasks"
+        if not bg_dir.exists():
+            return {"tasks": []}
+
+        tasks = []
+        for path in sorted(bg_dir.glob("*.json"), reverse=True):
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                tasks.append(data)
+            except (json.JSONDecodeError, OSError):
+                continue
+
+        return {"tasks": tasks}
+
+    @router.get("/persons/{name}/background-tasks/{task_id}")
+    async def get_background_task(name: str, task_id: str, request: Request):
+        """Get a specific background task by ID."""
+        persons_dir = request.app.state.persons_dir
+        person_dir = persons_dir / name
+        task_file = person_dir / "state" / "background_tasks" / f"{task_id}.json"
+
+        if not task_file.exists():
+            raise HTTPException(
+                status_code=404, detail=f"Background task not found: {task_id}",
+            )
+
+        try:
+            data = json.loads(task_file.read_text(encoding="utf-8"))
+            return data
+        except (json.JSONDecodeError, OSError) as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
     # ── Start (from UI) ──────────────────────────────────────
 
     @router.post("/persons/{name}/start")

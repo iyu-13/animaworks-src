@@ -24,6 +24,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from core.background import BackgroundTaskManager
 from core.prompt.context import ContextTracker
 from core.memory import MemoryManager
 from core.messenger import Messenger
@@ -65,6 +66,9 @@ class AgentCore:
         # Build human notifier for top-level persons
         human_notifier = self._build_human_notifier()
 
+        # Background task manager
+        self._background_manager = self._build_background_manager()
+
         # Composable subsystems
         self._tool_handler = ToolHandler(
             person_dir=person_dir,
@@ -73,6 +77,7 @@ class AgentCore:
             tool_registry=self._tool_registry,
             personal_tools=self._personal_tools,
             human_notifier=human_notifier,
+            background_manager=self._background_manager,
         )
         self._executor = self._create_executor()
 
@@ -137,6 +142,33 @@ class AgentCore:
     def has_human_notifier(self) -> bool:
         """True if this agent has a configured human notifier."""
         return self._tool_handler._human_notifier is not None
+
+    # ── Background task management ────────────────────────────
+
+    def _build_background_manager(self) -> BackgroundTaskManager | None:
+        """Build BackgroundTaskManager if enabled in config."""
+        try:
+            from core.config import load_config
+            config = load_config()
+            if not config.background_task.enabled:
+                return None
+            eligible = {
+                name: tc.threshold_s
+                for name, tc in config.background_task.eligible_tools.items()
+            }
+            return BackgroundTaskManager(
+                person_dir=self.person_dir,
+                person_name=self.person_dir.name,
+                eligible_tools=eligible,
+            )
+        except Exception:
+            logger.debug("BackgroundTaskManager init skipped", exc_info=True)
+            return None
+
+    @property
+    def background_manager(self) -> BackgroundTaskManager | None:
+        """Return the background task manager (if enabled)."""
+        return self._background_manager
 
     # ── Model / mode helpers ───────────────────────────────
 

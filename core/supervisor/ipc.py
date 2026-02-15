@@ -246,6 +246,16 @@ class IPCClient:
         self.writer: asyncio.StreamWriter | None = None
         self._lock = asyncio.Lock()
 
+    @staticmethod
+    def _resolve_ipc_timeout() -> float:
+        """Resolve IPC stream timeout from config, with fallback default."""
+        try:
+            from core.config import load_config
+            config = load_config()
+            return float(config.server.ipc_stream_timeout)
+        except Exception:
+            return 300.0
+
     async def connect(self, timeout: float = 5.0) -> None:
         """Connect to the Unix socket."""
         async with asyncio.timeout(timeout):
@@ -298,7 +308,7 @@ class IPCClient:
     async def send_request_stream(
         self,
         request: IPCRequest,
-        timeout: float = 120.0
+        timeout: float | None = None,
     ) -> AsyncIterator[IPCResponse]:
         """
         Send a request and yield streaming responses.
@@ -309,7 +319,9 @@ class IPCClient:
 
         Args:
             request: The request to send
-            timeout: Total timeout in seconds for the entire stream
+            timeout: Total timeout in seconds for the entire stream.
+                If None, reads from ``config.json server.ipc_stream_timeout``
+                (default 300s).
 
         Yields:
             IPCResponse objects (chunks and final result)
@@ -318,6 +330,8 @@ class IPCClient:
             asyncio.TimeoutError: If timeout exceeded
             RuntimeError: If not connected
         """
+        if timeout is None:
+            timeout = self._resolve_ipc_timeout()
         if not self.reader or not self.writer:
             raise RuntimeError("Not connected")
 
