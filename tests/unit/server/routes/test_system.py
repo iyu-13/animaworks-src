@@ -289,6 +289,304 @@ class TestRecentActivity:
         assert resp.status_code == 200
 
 
+# ── Activity endpoint: heartbeat & cron log integration ──
+
+
+class TestActivityEndpoint:
+    """Tests for heartbeat history and cron log reading in /activity/recent."""
+
+    async def test_heartbeat_from_date_split_dir(self, tmp_path):
+        """Date-split JSONL files in heartbeat_history/ appear in response."""
+        persons_dir = tmp_path / "persons"
+        alice_dir = persons_dir / "alice"
+        hb_dir = alice_dir / "shortterm" / "heartbeat_history"
+        hb_dir.mkdir(parents=True)
+
+        entry = json.dumps({
+            "timestamp": "2026-02-16T10:00:00+00:00",
+            "trigger": "heartbeat",
+            "action": "checked",
+            "summary": "All clear",
+            "duration_ms": 150,
+        }, ensure_ascii=False)
+        (hb_dir / "2026-02-16.jsonl").write_text(entry + "\n", encoding="utf-8")
+
+        app = _make_test_app(
+            persons_dir=persons_dir,
+            person_names=["alice"],
+        )
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/api/activity/recent?hours=48")
+        data = resp.json()
+
+        hb_events = [e for e in data["events"] if e["type"] == "heartbeat"]
+        assert len(hb_events) == 1
+        assert hb_events[0]["persons"] == ["alice"]
+        assert hb_events[0]["summary"] == "All clear"
+        assert hb_events[0]["metadata"]["trigger"] == "heartbeat"
+        assert hb_events[0]["metadata"]["action"] == "checked"
+        assert hb_events[0]["metadata"]["duration_ms"] == 150
+
+    async def test_heartbeat_from_legacy_file(self, tmp_path):
+        """Legacy single heartbeat_history.jsonl is read as fallback."""
+        persons_dir = tmp_path / "persons"
+        alice_dir = persons_dir / "alice"
+        shortterm_dir = alice_dir / "shortterm"
+        shortterm_dir.mkdir(parents=True)
+        # No heartbeat_history/ directory -- only legacy single file
+        entry = json.dumps({
+            "timestamp": "2026-02-16T09:00:00+00:00",
+            "trigger": "heartbeat",
+            "action": "scanned",
+            "summary": "Legacy entry",
+            "duration_ms": 200,
+        }, ensure_ascii=False)
+        (shortterm_dir / "heartbeat_history.jsonl").write_text(
+            entry + "\n", encoding="utf-8",
+        )
+
+        app = _make_test_app(
+            persons_dir=persons_dir,
+            person_names=["alice"],
+        )
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/api/activity/recent?hours=48")
+        data = resp.json()
+
+        hb_events = [e for e in data["events"] if e["type"] == "heartbeat"]
+        assert len(hb_events) == 1
+        assert hb_events[0]["summary"] == "Legacy entry"
+        assert hb_events[0]["metadata"]["action"] == "scanned"
+
+    async def test_cron_logs_included(self, tmp_path):
+        """Cron log JSONL files in state/cron_logs/ appear in response."""
+        persons_dir = tmp_path / "persons"
+        alice_dir = persons_dir / "alice"
+        cron_dir = alice_dir / "state" / "cron_logs"
+        cron_dir.mkdir(parents=True)
+
+        entry = json.dumps({
+            "timestamp": "2026-02-16T12:00:00+00:00",
+            "task": "daily_report",
+            "summary": "Report generated",
+            "duration_ms": 500,
+        }, ensure_ascii=False)
+        (cron_dir / "2026-02-16.jsonl").write_text(entry + "\n", encoding="utf-8")
+
+        app = _make_test_app(
+            persons_dir=persons_dir,
+            person_names=["alice"],
+        )
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/api/activity/recent?hours=48")
+        data = resp.json()
+
+        cron_events = [e for e in data["events"] if e["type"] == "cron"]
+        assert len(cron_events) == 1
+        assert cron_events[0]["persons"] == ["alice"]
+        assert cron_events[0]["summary"] == "Report generated"
+        assert cron_events[0]["metadata"]["task"] == "daily_report"
+        assert cron_events[0]["metadata"]["duration_ms"] == 500
+
+    async def test_cron_logs_with_exit_code(self, tmp_path):
+        """Cron entry with exit_code uses task:exit_code format for summary."""
+        persons_dir = tmp_path / "persons"
+        alice_dir = persons_dir / "alice"
+        cron_dir = alice_dir / "state" / "cron_logs"
+        cron_dir.mkdir(parents=True)
+
+        entry = json.dumps({
+            "timestamp": "2026-02-16T12:00:00+00:00",
+            "task": "backup",
+            "exit_code": 0,
+            "duration_ms": 300,
+        }, ensure_ascii=False)
+        (cron_dir / "2026-02-16.jsonl").write_text(entry + "\n", encoding="utf-8")
+
+        app = _make_test_app(
+            persons_dir=persons_dir,
+            person_names=["alice"],
+        )
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/api/activity/recent?hours=48")
+        data = resp.json()
+
+        cron_events = [e for e in data["events"] if e["type"] == "cron"]
+        assert len(cron_events) == 1
+        assert "backup" in cron_events[0]["summary"]
+        assert "exit_code=0" in cron_events[0]["summary"]
+        assert cron_events[0]["metadata"]["exit_code"] == 0
+
+    async def test_empty_dirs_no_errors(self, tmp_path):
+        """No crash when heartbeat/cron directories do not exist."""
+        persons_dir = tmp_path / "persons"
+        alice_dir = persons_dir / "alice"
+        alice_dir.mkdir(parents=True)
+        # No shortterm/ or state/ directories at all
+
+        app = _make_test_app(
+            persons_dir=persons_dir,
+            person_names=["alice"],
+        )
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/api/activity/recent?hours=48")
+        assert resp.status_code == 200
+        data = resp.json()
+        # May have session/chat events but heartbeat/cron should be empty
+        hb_events = [e for e in data["events"] if e["type"] == "heartbeat"]
+        cron_events = [e for e in data["events"] if e["type"] == "cron"]
+        assert len(hb_events) == 0
+        assert len(cron_events) == 0
+
+    async def test_events_sorted_descending(self, tmp_path):
+        """Events are sorted by timestamp descending."""
+        persons_dir = tmp_path / "persons"
+        alice_dir = persons_dir / "alice"
+        hb_dir = alice_dir / "shortterm" / "heartbeat_history"
+        hb_dir.mkdir(parents=True)
+        cron_dir = alice_dir / "state" / "cron_logs"
+        cron_dir.mkdir(parents=True)
+
+        # Create heartbeat entry with earlier timestamp
+        hb_entry = json.dumps({
+            "timestamp": "2026-02-16T08:00:00+00:00",
+            "trigger": "heartbeat",
+            "action": "checked",
+            "summary": "Earlier heartbeat",
+            "duration_ms": 100,
+        }, ensure_ascii=False)
+        (hb_dir / "2026-02-16.jsonl").write_text(hb_entry + "\n", encoding="utf-8")
+
+        # Create cron entry with later timestamp
+        cron_entry = json.dumps({
+            "timestamp": "2026-02-16T14:00:00+00:00",
+            "task": "afternoon_task",
+            "summary": "Later cron",
+            "duration_ms": 200,
+        }, ensure_ascii=False)
+        (cron_dir / "2026-02-16.jsonl").write_text(cron_entry + "\n", encoding="utf-8")
+
+        app = _make_test_app(
+            persons_dir=persons_dir,
+            person_names=["alice"],
+        )
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/api/activity/recent?hours=48")
+        data = resp.json()
+
+        # Filter to only heartbeat and cron events for predictability
+        relevant = [
+            e for e in data["events"] if e["type"] in ("heartbeat", "cron")
+        ]
+        assert len(relevant) == 2
+        # First should be the later (cron), second the earlier (heartbeat)
+        assert relevant[0]["type"] == "cron"
+        assert relevant[0]["summary"] == "Later cron"
+        assert relevant[1]["type"] == "heartbeat"
+        assert relevant[1]["summary"] == "Earlier heartbeat"
+
+    async def test_events_capped_at_200(self, tmp_path):
+        """No more than 200 events are returned."""
+        persons_dir = tmp_path / "persons"
+        alice_dir = persons_dir / "alice"
+        hb_dir = alice_dir / "shortterm" / "heartbeat_history"
+        hb_dir.mkdir(parents=True)
+
+        # Create 250 heartbeat entries in a single file
+        lines = []
+        for i in range(250):
+            entry = json.dumps({
+                "timestamp": f"2026-02-16T10:{i // 60:02d}:{i % 60:02d}+00:00",
+                "trigger": "heartbeat",
+                "action": "checked",
+                "summary": f"Entry {i}",
+                "duration_ms": 100,
+            }, ensure_ascii=False)
+            lines.append(entry)
+        (hb_dir / "2026-02-16.jsonl").write_text(
+            "\n".join(lines) + "\n", encoding="utf-8",
+        )
+
+        app = _make_test_app(
+            persons_dir=persons_dir,
+            person_names=["alice"],
+        )
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/api/activity/recent?hours=48")
+        data = resp.json()
+        assert len(data["events"]) <= 200
+
+    async def test_heartbeat_multiple_date_files(self, tmp_path):
+        """Multiple date-split JSONL files are all read."""
+        persons_dir = tmp_path / "persons"
+        alice_dir = persons_dir / "alice"
+        hb_dir = alice_dir / "shortterm" / "heartbeat_history"
+        hb_dir.mkdir(parents=True)
+
+        for day in (15, 16):
+            entry = json.dumps({
+                "timestamp": f"2026-02-{day}T10:00:00+00:00",
+                "trigger": "heartbeat",
+                "action": "checked",
+                "summary": f"Day {day}",
+                "duration_ms": 100,
+            }, ensure_ascii=False)
+            (hb_dir / f"2026-02-{day}.jsonl").write_text(
+                entry + "\n", encoding="utf-8",
+            )
+
+        app = _make_test_app(
+            persons_dir=persons_dir,
+            person_names=["alice"],
+        )
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/api/activity/recent?hours=72")
+        data = resp.json()
+
+        hb_events = [e for e in data["events"] if e["type"] == "heartbeat"]
+        assert len(hb_events) == 2
+        summaries = {e["summary"] for e in hb_events}
+        assert summaries == {"Day 15", "Day 16"}
+
+    async def test_malformed_jsonl_lines_skipped(self, tmp_path):
+        """Malformed JSONL lines are skipped without crashing."""
+        persons_dir = tmp_path / "persons"
+        alice_dir = persons_dir / "alice"
+        hb_dir = alice_dir / "shortterm" / "heartbeat_history"
+        hb_dir.mkdir(parents=True)
+
+        good_entry = json.dumps({
+            "timestamp": "2026-02-16T10:00:00+00:00",
+            "trigger": "heartbeat",
+            "action": "checked",
+            "summary": "Good entry",
+            "duration_ms": 100,
+        }, ensure_ascii=False)
+        content = "this is not json\n" + good_entry + "\n" + "{bad json\n"
+        (hb_dir / "2026-02-16.jsonl").write_text(content, encoding="utf-8")
+
+        app = _make_test_app(
+            persons_dir=persons_dir,
+            person_names=["alice"],
+        )
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/api/activity/recent?hours=48")
+        data = resp.json()
+
+        hb_events = [e for e in data["events"] if e["type"] == "heartbeat"]
+        assert len(hb_events) == 1
+        assert hb_events[0]["summary"] == "Good entry"
+
+
 # ── GET /system/connections ──────────────────────────────
 
 

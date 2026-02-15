@@ -384,6 +384,30 @@ class ProcessSupervisor:
                 )
             yield response
 
+    async def _poll_person_events(self) -> None:
+        """Read and broadcast event files from child processes."""
+        events_base = self.run_dir / "events"
+        if not events_base.exists():
+            return
+
+        for person_dir in events_base.iterdir():
+            if not person_dir.is_dir():
+                continue
+            for event_file in sorted(person_dir.glob("*.json")):
+                try:
+                    data = json.loads(event_file.read_text(encoding="utf-8"))
+                    event_type = data.get("event", "")
+                    event_data = data.get("data", {})
+                    await self._broadcast_event(event_type, event_data)
+                    event_file.unlink()
+                except (json.JSONDecodeError, OSError) as e:
+                    logger.warning("Failed to process event file %s: %s", event_file, e)
+                    # Remove corrupted files
+                    try:
+                        event_file.unlink()
+                    except OSError:
+                        pass
+
     async def _health_check_loop(self) -> None:
         """
         Health check loop.
@@ -395,6 +419,9 @@ class ProcessSupervisor:
         while not self._shutdown:
             try:
                 await asyncio.sleep(self.health_config.ping_interval_sec)
+
+                # Poll and broadcast child process events
+                await self._poll_person_events()
 
                 # Check all processes in parallel
                 checks = [

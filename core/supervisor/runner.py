@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -31,6 +32,10 @@ from core.schemas import CronTask
 from core.supervisor.ipc import IPCServer, IPCRequest, IPCResponse
 
 logger = logging.getLogger(__name__)
+
+_MSG_HEARTBEAT_COOLDOWN_S = 60
+_CASCADE_WINDOW_S = 600   # 10 minutes
+_CASCADE_THRESHOLD = 4     # max round-trips per pair within window
 
 
 # ── PersonRunner ──────────────────────────────────────────────────
@@ -62,6 +67,12 @@ class PersonRunner:
         self._ready_event = asyncio.Event()
         self._started_at = datetime.now()
 
+        # Rate-limit state for inbox watcher
+        self._pending_trigger: bool = False
+        self._deferred_inbox: bool = False
+        self._last_msg_heartbeat_end: float = 0.0
+        self._pair_heartbeat_times: dict[tuple[str, str], list[float]] = {}
+
     async def run(self) -> None:
         """
         Run the person process.
@@ -89,6 +100,9 @@ class PersonRunner:
                 person_dir=person_dir,
                 shared_dir=self.shared_dir
             )
+            self.person.set_on_lock_released(
+                lambda: asyncio.ensure_future(self._on_person_lock_released())
+            )
             self._ready_event.set()
 
             # Start autonomous scheduler (heartbeat + cron)
@@ -112,6 +126,20 @@ class PersonRunner:
 
         finally:
             await self._cleanup()
+
+    # ── Event Emission ─────────────────────────────────────────────
+
+    def _emit_event(self, event_type: str, data: dict[str, Any]) -> None:
+        """Write an event file for the parent process to pick up."""
+        import time as _time
+        events_dir = self.shared_dir.parent / "run" / "events" / self.person_name
+        events_dir.mkdir(parents=True, exist_ok=True)
+        # Use monotonic timestamp for uniqueness
+        filename = f"{_time.time_ns()}.json"
+        event = {"event": event_type, "data": data}
+        tmp = events_dir / f".{filename}"
+        tmp.write_text(json.dumps(event, default=str, ensure_ascii=False), encoding="utf-8")
+        tmp.rename(events_dir / filename)  # Atomic rename
 
     # ── Autonomous Scheduler ────────────────────────────────────────
 
@@ -170,7 +198,12 @@ class PersonRunner:
             return
         try:
             logger.info("Scheduled heartbeat: %s", self.person_name)
-            await self.person.run_heartbeat()
+            result = await self.person.run_heartbeat()
+            # Notify parent for WebSocket broadcast
+            self._emit_event("person.heartbeat", {
+                "name": self.person_name,
+                "result": result.model_dump(),
+            })
         except Exception:
             logger.exception("Scheduled heartbeat failed: %s", self.person_name)
 
@@ -224,14 +257,26 @@ class PersonRunner:
             return
         try:
             if task.type == "llm":
-                await self.person.run_cron_task(task.name, task.description)
+                result = await self.person.run_cron_task(task.name, task.description)
+                self._emit_event("person.cron", {
+                    "name": self.person_name,
+                    "task": task.name,
+                    "task_type": "llm",
+                    "result": result.model_dump(),
+                })
             elif task.type == "command":
-                await self.person.run_cron_command(
+                result = await self.person.run_cron_command(
                     task.name,
                     command=task.command,
                     tool=task.tool,
                     args=task.args,
                 )
+                self._emit_event("person.cron", {
+                    "name": self.person_name,
+                    "task": task.name,
+                    "task_type": "command",
+                    "result": result,
+                })
             else:
                 logger.warning("Unknown cron type '%s' for task '%s'", task.type, task.name)
         except Exception:
@@ -530,11 +575,92 @@ class PersonRunner:
         self.shutdown_event.set()
         return {"status": "shutting_down"}
 
-    async def _inbox_watcher_loop(self) -> None:
-        """
-        Watch for incoming messages in inbox.
+    # ── Inbox Rate Limiting ──────────────────────────────────────
 
-        Polls inbox every 2 seconds and triggers heartbeat on new messages.
+    def _is_in_cooldown(self) -> bool:
+        """Return True if a message-triggered heartbeat finished too recently."""
+        return (time.monotonic() - self._last_msg_heartbeat_end) < _MSG_HEARTBEAT_COOLDOWN_S
+
+    def _check_cascade(self, senders: set[str]) -> bool:
+        """Return True if any (person, sender) pair exceeds cascade threshold."""
+        now = time.monotonic()
+        for sender in senders:
+            keys = [(self.person_name, sender), (sender, self.person_name)]
+            total = 0
+            for k in keys:
+                times = self._pair_heartbeat_times.get(k, [])
+                # Evict expired entries
+                times = [t for t in times if now - t < _CASCADE_WINDOW_S]
+                self._pair_heartbeat_times[k] = times
+                if not times and k in self._pair_heartbeat_times:
+                    del self._pair_heartbeat_times[k]
+                total += len(times)
+            if total >= _CASCADE_THRESHOLD:
+                logger.warning(
+                    "CASCADE DETECTED: %s <-> %s (%d round-trips in %ds window). "
+                    "Suppressing message-triggered heartbeat.",
+                    self.person_name, sender, total, _CASCADE_WINDOW_S,
+                )
+                return True
+        return False
+
+    def _record_pair_heartbeat(self, senders: set[str]) -> None:
+        """Record a heartbeat exchange for cascade tracking."""
+        now = time.monotonic()
+        for sender in senders:
+            key = (self.person_name, sender)
+            self._pair_heartbeat_times.setdefault(key, []).append(now)
+
+    async def _on_person_lock_released(self) -> None:
+        """Check deferred inbox after the person's lock is released."""
+        if not self._deferred_inbox:
+            return
+        self._deferred_inbox = False
+
+        if not self.person:
+            return
+        if not self.person.messenger.has_unread():
+            return
+        if self._pending_trigger:
+            return
+        if self._is_in_cooldown():
+            return
+
+        self._pending_trigger = True
+        asyncio.create_task(self._message_triggered_heartbeat())
+
+    async def _message_triggered_heartbeat(self) -> None:
+        """Execute a heartbeat triggered by incoming messages."""
+        if not self.person:
+            self._pending_trigger = False
+            return
+
+        # Peek at inbox senders for cascade detection
+        senders = {m.from_person for m in self.person.messenger.receive()}
+        if senders and self._check_cascade(senders):
+            self._pending_trigger = False
+            return
+
+        try:
+            logger.info("Message-triggered heartbeat: %s", self.person_name)
+            await self.person.run_heartbeat()
+        except Exception:
+            logger.exception(
+                "Message-triggered heartbeat failed: %s", self.person_name,
+            )
+        finally:
+            self._pending_trigger = False
+            self._last_msg_heartbeat_end = time.monotonic()
+            if senders:
+                self._record_pair_heartbeat(senders)
+
+    # ── Inbox Watcher ──────────────────────────────────────────────
+
+    async def _inbox_watcher_loop(self) -> None:
+        """Poll inbox every 2s; trigger heartbeat on new messages.
+
+        Applies rate limiting to prevent cascade loops between persons
+        and cooldown to avoid excessive heartbeat triggers.
         """
         if not self.person:
             return
@@ -543,28 +669,30 @@ class PersonRunner:
 
         while not self.shutdown_event.is_set():
             try:
-                # Check for new messages
-                inbox_dir = self.shared_dir / "inbox" / self.person_name
-                if inbox_dir.exists():
-                    unread_messages = [
-                        f for f in inbox_dir.iterdir()
-                        if f.is_file() and not f.name.startswith(".")
-                    ]
+                if self._pending_trigger:
+                    await asyncio.sleep(2.0)
+                    continue
+                if not self.person.messenger.has_unread():
+                    await asyncio.sleep(2.0)
+                    continue
+                if self._is_in_cooldown():
+                    await asyncio.sleep(2.0)
+                    continue
+                if self.person._lock.locked():
+                    self._deferred_inbox = True
+                    await asyncio.sleep(2.0)
+                    continue
 
-                    if unread_messages:
-                        logger.info(
-                            "New messages detected for %s: %d messages",
-                            self.person_name, len(unread_messages)
-                        )
-                        # Trigger heartbeat to process messages
-                        await self.person.run_heartbeat()
-
+                self._pending_trigger = True
+                asyncio.create_task(self._message_triggered_heartbeat())
                 await asyncio.sleep(2.0)
 
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error("Error in inbox watcher for %s: %s", self.person_name, e)
+                logger.error(
+                    "Error in inbox watcher for %s: %s", self.person_name, e,
+                )
                 await asyncio.sleep(2.0)
 
         logger.info("Inbox watcher stopped for %s", self.person_name)
