@@ -155,10 +155,11 @@ class TestSessionsN1E2E:
         assert resp.status_code == 200
         data = resp.json()
         assert len(data["episodes"]) == 3
-        # Episodes should only contain date, no content preview
+        # Episodes should contain date and a short preview (partial read)
         for ep in data["episodes"]:
             assert "date" in ep
-            assert "preview" not in ep
+            assert "preview" in ep
+            assert len(ep["preview"]) <= 200
 
     @patch("core.config.models.load_model_config")
     async def test_list_sessions_with_transcripts(self, mock_lmc, tmp_path):

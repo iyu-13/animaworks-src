@@ -76,16 +76,16 @@ def create_persons_router() -> APIRouter:
 
         memory = MemoryManager(person_dir)
 
-        identity, injection, cur_state, pending = await asyncio.gather(
-            asyncio.to_thread(memory.read_identity),
-            asyncio.to_thread(memory.read_injection),
-            asyncio.to_thread(memory.read_current_state),
-            asyncio.to_thread(memory.read_pending),
-        )
-        k_files, e_files, p_files = await asyncio.gather(
-            asyncio.to_thread(memory.list_knowledge_files),
-            asyncio.to_thread(memory.list_episode_files),
-            asyncio.to_thread(memory.list_procedure_files),
+        identity, injection, cur_state, pending, k_files, e_files, p_files = (
+            await asyncio.gather(
+                asyncio.to_thread(memory.read_identity),
+                asyncio.to_thread(memory.read_injection),
+                asyncio.to_thread(memory.read_current_state),
+                asyncio.to_thread(memory.read_pending),
+                asyncio.to_thread(memory.list_knowledge_files),
+                asyncio.to_thread(memory.list_episode_files),
+                asyncio.to_thread(memory.list_procedure_files),
+            )
         )
 
         return {

@@ -77,12 +77,16 @@ def create_sessions_router() -> APIRouter:
                 except (json.JSONDecodeError, TypeError):
                     pass
 
-        # Episodes — filename only (no content read)
+        # Episodes — partial read (first 200 chars only, no full file load)
         memory = MemoryManager(person_dir)
-        episodes = [
-            {"date": stem}
-            for stem in memory.list_episode_files()
-        ]
+        episodes = []
+        for stem in memory.list_episode_files():
+            ep_path = memory.episodes_dir / f"{stem}.md"
+            preview = ""
+            if ep_path.exists():
+                with ep_path.open(encoding="utf-8") as f:
+                    preview = f.read(200)
+            episodes.append({"date": stem, "preview": preview})
 
         # Transcripts — count lines without loading full content
         transcripts = []
