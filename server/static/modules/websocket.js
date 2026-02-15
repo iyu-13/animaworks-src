@@ -124,6 +124,28 @@ function handleWsMessage(raw) {
       break;
     }
 
+    case "person.bootstrap": {
+      const personName = data.name;
+      const bsStatus = data.status;
+      if (personName) {
+        if (bsStatus === "started") {
+          const existing = state.persons.find((p) => p.name === personName);
+          if (existing) existing.status = "bootstrapping";
+          renderPersonDropdown();
+          addActivity("system", personName, "ブートストラップ開始");
+        } else if (bsStatus === "completed") {
+          const existing = state.persons.find((p) => p.name === personName);
+          if (existing) existing.status = "idle";
+          renderPersonDropdown();
+          addActivity("system", personName, "ブートストラップ完了");
+          if (personName === state.selectedPerson) {
+            refreshSelectedPerson();
+          }
+        }
+      }
+      break;
+    }
+
     case "person.assets_updated": {
       const personName = data.name;
       if (personName) {
