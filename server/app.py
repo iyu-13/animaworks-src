@@ -60,6 +60,7 @@ def create_app(persons_dir: Path, shared_dir: Path) -> FastAPI:
         shared_dir=shared_dir,
         run_dir=run_dir,
         log_dir=log_dir,
+        ws_manager=ws_manager,
     )
 
     # Discover person names from disk

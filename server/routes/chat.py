@@ -9,7 +9,7 @@ import re
 from typing import Any, AsyncIterator
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from server.dependencies import get_person
@@ -189,6 +189,13 @@ def create_chat_router() -> APIRouter:
     async def chat(name: str, body: ChatRequest, request: Request):
         supervisor = request.app.state.supervisor
 
+        # Guard: reject if person is bootstrapping
+        if supervisor.is_bootstrapping(name):
+            return JSONResponse(
+                {"error": "現在キャラクターを作成中です。完了までお待ちください。"},
+                status_code=503,
+            )
+
         await emit(request, "person.status", {"name": name, "status": "thinking"})
 
         try:
@@ -226,6 +233,13 @@ def create_chat_router() -> APIRouter:
         """
         supervisor = request.app.state.supervisor
 
+        # Guard: reject if person is bootstrapping
+        if supervisor.is_bootstrapping(name):
+            return JSONResponse(
+                {"error": "現在キャラクターを作成中です。完了までお待ちください。"},
+                status_code=503,
+            )
+
         try:
             result = await supervisor.send_request(
                 person_name=name,
@@ -257,6 +271,24 @@ def create_chat_router() -> APIRouter:
         if name not in supervisor.processes:
             from fastapi import HTTPException
             raise HTTPException(status_code=404, detail=f"Person not found: {name}")
+
+        # Guard: return immediately if person is bootstrapping
+        if supervisor.is_bootstrapping(name):
+            async def _bootstrap_busy() -> AsyncIterator[str]:
+                yield _format_sse("bootstrap", {
+                    "status": "busy",
+                    "message": "現在キャラクターを作成中です。完了までお待ちください。",
+                })
+
+            return StreamingResponse(
+                _bootstrap_busy(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
+            )
 
         async def _ipc_stream_events() -> AsyncIterator[str]:
             """Async generator that converts IPC stream to SSE frames."""

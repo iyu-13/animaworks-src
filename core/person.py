@@ -143,6 +143,55 @@ class DigitalPerson:
             pending_messages=self.messenger.unread_count(),
         )
 
+    async def run_bootstrap(self) -> CycleResult:
+        """Run the first-time bootstrap process in the background.
+
+        Acquires the person lock, sets status to ``"bootstrapping"``, and
+        triggers an agent cycle with the bootstrap prompt.  The agent reads
+        ``bootstrap.md`` from the person directory and follows its
+        instructions (identity setup, avatar generation, self-introduction,
+        etc.).  Upon completion the agent deletes ``bootstrap.md``.
+        """
+        if not self.needs_bootstrap:
+            logger.info("[%s] run_bootstrap SKIPPED: no bootstrap.md", self.name)
+            return CycleResult(
+                trigger="bootstrap",
+                action="skipped",
+                summary="Bootstrap not needed",
+            )
+
+        logger.info("[%s] run_bootstrap START", self.name)
+        try:
+            async with self._lock:
+                self._status = "bootstrapping"
+                self._current_task = "Initial bootstrap"
+
+                conv_memory = ConversationMemory(self.person_dir, self.model_config)
+                prompt = conv_memory.build_chat_prompt(
+                    "あなたの bootstrap.md ファイルを読み、指示に従ってください。",
+                    "system",
+                )
+
+                try:
+                    result = await self.agent.run_cycle(
+                        prompt, trigger="bootstrap"
+                    )
+                    self._last_activity = datetime.now()
+
+                    logger.info(
+                        "[%s] run_bootstrap END duration_ms=%d",
+                        self.name, result.duration_ms,
+                    )
+                    return result
+                except Exception:
+                    logger.exception("[%s] run_bootstrap FAILED", self.name)
+                    raise
+                finally:
+                    self._status = "idle"
+                    self._current_task = ""
+        finally:
+            self._notify_lock_released()
+
     async def process_message(
         self, content: str, from_person: str = "human"
     ) -> str:
