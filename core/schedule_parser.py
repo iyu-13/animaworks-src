@@ -90,6 +90,9 @@ def parse_cron_md(content: str) -> list[CronTask]:
         args:
           key: value
     """
+    # Strip HTML comment blocks before parsing
+    content = re.sub(r"<!--.*?-->", "", content, flags=re.DOTALL)
+
     tasks: list[CronTask] = []
     cur_name = ""
     cur_sched = ""

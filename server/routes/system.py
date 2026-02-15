@@ -281,6 +281,70 @@ def create_system_router() -> APIRouter:
             except Exception:
                 logger.warning("Failed to load transcripts for %s", name, exc_info=True)
 
+            # Heartbeat history (date-split directory or legacy single file)
+            hb_dir = person_dir / "shortterm" / "heartbeat_history"
+            hb_legacy = person_dir / "shortterm" / "heartbeat_history.jsonl"
+            hb_files: list[Path] = []
+            if hb_dir.exists():
+                hb_files = sorted(hb_dir.glob("*.jsonl"), reverse=True)
+            elif hb_legacy.exists():
+                hb_files = [hb_legacy]
+            for hb_file in hb_files:
+                try:
+                    for line in hb_file.read_text(encoding="utf-8").strip().splitlines():
+                        try:
+                            entry = json.loads(line)
+                            ts_str = entry.get("timestamp", "")
+                            ts = datetime.fromisoformat(ts_str) if ts_str else None
+                            if ts and ts.replace(tzinfo=timezone.utc) < cutoff:
+                                continue
+                            events.append({
+                                "type": "heartbeat",
+                                "persons": [name],
+                                "timestamp": ts_str,
+                                "summary": entry.get("summary", "")[:80],
+                                "metadata": {
+                                    "trigger": entry.get("trigger", ""),
+                                    "action": entry.get("action", ""),
+                                    "duration_ms": entry.get("duration_ms", 0),
+                                },
+                            })
+                        except (json.JSONDecodeError, TypeError, ValueError):
+                            continue
+                except Exception:
+                    logger.warning("Failed to load heartbeat history for %s", name, exc_info=True)
+
+            # Cron execution logs
+            cron_log_dir = person_dir / "state" / "cron_logs"
+            if cron_log_dir.exists():
+                try:
+                    for log_file in sorted(cron_log_dir.glob("*.jsonl"), reverse=True):
+                        for line in log_file.read_text(encoding="utf-8").strip().splitlines():
+                            try:
+                                entry = json.loads(line)
+                                ts_str = entry.get("timestamp", "")
+                                ts = datetime.fromisoformat(ts_str) if ts_str else None
+                                if ts and ts.replace(tzinfo=timezone.utc) < cutoff:
+                                    continue
+                                summary = entry.get("summary") or entry.get("task", "")
+                                if "exit_code" in entry:
+                                    summary = f"{entry.get('task', '')}: exit_code={entry['exit_code']}"
+                                events.append({
+                                    "type": "cron",
+                                    "persons": [name],
+                                    "timestamp": ts_str,
+                                    "summary": summary[:80],
+                                    "metadata": {
+                                        "task": entry.get("task", ""),
+                                        "duration_ms": entry.get("duration_ms", 0),
+                                        "exit_code": entry.get("exit_code"),
+                                    },
+                                })
+                            except (json.JSONDecodeError, TypeError, ValueError):
+                                continue
+                except Exception:
+                    logger.warning("Failed to load cron logs for %s", name, exc_info=True)
+
         # Sort descending by timestamp, cap at 200 items
         events.sort(key=lambda e: e.get("timestamp", ""), reverse=True)
         return {"events": events[:200]}

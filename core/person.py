@@ -150,14 +150,17 @@ class DigitalPerson:
 
     # ── Heartbeat history ────────────────────────────────────
 
-    _HEARTBEAT_HISTORY_FILE = "shortterm/heartbeat_history.jsonl"
+    _HEARTBEAT_HISTORY_DIR = "shortterm/heartbeat_history"
     _HEARTBEAT_HISTORY_N = 3
-    _HEARTBEAT_HISTORY_MAX_LINES = 20
+    _HEARTBEAT_HISTORY_MAX_LINES = 200
+    _HEARTBEAT_HISTORY_RETENTION_DAYS = 30
 
     def _save_heartbeat_history(self, result: CycleResult) -> None:
-        """Append heartbeat result summary to JSONL history file."""
-        path = self.person_dir / self._HEARTBEAT_HISTORY_FILE
-        path.parent.mkdir(parents=True, exist_ok=True)
+        """Append heartbeat result summary to daily JSONL history file."""
+        from datetime import date
+        history_dir = self.person_dir / self._HEARTBEAT_HISTORY_DIR
+        history_dir.mkdir(parents=True, exist_ok=True)
+        path = history_dir / f"{date.today().isoformat()}.jsonl"
         entry = json.dumps({
             "timestamp": result.timestamp.isoformat(),
             "trigger": result.trigger,
@@ -167,20 +170,35 @@ class DigitalPerson:
         }, ensure_ascii=False)
         with open(path, "a", encoding="utf-8") as f:
             f.write(entry + "\n")
-        # Keep file bounded
+        # Keep daily file bounded
         lines = path.read_text(encoding="utf-8").strip().splitlines()
         if len(lines) > self._HEARTBEAT_HISTORY_MAX_LINES:
             path.write_text(
                 "\n".join(lines[-self._HEARTBEAT_HISTORY_MAX_LINES:]) + "\n",
                 encoding="utf-8",
             )
+        # Purge old log files beyond retention
+        self._purge_old_heartbeat_logs(history_dir)
 
     def _load_heartbeat_history(self) -> str:
         """Load last N heartbeat history entries as formatted text."""
-        path = self.person_dir / self._HEARTBEAT_HISTORY_FILE
-        if not path.exists():
-            return ""
-        lines = path.read_text(encoding="utf-8").strip().splitlines()
+        history_dir = self.person_dir / self._HEARTBEAT_HISTORY_DIR
+        if not history_dir.exists():
+            # Fallback: check legacy single-file format
+            legacy = self.person_dir / "shortterm" / "heartbeat_history.jsonl"
+            if not legacy.exists():
+                return ""
+            lines = legacy.read_text(encoding="utf-8").strip().splitlines()
+        else:
+            # Read from most recent log files
+            log_files = sorted(history_dir.glob("*.jsonl"), reverse=True)
+            lines = []
+            for f in log_files[:3]:  # Check last 3 days max
+                file_lines = f.read_text(encoding="utf-8").strip().splitlines()
+                lines = file_lines + lines
+                if len(lines) >= self._HEARTBEAT_HISTORY_N:
+                    break
+
         entries: list[str] = []
         for line in lines[-self._HEARTBEAT_HISTORY_N:]:
             try:
@@ -191,6 +209,19 @@ class DigitalPerson:
             except (json.JSONDecodeError, KeyError):
                 continue
         return "\n".join(entries)
+
+    def _purge_old_heartbeat_logs(self, history_dir: Path) -> None:
+        """Remove heartbeat log files older than retention period."""
+        from datetime import date, timedelta
+        cutoff = date.today() - timedelta(days=self._HEARTBEAT_HISTORY_RETENTION_DAYS)
+        for f in history_dir.glob("*.jsonl"):
+            try:
+                file_date = date.fromisoformat(f.stem)
+                if file_date < cutoff:
+                    f.unlink()
+                    logger.debug("Purged old heartbeat log: %s", f.name)
+            except (ValueError, OSError):
+                continue
 
     @property
     def needs_bootstrap(self) -> bool:
