@@ -47,29 +47,31 @@ export async function selectPerson(name) {
   }
   if (chatSendBtn) chatSendBtn.disabled = false;
 
-  // Pre-populate chat with server-side conversation history if empty
-  if (!state.chatHistories[name] || state.chatHistories[name].length === 0) {
-    try {
-      const conv = await api(`/api/persons/${encodeURIComponent(name)}/conversation/full?limit=20`);
-      if (conv.turns && conv.turns.length > 0) {
-        state.chatHistories[name] = conv.turns.map((t) => ({
-          role: t.role === "human" ? "user" : "assistant",
-          text: t.content,
-        }));
-      }
-    } catch { /* silent fail - chat starts empty */ }
+  // Load conversation history + person detail in parallel
+  const needConv = !state.chatHistories[name] || state.chatHistories[name].length === 0;
+  const convPromise = needConv
+    ? api(`/api/persons/${encodeURIComponent(name)}/conversation/full?limit=20`).catch(() => null)
+    : Promise.resolve(null);
+  const detailPromise = api(`/api/persons/${encodeURIComponent(name)}`).catch(() => null);
+
+  const [conv, detail] = await Promise.all([convPromise, detailPromise]);
+
+  // Apply conversation history
+  if (conv && conv.turns && conv.turns.length > 0) {
+    state.chatHistories[name] = conv.turns.map((t) => ({
+      role: t.role === "human" ? "user" : "assistant",
+      text: t.content,
+    }));
   }
 
   // Render chat history
   renderChat();
 
-  // Load detail
-  try {
-    state.personDetail = await api(`/api/persons/${encodeURIComponent(name)}`);
+  // Apply person detail
+  if (detail) {
+    state.personDetail = detail;
     renderPersonState();
-    loadMemoryTab(state.activeMemoryTab);
-  } catch (err) {
-    console.error("Failed to load person detail:", err);
+  } else {
     state.personDetail = null;
     const stateContent = dom.personStateContent || document.getElementById("personStateContent");
     if (stateContent) stateContent.textContent = "詳細の読み込み失敗";
@@ -77,14 +79,13 @@ export async function selectPerson(name) {
     if (memoryList) memoryList.innerHTML = '<div class="loading-placeholder">詳細の読み込み失敗</div>';
   }
 
-  // Load session list if history tab is active
+  // Load memory, session list, and avatar in parallel
+  const secondaryPromises = [loadMemoryTab(state.activeMemoryTab), updatePersonAvatar()];
   if (state.activeRightTab === "history") {
     hideHistoryDetail();
-    loadSessionList();
+    secondaryPromises.push(loadSessionList());
   }
-
-  // Update avatar thumbnail
-  updatePersonAvatar();
+  await Promise.all(secondaryPromises);
 }
 
 // ── Person Avatar ───────────────────────────

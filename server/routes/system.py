@@ -162,6 +162,7 @@ def create_system_router() -> APIRouter:
             if not person_dir.exists():
                 continue
 
+
             # Short-term memory archives (session history)
             stm = ShortTermMemory(person_dir)
             archive_dir = stm._archive_dir

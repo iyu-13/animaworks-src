@@ -255,36 +255,39 @@ async function _selectPerson(name) {
   if (input) { input.disabled = false; input.placeholder = `${name} にメッセージ...`; }
   if (sendBtn) sendBtn.disabled = false;
 
-  // Load conversation history if empty
-  if (!_chatHistories[name] || _chatHistories[name].length === 0) {
-    try {
-      const conv = await api(`/api/persons/${encodeURIComponent(name)}/conversation/full?limit=20`);
-      if (conv.turns && conv.turns.length > 0) {
-        _chatHistories[name] = conv.turns.map(t => ({
-          role: t.role === "human" ? "user" : "assistant",
-          text: t.content,
-        }));
-      }
-    } catch { /* start empty */ }
+  // Load conversation history + person detail in parallel
+  const needConv = !_chatHistories[name] || _chatHistories[name].length === 0;
+  const convPromise = needConv
+    ? api(`/api/persons/${encodeURIComponent(name)}/conversation/full?limit=20`).catch(() => null)
+    : Promise.resolve(null);
+  const detailPromise = api(`/api/persons/${encodeURIComponent(name)}`).catch(() => null);
+
+  const [conv, detail] = await Promise.all([convPromise, detailPromise]);
+
+  // Apply conversation history
+  if (conv && conv.turns && conv.turns.length > 0) {
+    _chatHistories[name] = conv.turns.map(t => ({
+      role: t.role === "human" ? "user" : "assistant",
+      text: t.content,
+    }));
   }
 
   _renderChat();
-  _updateAvatar();
 
-  // Load detail
-  try {
-    _personDetail = await api(`/api/persons/${encodeURIComponent(name)}`);
+  // Apply person detail
+  if (detail) {
+    _personDetail = detail;
     _renderPersonState();
-    _loadMemoryTab();
-  } catch (err) {
+  } else {
     _personDetail = null;
     const stateEl = _$("chatPersonState");
     if (stateEl) stateEl.textContent = "詳細の読み込み失敗";
   }
 
-  // Load activity & history
-  _loadActivity();
-  if (_activeRightTab === "history") _loadSessionList();
+  // Load secondary data in parallel
+  const secondaryPromises = [_updateAvatar(), _loadMemoryTab(), _loadActivity()];
+  if (_activeRightTab === "history") secondaryPromises.push(_loadSessionList());
+  await Promise.all(secondaryPromises);
 }
 
 // ── Avatar ─────────────────────────────────

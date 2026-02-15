@@ -213,6 +213,7 @@ class TestRecentActivity:
         alice_dir = persons_dir / "alice"
         alice_dir.mkdir()
 
+
         app = _make_test_app(
             persons_dir=persons_dir,
             person_names=["alice"],

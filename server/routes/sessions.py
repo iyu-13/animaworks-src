@@ -27,6 +27,7 @@ def create_sessions_router() -> APIRouter:
             raise HTTPException(status_code=404, detail=f"Person not found: {name}")
 
         from core.config.models import load_model_config
+
         model_config = load_model_config(person_dir)
 
         # Active conversation
@@ -47,7 +48,7 @@ def create_sessions_router() -> APIRouter:
                 "has_summary": bool(conv_state.compressed_summary),
             }
 
-        # Archived sessions
+        # Archived sessions — metadata only (no full content read)
         stm = ShortTermMemory(person_dir)
         archived = []
         archive_dir = stm._archive_dir
@@ -63,10 +64,10 @@ def create_sessions_router() -> APIRouter:
                             "trigger": data.get("trigger", ""),
                             "turn_count": data.get("turn_count", 0),
                             "context_usage_ratio": data.get(
-                                "context_usage_ratio", 0
+                                "context_usage_ratio", 0,
                             ),
                             "original_prompt_preview": data.get(
-                                "original_prompt", ""
+                                "original_prompt", "",
                             )[:200],
                             "has_markdown": (
                                 archive_dir / f"{ts_str}.md"
@@ -76,27 +77,29 @@ def create_sessions_router() -> APIRouter:
                 except (json.JSONDecodeError, TypeError):
                     pass
 
-        # Episodes
+        # Episodes — partial read (first 200 chars only, no full file load)
         memory = MemoryManager(person_dir)
         episodes = []
-        ep_dir = memory.episodes_dir
-        if ep_dir.exists():
-            for ep_file in sorted(ep_dir.glob("*.md"), reverse=True):
-                content = ep_file.read_text(encoding="utf-8")
-                episodes.append(
-                    {"date": ep_file.stem, "preview": content[:200]}
-                )
+        for stem in memory.list_episode_files():
+            ep_path = memory.episodes_dir / f"{stem}.md"
+            preview = ""
+            if ep_path.exists():
+                with ep_path.open(encoding="utf-8") as f:
+                    preview = f.read(200)
+            episodes.append({"date": stem, "preview": preview})
 
-        # Transcripts (permanent message logs)
+        # Transcripts — count lines without loading full content
         transcripts = []
-        for date in conv.list_transcript_dates():
-            try:
-                transcripts.append(
-                    {"date": date, "message_count": len(conv.load_transcript(date))}
+        transcript_dir = person_dir / "transcripts"
+        if transcript_dir.exists():
+            for tf in sorted(transcript_dir.glob("*.jsonl"), reverse=True):
+                line_count = sum(
+                    1 for line in tf.read_text(encoding="utf-8").splitlines()
+                    if line.strip()
                 )
-            except Exception:
-                logger.warning("Failed to load transcript for %s/%s", name, date)
-                transcripts.append({"date": date, "message_count": 0})
+                transcripts.append(
+                    {"date": tf.stem, "message_count": line_count}
+                )
 
         return {
             "person": name,

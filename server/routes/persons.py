@@ -3,6 +3,7 @@ from __future__ import annotations
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
+import asyncio
 import json
 import logging
 from pathlib import Path
@@ -70,20 +71,32 @@ def create_persons_router() -> APIRouter:
         # Get process status
         proc_status = supervisor.get_process_status(name)
 
-        # Read memory files directly from disk
+        # Read memory files from disk — parallelised via thread pool
         from core.memory.manager import MemoryManager
 
         memory = MemoryManager(person_dir)
 
+        identity, injection, cur_state, pending, k_files, e_files, p_files = (
+            await asyncio.gather(
+                asyncio.to_thread(memory.read_identity),
+                asyncio.to_thread(memory.read_injection),
+                asyncio.to_thread(memory.read_current_state),
+                asyncio.to_thread(memory.read_pending),
+                asyncio.to_thread(memory.list_knowledge_files),
+                asyncio.to_thread(memory.list_episode_files),
+                asyncio.to_thread(memory.list_procedure_files),
+            )
+        )
+
         return {
             "status": proc_status,
-            "identity": memory.read_identity(),
-            "injection": memory.read_injection(),
-            "state": memory.read_current_state(),
-            "pending": memory.read_pending(),
-            "knowledge_files": memory.list_knowledge_files(),
-            "episode_files": memory.list_episode_files(),
-            "procedure_files": memory.list_procedure_files(),
+            "identity": identity,
+            "injection": injection,
+            "state": cur_state,
+            "pending": pending,
+            "knowledge_files": k_files,
+            "episode_files": e_files,
+            "procedure_files": p_files,
         }
 
     @router.post("/persons/{name}/trigger")

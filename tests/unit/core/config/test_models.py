@@ -21,6 +21,7 @@ from core.config.models import (
     get_config_path,
     invalidate_cache,
     load_config,
+    load_model_config,
     resolve_execution_mode,
     resolve_person_config,
     save_config,
@@ -436,3 +437,84 @@ class TestResolveExecutionModeWildcard:
         assert resolve_execution_mode(config, "claude-sonnet-4-20250514") == "A1"
         assert resolve_execution_mode(config, "openai/gpt-4.1") == "A2"
         assert resolve_execution_mode(config, "ollama/qwen3:8b") == "B"
+
+
+# ── load_model_config ─────────────────────────────────────
+
+
+class TestLoadModelConfig:
+    @pytest.fixture(autouse=True)
+    def _clear(self):
+        invalidate_cache()
+        yield
+        invalidate_cache()
+
+    def test_returns_model_config(self, data_dir):
+        from core.schemas import ModelConfig
+
+        person_dir = data_dir / "persons" / "test-person"
+        person_dir.mkdir(parents=True, exist_ok=True)
+
+        mc = load_model_config(person_dir)
+        assert isinstance(mc, ModelConfig)
+        # Should use default model from person_defaults
+        assert mc.model == "claude-sonnet-4-20250514"
+
+    def test_inherits_defaults(self, data_dir):
+        person_dir = data_dir / "persons" / "unknown"
+        person_dir.mkdir(parents=True, exist_ok=True)
+
+        mc = load_model_config(person_dir)
+        # Values come from DEFAULT_TEST_CONFIG, not PersonDefaults class defaults
+        assert mc.max_tokens == 1024
+        assert mc.max_turns == 5
+        assert mc.context_threshold == 0.50
+        assert mc.conversation_history_threshold == 0.30
+
+    def test_person_override(self, data_dir):
+        import json as _json
+
+        # Write config with person override
+        config_data = {
+            "version": 1,
+            "credentials": {"anthropic": {"api_key": "sk-test"}},
+            "person_defaults": {"model": "claude-sonnet-4-20250514", "credential": "anthropic"},
+            "persons": {"alice": {"model": "openai/gpt-4o", "max_tokens": 8192}},
+        }
+        (data_dir / "config.json").write_text(
+            _json.dumps(config_data), encoding="utf-8",
+        )
+        invalidate_cache()
+
+        person_dir = data_dir / "persons" / "alice"
+        person_dir.mkdir(parents=True, exist_ok=True)
+
+        mc = load_model_config(person_dir)
+        assert mc.model == "openai/gpt-4o"
+        assert mc.max_tokens == 8192
+        # Non-overridden field uses default
+        assert mc.max_turns == 20
+
+    def test_resolves_credential(self, data_dir):
+        import json as _json
+
+        config_data = {
+            "version": 1,
+            "credentials": {
+                "anthropic": {"api_key": ""},
+                "openai": {"api_key": "sk-openai", "base_url": "https://api.openai.com"},
+            },
+            "person_defaults": {"model": "claude-sonnet-4-20250514", "credential": "anthropic"},
+            "persons": {"bob": {"credential": "openai"}},
+        }
+        (data_dir / "config.json").write_text(
+            _json.dumps(config_data), encoding="utf-8",
+        )
+        invalidate_cache()
+
+        person_dir = data_dir / "persons" / "bob"
+        person_dir.mkdir(parents=True, exist_ok=True)
+
+        mc = load_model_config(person_dir)
+        assert mc.api_key == "sk-openai"
+        assert mc.api_base_url == "https://api.openai.com"
