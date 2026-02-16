@@ -256,7 +256,11 @@ class NovelAIClient:
         Returns:
             PNG image bytes.
         """
-        neg = negative_prompt or "lowres, bad anatomy"
+        neg = negative_prompt or (
+            "lowres, bad anatomy, bad hands, missing fingers, extra digits, "
+            "fewer digits, worst quality, low quality, blurry, jpeg artifacts, "
+            "cropped, multiple views, logo, too many watermarks"
+        )
 
         params: dict[str, Any] = {
             "width": width,
