@@ -137,6 +137,80 @@ class TestMultiKeyCredential:
         assert result == "from-env"
 
 
+class TestSharedCredentialsJson:
+    """shared/credentials.json should be checked between config.json and env."""
+
+    def _write_shared_creds(self, config_dir: Path, creds: dict) -> None:
+        shared_dir = config_dir / "shared"
+        shared_dir.mkdir(parents=True, exist_ok=True)
+        cred_file = shared_dir / "credentials.json"
+        cred_file.write_text(json.dumps(creds), encoding="utf-8")
+
+    def test_resolves_from_shared_credentials(self, config_dir):
+        _write_config(config_dir, {})  # No chatwork in config.json
+        self._write_shared_creds(config_dir, {"CHATWORK_API_TOKEN": "cwt-shared"})
+        result = get_credential("chatwork", "chatwork", env_var="CHATWORK_API_TOKEN")
+        assert result == "cwt-shared"
+
+    def test_config_json_wins_over_shared(self, config_dir):
+        _write_config(config_dir, {
+            "chatwork": {"type": "api_token", "api_key": "cwt-from-config"},
+        })
+        self._write_shared_creds(config_dir, {"CHATWORK_API_TOKEN": "cwt-shared"})
+        result = get_credential("chatwork", "chatwork", env_var="CHATWORK_API_TOKEN")
+        assert result == "cwt-from-config"
+
+    def test_shared_wins_over_env(self, config_dir, monkeypatch):
+        _write_config(config_dir, {})
+        self._write_shared_creds(config_dir, {"CHATWORK_API_TOKEN": "cwt-shared"})
+        monkeypatch.setenv("CHATWORK_API_TOKEN", "cwt-from-env")
+        result = get_credential("chatwork", "chatwork", env_var="CHATWORK_API_TOKEN")
+        assert result == "cwt-shared"
+
+    def test_falls_through_when_key_missing(self, config_dir, monkeypatch):
+        _write_config(config_dir, {})
+        self._write_shared_creds(config_dir, {"OTHER_KEY": "irrelevant"})
+        monkeypatch.setenv("CHATWORK_API_TOKEN", "cwt-from-env")
+        result = get_credential("chatwork", "chatwork", env_var="CHATWORK_API_TOKEN")
+        assert result == "cwt-from-env"
+
+    def test_falls_through_when_value_empty(self, config_dir, monkeypatch):
+        _write_config(config_dir, {})
+        self._write_shared_creds(config_dir, {"CHATWORK_API_TOKEN": ""})
+        monkeypatch.setenv("CHATWORK_API_TOKEN", "cwt-from-env")
+        result = get_credential("chatwork", "chatwork", env_var="CHATWORK_API_TOKEN")
+        assert result == "cwt-from-env"
+
+    def test_falls_through_when_file_missing(self, config_dir, monkeypatch):
+        _write_config(config_dir, {})
+        # No shared/credentials.json created
+        monkeypatch.setenv("CHATWORK_API_TOKEN", "cwt-from-env")
+        result = get_credential("chatwork", "chatwork", env_var="CHATWORK_API_TOKEN")
+        assert result == "cwt-from-env"
+
+    def test_falls_through_when_file_invalid_json(self, config_dir, monkeypatch):
+        shared_dir = config_dir / "shared"
+        shared_dir.mkdir(parents=True, exist_ok=True)
+        (shared_dir / "credentials.json").write_text("not json", encoding="utf-8")
+        _write_config(config_dir, {})
+        monkeypatch.setenv("CHATWORK_API_TOKEN", "cwt-from-env")
+        result = get_credential("chatwork", "chatwork", env_var="CHATWORK_API_TOKEN")
+        assert result == "cwt-from-env"
+
+    def test_no_env_var_skips_shared_lookup(self, config_dir):
+        """When env_var is None, shared/credentials.json is not consulted."""
+        _write_config(config_dir, {})
+        self._write_shared_creds(config_dir, {"CHATWORK_API_TOKEN": "cwt-shared"})
+        with pytest.raises(ToolConfigError):
+            get_credential("chatwork", "chatwork")  # no env_var
+
+    def test_error_message_mentions_shared(self, config_dir):
+        _write_config(config_dir, {})
+        # No shared/credentials.json, no env var
+        with pytest.raises(ToolConfigError, match="shared/credentials.json"):
+            get_credential("chatwork", "chatwork", env_var="CHATWORK_API_TOKEN")
+
+
 class TestAllToolCredentials:
     """Verify each migrated tool's credential resolution."""
 

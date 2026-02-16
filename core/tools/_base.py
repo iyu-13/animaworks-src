@@ -7,9 +7,11 @@
 
 """Base infrastructure for AnimaWorks tools."""
 from __future__ import annotations
+import json
 import logging
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger("animaworks.tools")
@@ -49,7 +51,7 @@ def get_credential(
     key_name: str = "api_key",
     env_var: str | None = None,
 ) -> str:
-    """Resolve a credential via config.json → environment variable cascade.
+    """Resolve a credential via config.json → shared/credentials.json → env cascade.
 
     Args:
         credential_name: Key in config.json ``credentials`` dict
@@ -63,8 +65,8 @@ def get_credential(
         The resolved credential string.
 
     Raises:
-        ToolConfigError: If neither config.json nor the environment variable
-            provides a value.
+        ToolConfigError: If neither config.json, shared/credentials.json,
+            nor the environment variable provides a value.
     """
     from core.config.models import load_config
 
@@ -80,21 +82,49 @@ def get_credential(
             _log_resolved(credential_name, key_name, "config.json", val)
             return val
 
-    # 2. Environment variable fallback
+    # 2. shared/credentials.json
+    if env_var:
+        val = _lookup_shared_credentials(env_var)
+        if val:
+            _log_resolved(credential_name, key_name, "shared/credentials.json", val)
+            return val
+
+    # 3. Environment variable fallback
     if env_var:
         val = os.environ.get(env_var)
         if val:
             _log_resolved(credential_name, key_name, f"env:{env_var}", val)
             return val
 
-    # 3. Error with guidance
+    # 4. Error with guidance
     sources = [f"config.json credentials.{credential_name}.{key_name}"]
     if env_var:
+        sources.append("shared/credentials.json")
         sources.append(f"environment variable {env_var}")
     raise ToolConfigError(
         f"Tool '{tool_name}' requires credential '{credential_name}'. "
         f"Set it in: {' or '.join(sources)}"
     )
+
+
+def _lookup_shared_credentials(key: str) -> str | None:
+    """Look up a key in the shared credentials file.
+
+    Reads ``{data_dir}/shared/credentials.json`` (a flat key-value JSON)
+    and returns the value for *key*, or ``None`` if not found.
+    """
+    from core.paths import get_data_dir
+
+    cred_file = get_data_dir() / "shared" / "credentials.json"
+    if not cred_file.is_file():
+        return None
+    try:
+        data = json.loads(cred_file.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning("Failed to read %s: %s", cred_file, exc)
+        return None
+    val = data.get(key)
+    return val if val else None
 
 
 def _log_resolved(
