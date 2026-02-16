@@ -1,6 +1,8 @@
 """Tests for background task config models in core/config/models.py."""
 from __future__ import annotations
 
+import pytest
+
 from core.config.models import (
     AnimaWorksConfig,
     BackgroundTaskConfig,
@@ -18,6 +20,22 @@ class TestServerConfig:
         sc = ServerConfig()
         assert sc.ipc_stream_timeout == 60
         assert sc.keepalive_interval == 30
+
+    def test_server_config_rejects_invalid_intervals(self):
+        """keepalive_interval must be less than ipc_stream_timeout."""
+        with pytest.raises(ValueError, match="keepalive_interval"):
+            ServerConfig(keepalive_interval=120, ipc_stream_timeout=60)
+
+    def test_server_config_rejects_equal_intervals(self):
+        """keepalive_interval equal to ipc_stream_timeout is rejected."""
+        with pytest.raises(ValueError, match="keepalive_interval"):
+            ServerConfig(keepalive_interval=60, ipc_stream_timeout=60)
+
+    def test_server_config_accepts_valid_intervals(self):
+        """keepalive_interval < ipc_stream_timeout is accepted."""
+        sc = ServerConfig(keepalive_interval=15, ipc_stream_timeout=120)
+        assert sc.keepalive_interval == 15
+        assert sc.ipc_stream_timeout == 120
 
 
 # ── BackgroundTaskConfig ─────────────────────────────────────

@@ -20,7 +20,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 logger = logging.getLogger("animaworks.config")
 
@@ -161,6 +161,15 @@ class ServerConfig(BaseModel):
 
     ipc_stream_timeout: int = 60  # per-chunk timeout in seconds
     keepalive_interval: int = 30  # keep-alive emission interval in seconds
+
+    @model_validator(mode="after")
+    def _validate_intervals(self) -> ServerConfig:
+        if self.keepalive_interval >= self.ipc_stream_timeout:
+            raise ValueError(
+                f"keepalive_interval ({self.keepalive_interval}) must be "
+                f"less than ipc_stream_timeout ({self.ipc_stream_timeout})"
+            )
+        return self
 
 
 class BackgroundToolConfig(BaseModel):

@@ -18,6 +18,7 @@ from core.supervisor.runner import (
     PersonRunner,
     _DEFAULT_KEEPALIVE_INTERVAL,
     _SENTINEL,
+    _Sentinel,
 )
 
 

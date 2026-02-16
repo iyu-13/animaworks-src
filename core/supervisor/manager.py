@@ -353,7 +353,7 @@ class ProcessSupervisor:
         person_name: str,
         method: str,
         params: dict[str, Any],
-        timeout: float = 120.0
+        timeout: float | None = None,
     ) -> AsyncIterator[IPCResponse]:
         """
         Send IPC request to a Person process and yield streaming responses.
@@ -362,7 +362,8 @@ class ProcessSupervisor:
             person_name: Target person name
             method: Method name
             params: Request parameters (should include stream=True)
-            timeout: Timeout in seconds for the entire stream
+            timeout: Per-chunk timeout in seconds. Resets on each received
+                chunk. If None, resolved from config (default 60s).
 
         Yields:
             IPCResponse objects (chunks and final result)
