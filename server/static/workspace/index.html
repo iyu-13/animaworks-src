@@ -70,13 +70,19 @@
 
             <!-- Memory Browser -->
             <div class="ws-memory-panel" id="wsMemoryPanel"></div>
+            <button class="ws-mobile-memory-close" id="wsMobileMemoryClose" aria-label="閉じる">&times;</button>
           </aside>
+
+          <!-- Mobile sidebar backdrop -->
+          <div class="ws-conv-sidebar-backdrop" id="wsSidebarBackdrop"></div>
 
           <!-- Center: Chat -->
           <main class="ws-conv-main">
             <div class="ws-conv-header">
+              <button class="ws-mobile-sidebar-toggle" id="wsMobileSidebarToggle" aria-label="サイドバー">&#9776;</button>
               <button class="ws-conv-back-btn" id="wsConvBack">&larr; オフィスに戻る</button>
               <span class="ws-conv-person-name" id="wsConvPersonName"></span>
+              <button class="ws-mobile-character-toggle" id="wsMobileCharacterToggle" aria-label="キャラクター">&#128100;</button>
             </div>
             <div class="ws-conv-messages" id="wsConvMessages">
               <div class="chat-empty">メッセージはまだありません</div>

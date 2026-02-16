@@ -19,6 +19,22 @@ import { initInteractions, showMessageEffect, showConversation, updateInteractio
 import { initTimeline, addTimelineEvent, loadHistory } from "./timeline.js";
 import { playReveal } from "./reveal.js";
 import { parseConvSSE, getErrorMessage } from "../../shared/sse-parser.js";
+import { SwipeHandler } from "../../modules/touch.js";
+
+// ── Mobile Resource Tracking ────────────
+let _swiperInstance = null;
+let _mobileMediaQuery = null;
+
+function _cleanupMobileResources() {
+  if (_swiperInstance) {
+    _swiperInstance.destroy();
+    _swiperInstance = null;
+  }
+  if (_mobileMediaQuery) {
+    _mobileMediaQuery.removeEventListener("change", updateConvInputPlaceholder);
+    _mobileMediaQuery = null;
+  }
+}
 
 // ── DOM References ──────────────────────
 
@@ -53,6 +69,14 @@ function cacheDom() {
   dom.convMessages = document.getElementById("wsConvMessages");
   dom.convInput = document.getElementById("wsConvInput");
   dom.convSend = document.getElementById("wsConvSend");
+
+  // Mobile controls
+  dom.mobileSidebarToggle = document.getElementById("wsMobileSidebarToggle");
+  dom.mobileCharacterToggle = document.getElementById("wsMobileCharacterToggle");
+  dom.sidebarBackdrop = document.getElementById("wsSidebarBackdrop");
+  dom.mobileMemoryClose = document.getElementById("wsMobileMemoryClose");
+  dom.convSidebar = document.querySelector(".ws-conv-sidebar");
+  dom.convCharacter = document.querySelector(".ws-conv-character");
 }
 
 // ── Activity Feed ──────────────────────
@@ -222,8 +246,13 @@ async function openConversation(personName) {
   // Show conversation overlay on top of office
   dom.convOverlay.classList.remove("hidden");
 
-  // Update person name
+  // Update person name + mobile placeholder
   if (dom.convPersonName) dom.convPersonName.textContent = personName;
+  updateConvInputPlaceholder();
+
+  // Reset mobile panels on conversation open
+  closeMobileSidebar();
+  closeMobileCharacter();
 
   // Initialize bust-up canvas (once)
   if (!bustupInitialized && dom.convCanvas) {
@@ -254,6 +283,14 @@ function closeConversation() {
 
   // Hide conversation overlay
   dom.convOverlay.classList.add("hidden");
+
+  // Close mobile panels
+  closeMobileSidebar();
+  closeMobileCharacter();
+  closeMobileMemory();
+
+  // Cleanup mobile resources
+  _cleanupMobileResources();
 
   setState({ conversationOpen: false, conversationPerson: null });
   setTalking(false);
@@ -686,6 +723,130 @@ function setupWebSocket() {
   }));
 }
 
+// ── Mobile Responsive Helpers ──────────────────────
+
+/** @returns {boolean} */
+function isMobileView() {
+  return window.matchMedia("(max-width: 768px)").matches;
+}
+
+function openMobileSidebar() {
+  dom.convSidebar?.classList.add("mobile-open");
+  dom.sidebarBackdrop?.classList.add("visible");
+}
+
+function closeMobileSidebar() {
+  dom.convSidebar?.classList.remove("mobile-open");
+  dom.sidebarBackdrop?.classList.remove("visible");
+}
+
+function toggleMobileCharacter() {
+  dom.convCharacter?.classList.toggle("mobile-open");
+}
+
+function closeMobileCharacter() {
+  dom.convCharacter?.classList.remove("mobile-open");
+}
+
+function openMobileMemory() {
+  dom.memoryPanel?.classList.add("mobile-open");
+}
+
+function closeMobileMemory() {
+  dom.memoryPanel?.classList.remove("mobile-open");
+}
+
+function initMobileControls() {
+  // Sidebar toggle
+  dom.mobileSidebarToggle?.addEventListener("click", () => {
+    if (dom.convSidebar?.classList.contains("mobile-open")) {
+      closeMobileSidebar();
+    } else {
+      closeMobileCharacter();
+      openMobileSidebar();
+    }
+  });
+
+  // Character toggle
+  dom.mobileCharacterToggle?.addEventListener("click", () => {
+    if (dom.convCharacter?.classList.contains("mobile-open")) {
+      closeMobileCharacter();
+    } else {
+      closeMobileSidebar();
+      toggleMobileCharacter();
+    }
+  });
+
+  // Backdrop closes sidebar
+  dom.sidebarBackdrop?.addEventListener("click", closeMobileSidebar);
+
+  // Memory close button
+  dom.mobileMemoryClose?.addEventListener("click", closeMobileMemory);
+
+  // Update conversation input placeholder based on screen size
+  updateConvInputPlaceholder();
+  _mobileMediaQuery = window.matchMedia("(max-width: 768px)");
+  _mobileMediaQuery.addEventListener("change", updateConvInputPlaceholder);
+}
+
+function updateConvInputPlaceholder() {
+  if (!dom.convInput) return;
+  const personName = getState().conversationPerson;
+  if (!personName) return;
+  dom.convInput.placeholder = isMobileView()
+    ? `${personName} にメッセージ... (Enter)`
+    : `メッセージを入力... (Ctrl+Enter)`;
+}
+
+function initTouchGestures() {
+  if (!("ontouchstart" in window)) return;
+
+  const overlay = dom.convOverlay;
+  if (!overlay) return;
+
+  _swiperInstance = new SwipeHandler(overlay);
+
+  // Right swipe from left edge: open sidebar
+  _swiperInstance.onSwipeRight((info) => {
+    if (!isMobileView()) return;
+    if (info.startX < 30) {
+      openMobileSidebar();
+    }
+  });
+
+  // Left swipe: close sidebar
+  _swiperInstance.onSwipeLeft(() => {
+    if (!isMobileView()) return;
+    closeMobileSidebar();
+  });
+}
+
+function initMobileKeyboard() {
+  const vv = window.visualViewport;
+
+  function scrollInputIntoView() {
+    const active = document.activeElement;
+    if (!active?.matches(".ws-conv-input, .chat-input")) return;
+    requestAnimationFrame(() => {
+      active.scrollIntoView({ block: "nearest" });
+    });
+  }
+
+  if (vv) {
+    vv.addEventListener("resize", scrollInputIntoView);
+  } else {
+    // Fallback for browsers without visualViewport
+    let lastHeight = window.innerHeight;
+    window.addEventListener("resize", () => {
+      const current = window.innerHeight;
+      if (Math.abs(current - lastHeight) > 100) {
+        scrollInputIntoView();
+      }
+      lastHeight = current;
+    });
+  }
+}
+
 // ── Dashboard Bootstrap ──────────────────────
 
 let dashboardInitialized = false;
@@ -725,16 +886,28 @@ async function startDashboard() {
   });
   dom.convSend?.addEventListener("click", sendConversationMessage);
   dom.convInput?.addEventListener("keydown", (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-      e.preventDefault();
-      sendConversationMessage();
+    if (e.key === "Enter") {
+      if (isMobileView()) {
+        // Mobile: Enter sends, Shift+Enter inserts newline
+        if (!e.shiftKey) {
+          e.preventDefault();
+          sendConversationMessage();
+        }
+      } else {
+        // Desktop: Ctrl/Cmd+Enter sends
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          sendConversationMessage();
+        }
+      }
     }
   });
 
-  // Auto-resize conversation input
+  // Auto-resize conversation input (100px max on mobile, 120px on desktop)
   dom.convInput?.addEventListener("input", () => {
     dom.convInput.style.height = "auto";
-    dom.convInput.style.height = Math.min(dom.convInput.scrollHeight, 100) + "px";
+    const maxH = isMobileView() ? 100 : 120;
+    dom.convInput.style.height = Math.min(dom.convInput.scrollHeight, maxH) + "px";
   });
 
   // Close conversation with Escape
@@ -762,6 +935,11 @@ async function startDashboard() {
 
   // Auto-init 3D office (always visible now)
   initOfficeIfNeeded();
+
+  // Mobile responsive features
+  initMobileControls();
+  initTouchGestures();
+  initMobileKeyboard();
 }
 
 // ── Person Selection Callback ──────────────────────

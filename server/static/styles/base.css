@@ -86,8 +86,14 @@ body {
   transition: background 0.15s;
 }
 
-.user-btn:hover {
+.user-btn:hover,
+.user-btn:active {
   background: #1d4ed8;
+}
+
+.user-btn:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
 }
 
 .login-guest {
@@ -106,8 +112,14 @@ body {
   transition: color 0.15s;
 }
 
-.btn-guest:hover {
+.btn-guest:hover,
+.btn-guest:active {
   color: #555;
+}
+
+.btn-guest:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
 }
 
 /* --- User Info (header) --- */
@@ -139,9 +151,15 @@ body {
   transition: border-color 0.15s, color 0.15s;
 }
 
-.btn-logout:hover {
+.btn-logout:hover,
+.btn-logout:active {
   border-color: #ef4444;
   color: #ef4444;
+}
+
+.btn-logout:focus-visible {
+  outline: 2px solid #ef4444;
+  outline-offset: 2px;
 }
 
 /* --- Header --- */
@@ -187,8 +205,11 @@ body {
   transition: border-color 0.15s;
 }
 
-.person-dropdown:focus {
+.person-dropdown:focus,
+.person-dropdown:focus-visible {
   border-color: #2563eb;
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
 }
 
 .system-status {

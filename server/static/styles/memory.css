@@ -31,8 +31,14 @@
   font-family: inherit;
 }
 
-.memory-tab:hover {
+.memory-tab:hover,
+.memory-tab:active {
   background: #e8e8e8;
+}
+
+.memory-tab:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
 }
 
 .memory-tab.active {
@@ -60,7 +66,8 @@
   text-overflow: ellipsis;
 }
 
-.memory-file-item:hover {
+.memory-file-item:hover,
+.memory-file-item:active {
   background: #f0f4ff;
   color: #2563eb;
 }
@@ -87,8 +94,14 @@
   flex-shrink: 0;
 }
 
-.memory-back-btn:hover {
+.memory-back-btn:hover,
+.memory-back-btn:active {
   text-decoration: underline;
+}
+
+.memory-back-btn:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
 }
 
 .memory-content-title {

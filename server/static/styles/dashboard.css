@@ -126,7 +126,8 @@
   color: #1a1a1a;
 }
 
-.data-table tr:hover td {
+.data-table tr:hover td,
+.data-table tr:active td {
   background: #fafafa;
 }
 
@@ -170,8 +171,14 @@
   transition: background 0.15s;
 }
 
-.btn-primary:hover {
+.btn-primary:hover,
+.btn-primary:active {
   background: #1d4ed8;
+}
+
+.btn-primary:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
 }
 
 .btn-primary:disabled {
@@ -195,9 +202,15 @@
   transition: background 0.15s, border-color 0.15s;
 }
 
-.btn-secondary:hover {
+.btn-secondary:hover,
+.btn-secondary:active {
   background: #f9fafb;
   border-color: #9ca3af;
+}
+
+.btn-secondary:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
 }
 
 .btn-secondary:disabled {
@@ -227,8 +240,14 @@
   transition: color 0.15s, border-color 0.15s;
 }
 
-.page-tab:hover {
+.page-tab:hover,
+.page-tab:active {
   color: #1a1a1a;
+}
+
+.page-tab:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
 }
 
 .page-tab.active {

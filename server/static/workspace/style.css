@@ -1519,3 +1519,350 @@ html, body {
     transition: opacity 0.3s ease;
   }
 }
+
+/* ── Touch & Accessibility ────────────────────────── */
+
+/* Active states for touch feedback */
+.user-btn:active { background: #1d4ed8; }
+.btn-guest:active { color: #555; }
+.ws-logout-btn:active { background: #f5f5f5; }
+.right-tab:active { color: #333; }
+.memory-file-item:active { background: #f0f4ff; color: #2563eb; }
+.memory-tab:active { color: #333; }
+.memory-back-btn:active { background: #f5f5f5; }
+.session-item:active { background: #f0f4ff; }
+.session-back-btn:active { background: #f5f5f5; }
+.ws-conv-back-btn:active { background: #f0f0f0; color: #333; }
+.chat-send-btn:active { background: #1d4ed8; }
+.ws-conv-send:active { background: #1d4ed8; }
+.tl-filter:active { background: #f0f4ff; color: #2563eb; }
+.tl-event:active { background: #f8f4ee; }
+
+/* Focus-visible for keyboard navigation */
+.user-btn:focus-visible,
+.btn-guest:focus-visible,
+.ws-logout-btn:focus-visible,
+.right-tab:focus-visible,
+.memory-tab:focus-visible,
+.memory-file-item:focus-visible,
+.memory-back-btn:focus-visible,
+.session-item:focus-visible,
+.session-back-btn:focus-visible,
+.ws-conv-back-btn:focus-visible,
+.chat-send-btn:focus-visible,
+.ws-conv-send:focus-visible,
+.tl-filter:focus-visible,
+.tl-event:focus-visible,
+.person-dropdown:focus-visible,
+.ws-mobile-sidebar-toggle:focus-visible,
+.ws-mobile-character-toggle:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+/* Hover-only visual effects wrapped for pointer devices */
+@media (hover: hover) and (pointer: fine) {
+  .activity-entry:hover { background: #fafafa; }
+  .tl-event:hover { background: #f8f4ee; }
+  .md-content .md-table tr:hover { background: #fafafa; }
+}
+
+@media (hover: none) {
+  .activity-entry:hover { background: transparent; }
+  .tl-event:hover { background: transparent; }
+}
+
+/* ── Mobile UI Elements (hidden on desktop) ────────────── */
+
+.ws-mobile-sidebar-toggle,
+.ws-mobile-character-toggle,
+.ws-mobile-memory-close {
+  display: none;
+}
+
+.ws-conv-sidebar-backdrop {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 12px;
+}
+
+.ws-conv-sidebar-backdrop.visible {
+  display: block;
+}
+
+/* ── Tablet (< 768px) ────────────────────────── */
+
+@media (max-width: 768px) {
+  /* Override 900px column layout — use drawer approach */
+  .ws-conv-layout {
+    flex-direction: row;
+    position: relative;
+  }
+
+  /* Left sidebar: overlay drawer */
+  .ws-conv-sidebar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 300px;
+    max-height: none;
+    z-index: 30;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+    border-right: 1px solid #e5e5e5;
+    border-bottom: none;
+    border-radius: 12px 0 0 12px;
+  }
+
+  .ws-conv-sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  /* Right character panel: hidden, overlay when toggled */
+  .ws-conv-character {
+    display: none;
+    width: 280px;
+    height: auto;
+    border-left: 1px solid #e5e5e5;
+    border-top: none;
+  }
+
+  .ws-conv-character.mobile-open {
+    display: flex;
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 30;
+    border-radius: 0 12px 12px 0;
+  }
+
+  /* Chat takes full width */
+  .ws-conv-main {
+    flex: 1;
+    width: 100%;
+    border-radius: 12px;
+  }
+
+  /* Show mobile toggle buttons */
+  .ws-mobile-sidebar-toggle,
+  .ws-mobile-character-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    min-height: 44px;
+    min-width: 44px;
+    background: none;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    color: #666;
+    font-size: 1.1rem;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.1s;
+  }
+
+  .ws-mobile-sidebar-toggle:active,
+  .ws-mobile-character-toggle:active {
+    background: #f0f0f0;
+  }
+
+  /* Memory panel: fullscreen overlay on mobile */
+  .ws-memory-panel.mobile-open {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    max-height: 100%;
+    background: #fff;
+    border-top: none;
+    border-radius: 0;
+  }
+
+  .ws-mobile-memory-close {
+    display: none;
+    position: fixed;
+    top: 8px;
+    right: 8px;
+    z-index: 51;
+    width: 40px;
+    height: 40px;
+    min-height: 44px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    color: #666;
+    font-size: 1.3rem;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+
+  .ws-memory-panel.mobile-open ~ .ws-mobile-memory-close {
+    display: inline-flex;
+  }
+
+  /* Chat bubble: tablet width */
+  .chat-bubble {
+    max-width: 85%;
+  }
+
+  /* Tap targets: minimum 44px */
+  .chat-send-btn,
+  .ws-conv-send {
+    min-height: 44px;
+    padding: 10px 20px;
+  }
+
+  .right-tab {
+    min-height: 44px;
+    padding: 12px 6px;
+  }
+
+  .tl-filter {
+    min-height: 44px;
+    padding: 8px 12px;
+  }
+
+  .tl-event {
+    min-height: 44px;
+    padding: 8px 16px;
+  }
+
+  .user-btn {
+    min-height: 44px;
+  }
+
+  .ws-conv-back-btn {
+    min-height: 44px;
+    padding: 8px 14px;
+  }
+
+  .memory-tab {
+    min-height: 44px;
+  }
+
+  .memory-file-item {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+
+  /* Conversation input: reduce max-height for mobile */
+  .ws-conv-input {
+    max-height: 100px;
+  }
+
+  .chat-input {
+    max-height: 100px;
+  }
+
+  /* Login card: reduced padding */
+  .login-card {
+    padding: 28px 24px;
+  }
+
+  .login-card .user-btn {
+    min-height: 44px;
+  }
+
+  /* Conversation overlay: tighter padding */
+  .ws-conv-overlay {
+    padding: 10px;
+  }
+}
+
+/* ── Mobile (< 640px) ────────────────────────── */
+
+@media (max-width: 640px) {
+  /* Chat bubble: wider on small screens */
+  .chat-bubble {
+    max-width: 95%;
+  }
+
+  /* Sidebar drawer: relative to viewport */
+  .ws-conv-sidebar {
+    width: 85vw;
+    max-width: 300px;
+  }
+
+  .ws-conv-character.mobile-open {
+    width: 85vw;
+    max-width: 280px;
+  }
+
+  /* Conversation overlay: edge-to-edge */
+  .ws-conv-overlay {
+    padding: 0;
+  }
+
+  .ws-conv-layout {
+    border-radius: 0;
+  }
+
+  .ws-conv-main {
+    border-radius: 0;
+  }
+
+  .ws-conv-sidebar {
+    border-radius: 0;
+  }
+
+  .ws-conv-character.mobile-open {
+    border-radius: 0;
+  }
+
+  .ws-conv-sidebar-backdrop {
+    border-radius: 0;
+  }
+}
+
+/* ── Small Mobile (< 480px) ────────────────────────── */
+
+@media (max-width: 480px) {
+  .login-card {
+    padding: 20px 16px;
+    margin: 0 8px;
+  }
+
+  .login-title {
+    font-size: 1.2rem;
+  }
+
+  .ws-conv-header {
+    padding: 8px 10px;
+    gap: 6px;
+  }
+
+  .ws-conv-input-area {
+    padding: 8px 10px;
+    gap: 6px;
+  }
+
+  .chat-input-area {
+    padding: 8px 10px;
+    gap: 6px;
+  }
+
+  .ws-conv-back-btn {
+    font-size: 0.75rem;
+    padding: 6px 10px;
+  }
+
+  .ws-conv-person-name {
+    font-size: 0.9rem;
+  }
+
+  .ws-mobile-sidebar-toggle,
+  .ws-mobile-character-toggle {
+    width: 36px;
+    height: 36px;
+    font-size: 1rem;
+  }
+}

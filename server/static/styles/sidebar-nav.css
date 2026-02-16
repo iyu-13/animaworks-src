@@ -52,9 +52,15 @@
   cursor: pointer;
 }
 
-.nav-item:hover {
+.nav-item:hover,
+.nav-item:active {
   background: rgba(255, 255, 255, 0.06);
   color: #f1f5f9;
+}
+
+.nav-item:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: -2px;
 }
 
 .nav-item.active {
@@ -78,7 +84,8 @@
   opacity: 0.75;
 }
 
-.nav-external:hover {
+.nav-external:hover,
+.nav-external:active {
   opacity: 1;
 }
 

@@ -106,8 +106,10 @@ function updateInputState() {
 
   inputEl.disabled = disabled;
   sendBtnEl.disabled = disabled;
+  const mobile = window.matchMedia("(max-width: 768px)").matches;
+  const shortcut = mobile ? "Enter" : "Ctrl+Enter";
   inputEl.placeholder = selectedPerson
-    ? `${selectedPerson} にメッセージ... (Ctrl+Enter で送信)`
+    ? `${selectedPerson} にメッセージ... (${shortcut} で送信)`
     : PLACEHOLDER_DEFAULT;
 }
 
@@ -145,19 +147,44 @@ export function initChat(container) {
 
   if (!inputEl || !sendBtnEl) return;
 
-  // Auto-resize textarea
+  // Auto-resize textarea (100px on mobile, 200px on desktop)
   inputEl.addEventListener("input", () => {
     inputEl.style.height = "auto";
-    inputEl.style.height = Math.min(inputEl.scrollHeight, 200) + "px";
+    const mobile = window.matchMedia("(max-width: 768px)").matches;
+    const maxH = mobile ? 100 : 200;
+    inputEl.style.height = Math.min(inputEl.scrollHeight, maxH) + "px";
   });
 
-  // Ctrl+Enter / Cmd+Enter to send
+  // Enter key handling: mobile vs desktop
   inputEl.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault();
-      submitFromInput();
+    if (e.key === "Enter") {
+      const mobile = window.matchMedia("(max-width: 768px)").matches;
+      if (mobile) {
+        // Mobile: Enter sends, Shift+Enter for newline
+        if (!e.shiftKey) {
+          e.preventDefault();
+          submitFromInput();
+        }
+      } else {
+        // Desktop: Ctrl/Cmd+Enter sends
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          submitFromInput();
+        }
+      }
     }
   });
+
+  // Mobile keyboard: keep input visible above virtual keyboard
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", () => {
+      if (document.activeElement === inputEl) {
+        requestAnimationFrame(() => {
+          inputEl.scrollIntoView({ block: "nearest" });
+        });
+      }
+    });
+  }
 
   // Send button click
   sendBtnEl.addEventListener("click", (e) => {

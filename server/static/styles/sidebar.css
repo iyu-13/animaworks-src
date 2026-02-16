@@ -32,8 +32,14 @@
   font-family: inherit;
 }
 
-.right-tab:hover {
+.right-tab:hover,
+.right-tab:active {
   background: #e8e8e8;
+}
+
+.right-tab:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
 }
 
 .right-tab.active {

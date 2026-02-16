@@ -29,7 +29,8 @@
   font-size: 0.82rem;
 }
 
-.activity-entry:hover {
+.activity-entry:hover,
+.activity-entry:active {
   background: #fafafa;
 }
 

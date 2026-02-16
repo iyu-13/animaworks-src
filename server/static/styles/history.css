@@ -32,7 +32,8 @@
   transition: background 0.1s;
 }
 
-.session-item:hover {
+.session-item:hover,
+.session-item:active {
   background: #f0f4ff;
 }
 
