@@ -301,6 +301,9 @@ function _openRemakeModal() {
 
   document.body.appendChild(overlay);
 
+  // Trigger active state after DOM insertion for CSS transition
+  requestAnimationFrame(() => overlay.classList.add("active"));
+
   // Bind slider live updates
   const vibeSlider = document.getElementById("assetsVibeStrength");
   const vibeVal = document.getElementById("assetsVibeStrengthVal");
@@ -570,7 +573,7 @@ function _onRemakeProgress(data) {
   if (progressSection) progressSection.style.display = "";
 
   const stepName = data.step || data.stage || "unknown";
-  const percent = data.percent ?? data.progress ?? 0;
+  const percent = data.progress_pct ?? data.percent ?? data.progress ?? 0;
   const status = data.status || (percent >= 100 ? "completed" : "in_progress");
 
   _updateProgressStep(stepName, percent, status);

@@ -61,6 +61,16 @@ class RemakePreviewRequest(BaseModel):
 class RemakeConfirmRequest(BaseModel):
     backup_id: str
 
+    @field_validator("backup_id")
+    @classmethod
+    def validate_backup_id(cls, v: str) -> str:
+        if not re.match(r"^assets_backup_\d{8}_\d{6}$", v):
+            raise ValueError(
+                f"Invalid backup_id format: {v}. "
+                "Expected: assets_backup_YYYYMMDD_HHMMSS"
+            )
+        return v
+
 
 def create_assets_router() -> APIRouter:
     router = APIRouter()
@@ -428,47 +438,62 @@ def create_assets_router() -> APIRouter:
 
         pipeline = ImageGenPipeline(person_dir)
 
-        async def _run_cascade() -> None:
-            loop = asyncio.get_running_loop()
+        app = request.app  # Capture app ref, not request (request lifecycle ends)
 
-            def _progress(step: str, status: str, pct: int) -> None:
-                asyncio.run_coroutine_threadsafe(
-                    emit(request, "person.remake_progress", {
-                        "name": name,
-                        "step": step,
-                        "status": status,
-                        "progress_pct": pct,
-                    }),
-                    loop,
+        async def _run_cascade() -> None:
+            try:
+                loop = asyncio.get_running_loop()
+
+                def _progress(step: str, status: str, pct: int) -> None:
+                    asyncio.run_coroutine_threadsafe(
+                        _emit_ws("person.remake_progress", {
+                            "name": name,
+                            "step": step,
+                            "status": status,
+                            "progress_pct": pct,
+                        }),
+                        loop,
+                    )
+
+                result = await loop.run_in_executor(
+                    None,
+                    lambda: pipeline.generate_all(
+                        prompt=prompt,
+                        skip_existing=False,
+                        steps=remaining_steps,
+                        progress_callback=_progress,
+                    ),
                 )
 
-            result = await loop.run_in_executor(
-                None,
-                lambda: pipeline.generate_all(
-                    prompt=prompt,
-                    skip_existing=False,
-                    steps=remaining_steps,
-                    progress_callback=_progress,
-                ),
-            )
+                completed = []
+                if result.bustup_paths:
+                    completed.append("bustup")
+                if result.chibi_path:
+                    completed.append("chibi")
+                if result.model_path:
+                    completed.append("3d")
+                if result.rigged_model_path:
+                    completed.append("rigging")
+                if result.animation_paths:
+                    completed.append("animations")
 
-            completed = []
-            if result.bustup_paths:
-                completed.append("bustup")
-            if result.chibi_path:
-                completed.append("chibi")
-            if result.model_path:
-                completed.append("3d")
-            if result.rigged_model_path:
-                completed.append("rigging")
-            if result.animation_paths:
-                completed.append("animations")
+                await _emit_ws("person.remake_complete", {
+                    "name": name,
+                    "steps_completed": completed,
+                    "errors": result.errors,
+                })
+            except Exception:
+                logger.exception("Cascade rebuild failed for %s", name)
+                await _emit_ws("person.remake_complete", {
+                    "name": name,
+                    "steps_completed": [],
+                    "errors": ["Internal error during cascade rebuild"],
+                })
 
-            await emit(request, "person.remake_complete", {
-                "name": name,
-                "steps_completed": completed,
-                "errors": result.errors,
-            })
+        async def _emit_ws(event_type: str, data: dict) -> None:
+            ws = getattr(app.state, "ws_manager", None)
+            if ws:
+                await ws.broadcast({"type": event_type, "data": data})
 
         # Run cascade in background so the HTTP response returns immediately
         asyncio.create_task(_run_cascade())

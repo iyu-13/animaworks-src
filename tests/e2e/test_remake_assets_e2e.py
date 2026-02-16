@@ -349,7 +349,7 @@ class TestRemakeConfirm:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
                 "/api/persons/target/assets/remake-confirm",
-                json={"backup_id": "assets_backup_nonexistent"},
+                json={"backup_id": "assets_backup_20260101_000000"},
             )
 
         assert resp.status_code == 404
