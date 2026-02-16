@@ -11,6 +11,8 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.interval import IntervalTrigger
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -18,6 +20,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse as StarletteJSONResponse
 
 from core.config import load_config
+from core.messenger import reconcile_message_log
 from core.supervisor import ProcessSupervisor
 from server.routes import create_router
 from server.routes.setup import create_setup_router
@@ -75,6 +78,25 @@ async def lifespan(app: FastAPI):
 
         asyncio.create_task(_reconcile_assets_at_startup(app.state.persons_dir))
 
+        # ── Message log reconciliation ─────────────────────
+        shared_dir = app.state.shared_dir
+        try:
+            reconcile_message_log(shared_dir)
+        except Exception:
+            logger.exception("Initial message log reconciliation failed")
+
+        msg_log_scheduler = AsyncIOScheduler(timezone="Asia/Tokyo")
+        msg_log_scheduler.add_job(
+            reconcile_message_log,
+            IntervalTrigger(minutes=10),
+            args=[shared_dir],
+            id="message_log_reconciliation",
+            name="System: Message Log Reconciliation",
+            replace_existing=True,
+        )
+        msg_log_scheduler.start()
+        app.state.msg_log_scheduler = msg_log_scheduler
+
         logger.info("Server started with process isolation")
     else:
         logger.info("Server started in setup mode (setup not yet complete)")
@@ -82,6 +104,8 @@ async def lifespan(app: FastAPI):
     # Shutdown all processes
     if app.state.setup_complete:
         await app.state.supervisor.shutdown_all()
+        if hasattr(app.state, "msg_log_scheduler"):
+            app.state.msg_log_scheduler.shutdown(wait=False)
     logger.info("Server stopped")
 
 
@@ -107,6 +131,21 @@ def create_app(persons_dir: Path, shared_dir: Path) -> FastAPI:
         log_dir=log_dir,
         ws_manager=ws_manager,
     )
+
+    # Ensure every person has the send wrapper script
+    from core.person_factory import ensure_send_scripts
+
+    ensure_send_scripts(persons_dir)
+
+    # Auto-migrate old Japanese cron.md format to standard cron expressions
+    try:
+        from core.config.migrate import migrate_all_cron
+
+        migrated = migrate_all_cron(persons_dir)
+        if migrated:
+            logger.info("Auto-migrated %d person(s) cron.md to standard cron format", migrated)
+    except Exception:
+        logger.exception("Cron format auto-migration failed")
 
     # Discover person names from disk (respect status.json)
     from core.supervisor.manager import ProcessSupervisor as _PS
