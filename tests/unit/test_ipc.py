@@ -268,3 +268,47 @@ async def test_ipc_timeout():
 
         finally:
             await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_ipc_large_message():
+    """Test that messages larger than 64KB can be transmitted (buffer limit raised to 16MB)."""
+    with TemporaryDirectory() as tmpdir:
+        socket_path = Path(tmpdir) / "large.sock"
+
+        async def handler(request: IPCRequest) -> IPCResponse:
+            # Echo back the length of the received message
+            msg_len = len(request.params.get("message", ""))
+            return IPCResponse(
+                id=request.id,
+                result={"length": msg_len}
+            )
+
+        server = IPCServer(socket_path, handler)
+        await server.start()
+
+        try:
+            client = IPCClient(socket_path)
+            await client.connect()
+
+            # Create a message larger than 64KB (the old default limit)
+            large_message = "A" * (128 * 1024)  # 128KB
+            request = IPCRequest(
+                id="large_001",
+                method="echo",
+                params={"message": large_message}
+            )
+            response = await client.send_request(request, timeout=10.0)
+
+            assert response.result is not None
+            assert response.result["length"] == 128 * 1024
+
+            await client.close()
+        finally:
+            await server.stop()
+
+
+def test_ipc_buffer_limit_constant():
+    """Test that IPC_BUFFER_LIMIT is set to 16MB."""
+    from core.supervisor.ipc import IPC_BUFFER_LIMIT
+    assert IPC_BUFFER_LIMIT == 16 * 1024 * 1024

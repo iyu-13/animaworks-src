@@ -464,6 +464,15 @@ class ProcessSupervisor:
                     anima_name, uptime
                 )
 
+        # Direct state check: detect IPC connection loss
+        if handle.state == ProcessState.FAILED:
+            logger.error(
+                "Process in FAILED state (IPC connection lost): %s",
+                anima_name
+            )
+            asyncio.create_task(self._handle_process_failure(anima_name, handle))
+            return
+
         # Check if process is alive
         if not handle.is_alive():
             logger.error(

@@ -18,6 +18,8 @@ from server.events import emit, emit_notification
 
 logger = logging.getLogger("animaworks.routes.chat")
 
+MAX_CHAT_MESSAGE_SIZE = 10 * 1024 * 1024  # 10MB
+
 
 class ChatRequest(BaseModel):
     message: str
@@ -210,6 +212,14 @@ def create_chat_router() -> APIRouter:
                 status_code=503,
             )
 
+        # Guard: reject oversized messages
+        message_size = len(body.message.encode("utf-8"))
+        if message_size > MAX_CHAT_MESSAGE_SIZE:
+            return JSONResponse(
+                {"error": f"メッセージが大きすぎます（{message_size // 1024 // 1024}MB / 上限10MB）"},
+                status_code=413,
+            )
+
         await emit(request, "anima.status", {"name": name, "status": "thinking"})
 
         try:
@@ -309,6 +319,15 @@ def create_chat_router() -> APIRouter:
         if name not in supervisor.processes:
             from fastapi import HTTPException
             raise HTTPException(status_code=404, detail=f"Anima not found: {name}")
+
+        # Guard: reject oversized messages
+        message_size = len(body.message.encode("utf-8"))
+        if message_size > MAX_CHAT_MESSAGE_SIZE:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=413,
+                detail=f"メッセージが大きすぎます（{message_size // 1024 // 1024}MB / 上限10MB）",
+            )
 
         # Guard: return immediately if anima is bootstrapping
         if supervisor.is_bootstrapping(name):

@@ -14,6 +14,9 @@ from typing import Any, Callable, Awaitable, Union
 
 logger = logging.getLogger(__name__)
 
+# ── Constants ──────────────────────────────────────────────────
+IPC_BUFFER_LIMIT = 16 * 1024 * 1024  # 16MB — default asyncio limit is 64KB
+
 
 # ── Protocol Types ──────────────────────────────────────────────────
 
@@ -152,7 +155,8 @@ class IPCServer:
 
         self.server = await asyncio.start_unix_server(
             self._handle_connection,
-            path=str(self.socket_path)
+            path=str(self.socket_path),
+            limit=IPC_BUFFER_LIMIT,
         )
         logger.info("IPC server started on %s", self.socket_path)
 
@@ -260,7 +264,8 @@ class IPCClient:
         """Connect to the Unix socket."""
         async with asyncio.timeout(timeout):
             self.reader, self.writer = await asyncio.open_unix_connection(
-                path=str(self.socket_path)
+                path=str(self.socket_path),
+                limit=IPC_BUFFER_LIMIT,
             )
             logger.debug("IPC client connected to %s", self.socket_path)
 

@@ -306,6 +306,7 @@ class ProcessHandle:
             True if pong received, False otherwise
         """
         if self.state != ProcessState.RUNNING:
+            self.stats.missed_pings += 1
             return False
 
         try:
@@ -420,10 +421,16 @@ class ProcessHandle:
             logger.debug("Socket file removed: %s", self.socket_path)
 
     def is_alive(self) -> bool:
-        """Check if process is alive."""
+        """Check if process is alive and IPC connection is active."""
         if not self.process:
             return False
-        return self.process.poll() is None
+        if self.process.poll() is not None:
+            return False
+        # IPC connection check: detect dead connections
+        if self.ipc_client and self.ipc_client.writer:
+            if self.ipc_client.writer.is_closing():
+                return False
+        return True
 
     def get_pid(self) -> int | None:
         """Get process PID."""
