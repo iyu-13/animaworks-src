@@ -112,6 +112,7 @@ class LiteLLMExecutor(BaseExecutor):
             include_search_tools=True,
             include_discovery_tools=True,
             include_notification_tools=self._tool_handler._human_notifier is not None,
+            include_admin_tools=(self._person_dir / "skills" / "newstaff.md").exists(),
         )
         return to_litellm_format(canonical)
 
