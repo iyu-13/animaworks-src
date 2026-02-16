@@ -66,6 +66,9 @@ let _hasMore = false;
 /** @type {number} total count from server */
 let _totalCount = 0;
 
+/** @type {number} hours parameter used for history queries */
+let _currentHours = 48;
+
 // ── Highlight helper (imported lazily from office3d) ──
 
 let _highlightDesk = null;
@@ -351,6 +354,7 @@ export function addTimelineEvent(event) {
  * @param {number} hours — how many hours of history (default 24)
  */
 export async function loadHistory(hours = 48) {
+  _currentHours = hours;
   try {
     const res = await fetch(`/api/activity/recent?hours=${hours}&limit=200&offset=0`);
     if (!res.ok) return;
@@ -408,7 +412,7 @@ async function _loadMore() {
     btn.disabled = true;
   }
   try {
-    const res = await fetch(`/api/activity/recent?hours=168&limit=200&offset=${_currentOffset}`);
+    const res = await fetch(`/api/activity/recent?hours=${_currentHours}&limit=200&offset=${_currentOffset}`);
     if (!res.ok) return;
     const data = await res.json();
     const newEvents = data.events || [];
@@ -467,6 +471,9 @@ export function dispose() {
     _container.parentNode.removeChild(_container);
   }
   _events.length = 0;
+  _currentOffset = 0;
+  _hasMore = false;
+  _totalCount = 0;
   _container = null;
   _listEl = null;
   _countEl = null;

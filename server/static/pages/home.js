@@ -176,7 +176,7 @@ async function _loadActivity() {
   };
 
   try {
-    const data = await api("/api/activity/recent?hours=12");
+    const data = await api("/api/activity/recent?hours=12&limit=100");
     const events = data.events || [];
     if (events.length === 0) {
       timeline.innerHTML = '<div class="loading-placeholder">最近のアクティビティはありません</div>';
