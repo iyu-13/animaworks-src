@@ -19,7 +19,15 @@ function _getSessionId() {
   if (!_sessionId) {
     _sessionId = sessionStorage.getItem('animaworks_session_id');
     if (!_sessionId) {
-      _sessionId = crypto.randomUUID().slice(0, 12);
+      // crypto.randomUUID requires secure context (HTTPS or localhost).
+      // Fall back to crypto.getRandomValues for HTTP + LAN IP access.
+      if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        _sessionId = crypto.randomUUID().slice(0, 12);
+      } else {
+        const arr = new Uint8Array(6);
+        crypto.getRandomValues(arr);
+        _sessionId = Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+      }
       sessionStorage.setItem('animaworks_session_id', _sessionId);
     }
   }
