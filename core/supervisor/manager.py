@@ -92,6 +92,8 @@ class ProcessSupervisor:
         self._restart_counts: dict[str, int] = {}
         self._restarting: set[str] = set()
         self._bootstrapping: set[str] = set()
+        self._bootstrap_retry_counts: dict[str, int] = {}
+        self._bootstrap_max_retries: int = 3
 
         # Callbacks for anima lifecycle events (set by server/app.py)
         self.on_anima_added: Callable[[str], None] | None = None
@@ -193,10 +195,40 @@ class ProcessSupervisor:
         """Run bootstrap for an anima in the background.
 
         Sends a ``run_bootstrap`` IPC request with a long timeout (600s)
-        and broadcasts progress via WebSocket.
+        and broadcasts progress via WebSocket.  Tracks retry counts and
+        disables further attempts after ``_bootstrap_max_retries`` failures
+        by renaming ``bootstrap.md`` to ``bootstrap.md.failed``.
         """
+        # Check retry limit before starting
+        retry_count = self._bootstrap_retry_counts.get(anima_name, 0)
+        if retry_count >= self._bootstrap_max_retries:
+            bootstrap_file = self.animas_dir / anima_name / "bootstrap.md"
+            failed_file = bootstrap_file.with_suffix(".md.failed")
+            if bootstrap_file.exists():
+                bootstrap_file.rename(failed_file)
+                logger.error(
+                    "Bootstrap retry limit reached for %s (%d/%d). "
+                    "Renamed bootstrap.md -> bootstrap.md.failed. "
+                    "Manual intervention required.",
+                    anima_name, retry_count, self._bootstrap_max_retries,
+                )
+            else:
+                logger.error(
+                    "Bootstrap retry limit reached for %s (%d/%d). "
+                    "Manual intervention required.",
+                    anima_name, retry_count, self._bootstrap_max_retries,
+                )
+            await self._broadcast_event(
+                "anima.bootstrap",
+                {"name": anima_name, "status": "max_retries_exceeded"},
+            )
+            return
+
         self._bootstrapping.add(anima_name)
-        logger.info("Bootstrap started for %s", anima_name)
+        logger.info(
+            "Bootstrap started for %s (attempt %d/%d)",
+            anima_name, retry_count + 1, self._bootstrap_max_retries,
+        )
 
         # Broadcast bootstrap started
         await self._broadcast_event(
@@ -204,10 +236,15 @@ class ProcessSupervisor:
             {"name": anima_name, "status": "started"},
         )
 
+        success = False
         try:
             handle = self.processes.get(anima_name)
             if not handle:
                 logger.error("Bootstrap failed: process not found for %s", anima_name)
+                await self._broadcast_event(
+                    "anima.bootstrap",
+                    {"name": anima_name, "status": "failed"},
+                )
                 return
 
             response = await handle.send_request(
@@ -234,6 +271,7 @@ class ProcessSupervisor:
                 "anima.bootstrap",
                 {"name": anima_name, "status": "completed"},
             )
+            success = True
 
         except asyncio.TimeoutError:
             logger.error("Bootstrap timed out for %s (600s)", anima_name)
@@ -248,7 +286,22 @@ class ProcessSupervisor:
                 {"name": anima_name, "status": "failed"},
             )
         finally:
+            was_bootstrapping = anima_name in self._bootstrapping
             self._bootstrapping.discard(anima_name)
+            if success:
+                # Reset retry counter on success
+                self._bootstrap_retry_counts.pop(anima_name, None)
+            else:
+                # Increment retry counter on failure
+                self._bootstrap_retry_counts[anima_name] = retry_count + 1
+            if was_bootstrapping:
+                handle = self.processes.get(anima_name)
+                if not handle or handle.state != ProcessState.RUNNING:
+                    logger.warning(
+                        "Bootstrap for %s ended with process not running "
+                        "(possible reconciliation interference)",
+                        anima_name,
+                    )
 
     async def _broadcast_event(
         self, event_type: str, data: dict[str, Any],
@@ -645,6 +698,9 @@ class ProcessSupervisor:
                 if name in self._restarting:
                     logger.debug("Reconciliation: skipping %s (restart in progress)", name)
                     continue
+                if name in self._bootstrapping:
+                    logger.debug("Reconciliation: skipping %s (bootstrap in progress)", name)
+                    continue
                 logger.info("Reconciliation: starting anima %s", name)
                 try:
                     await self.start_anima(name)
@@ -658,6 +714,9 @@ class ProcessSupervisor:
         # disabled + running → stop
         for name, enabled in on_disk.items():
             if not enabled and name in running:
+                if name in self._bootstrapping:
+                    logger.info("Reconciliation: deferring stop for %s (bootstrap in progress)", name)
+                    continue
                 logger.info(
                     "Reconciliation: stopping anima %s (disabled)", name
                 )
@@ -675,6 +734,9 @@ class ProcessSupervisor:
         # even if status.json is missing (legacy or factory-in-progress).
         for name in list(running):
             if name not in on_disk and name not in on_disk_incomplete:
+                if name in self._bootstrapping:
+                    logger.info("Reconciliation: deferring stop for %s (bootstrap in progress)", name)
+                    continue
                 logger.info(
                     "Reconciliation: stopping anima %s (removed from disk)",
                     name,
