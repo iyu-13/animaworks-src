@@ -1029,8 +1029,8 @@ class DigitalAnima:
 
                     self._last_activity = datetime.now()
 
-                except Exception as e:
-                    stderr = f"{type(e).__name__}: {e}"
+                except Exception as exc:
+                    stderr = f"{type(exc).__name__}: {exc}"
                     exit_code = 1
                     logger.exception(
                         "[%s] run_cron_command FAILED task=%s", self.name, task_name
@@ -1040,8 +1040,8 @@ class DigitalAnima:
                         activity = ActivityLogger(self.anima_dir)
                         activity.log(
                             "error",
-                            summary=f"run_cron_commandエラー: {type(e).__name__}",
-                            meta={"phase": "run_cron_command", "error": str(e)[:200]},
+                            summary=f"run_cron_commandエラー: {type(exc).__name__}",
+                            meta={"phase": "run_cron_command", "error": str(exc)[:200]},
                         )
                     except Exception:
                         pass
@@ -1060,7 +1060,9 @@ class DigitalAnima:
                 duration_ms=duration_ms,
             )
 
-            # Activity log: cron command executed
+            # Activity log: cron command executed (intentionally logs even on
+            # failure — exit_code captures the error state, unlike run_cron_task
+            # which re-raises and never reaches this point on error)
             try:
                 activity = ActivityLogger(self.anima_dir)
                 activity.log(
