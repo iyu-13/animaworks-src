@@ -36,9 +36,15 @@ export function render(container) {
   _boundListeners = [];
 
   container.innerHTML = `
-    <div style="display:flex; gap:1rem; height:calc(100vh - 140px); min-height:400px;">
+    <!-- Mobile Tab Bar (hidden on desktop, visible on mobile) -->
+    <nav class="chat-mobile-tabs" id="chatMobileTabs">
+      <button class="chat-mobile-tab active" data-panel="chat" id="chatMobileTabChat">チャット</button>
+      <button class="chat-mobile-tab" data-panel="info" id="chatMobileTabInfo">キャラクター概要</button>
+    </nav>
+
+    <div class="chat-page-layout">
       <!-- Left: Chat Panel -->
-      <div style="flex:1; display:flex; flex-direction:column; min-width:0;">
+      <div class="chat-page-main">
         <!-- Anima Selector -->
         <div style="display:flex; align-items:center; gap:0.75rem; padding:0.75rem; border-bottom:1px solid var(--border-color, #eee);">
           <div id="chatPageAvatar" class="anima-avatar-container"></div>
@@ -66,8 +72,8 @@ export function render(container) {
         </form>
       </div>
 
-      <!-- Right: Sidebar -->
-      <div style="width:340px; flex-shrink:0; display:flex; flex-direction:column; border-left:1px solid var(--border-color, #eee); overflow:hidden;">
+      <!-- Right: Sidebar (hidden on mobile by default) -->
+      <div class="chat-page-sidebar mobile-hidden">
         <!-- Right tabs -->
         <nav class="right-tabs" style="display:flex; border-bottom:1px solid var(--border-color, #eee);">
           <button class="right-tab active" data-tab="state" id="chatTabState">現在の状態</button>
@@ -144,6 +150,13 @@ export function destroy() {
 // ── Event Binding ──────────────────────────
 
 function _bindEvents() {
+  // Mobile tab switching
+  for (const tabId of ["chatMobileTabChat", "chatMobileTabInfo"]) {
+    _addListener(tabId, "click", (e) => {
+      _switchMobileTab(e.target.dataset.panel);
+    });
+  }
+
   // Anima selector
   _addListener("chatPageAnimaSelect", "change", (e) => {
     const name = e.target.value;
@@ -502,6 +515,28 @@ async function _sendChat(message) {
   } finally {
     if (input) { input.disabled = false; input.focus(); }
     if (sendBtn) sendBtn.disabled = false;
+  }
+}
+
+// ── Mobile Tab Switching ─────────────────────
+
+function _switchMobileTab(panel) {
+  const chatTab = _$("chatMobileTabChat");
+  const infoTab = _$("chatMobileTabInfo");
+  const mainPanel = _container?.querySelector(".chat-page-main");
+  const sidePanel = _container?.querySelector(".chat-page-sidebar");
+  if (!mainPanel || !sidePanel) return;
+
+  if (panel === "chat") {
+    chatTab?.classList.add("active");
+    infoTab?.classList.remove("active");
+    mainPanel.classList.remove("mobile-hidden");
+    sidePanel.classList.add("mobile-hidden");
+  } else {
+    chatTab?.classList.remove("active");
+    infoTab?.classList.add("active");
+    mainPanel.classList.add("mobile-hidden");
+    sidePanel.classList.remove("mobile-hidden");
   }
 }
 
