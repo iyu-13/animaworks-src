@@ -7,7 +7,6 @@
 
 """AnimaWorks transcribe tool -- Whisper speech-to-text with LLM refinement.
 
-Extracted from ~/dev/faster-whisper/voice_input.py.
 Uses faster-whisper for transcription and OllamaClient for text refinement.
 """
 
@@ -47,11 +46,11 @@ DEFAULT_LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-oss:20b")
 # Prompts directory (shipped alongside this module or from source project)
 _PROMPTS_DIR = Path(__file__).parent.parent.parent / "templates" / "prompts" / "transcribe"
 
-# Fallback: try the original location
+# Fallback: check TRANSCRIBE_PROMPTS_DIR environment variable
 if not _PROMPTS_DIR.exists():
-    _alt = Path.home() / "dev" / "faster-whisper" / "prompts"
-    if _alt.exists():
-        _PROMPTS_DIR = _alt
+    _env_dir = os.environ.get("TRANSCRIBE_PROMPTS_DIR")
+    if _env_dir and Path(_env_dir).exists():
+        _PROMPTS_DIR = Path(_env_dir)
 
 # ---------------------------------------------------------------------------
 # Language-specific prompt loading

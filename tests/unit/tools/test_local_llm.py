@@ -37,8 +37,8 @@ class TestOllamaClientInit:
     def test_default_servers(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.delenv("OLLAMA_SERVERS", raising=False)
         client = OllamaClient()
-        assert "localserver-a" in client.servers
-        assert "localserver-b" in client.servers
+        assert "local" in client.servers
+        assert len(client.servers) == 1
 
     def test_custom_servers_from_env(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setenv("OLLAMA_SERVERS", "local=http://localhost:11434,remote=http://10.0.0.1:11434")
@@ -53,8 +53,8 @@ class TestOllamaClientInit:
         assert client.servers == dict(DEFAULT_SERVERS)
 
     def test_explicit_server(self):
-        client = OllamaClient(server="localserver-a")
-        assert client._server_name == "localserver-a"
+        client = OllamaClient(server="local")
+        assert client._server_name == "local"
 
     def test_explicit_model(self):
         client = OllamaClient(model="llama3:8b")
@@ -67,9 +67,9 @@ class TestOllamaClientInit:
 class TestGetServer:
     def test_named_server(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.delenv("OLLAMA_SERVERS", raising=False)
-        client = OllamaClient(server="localserver-a")
+        client = OllamaClient(server="local")
         server = client._get_server()
-        assert server.name == "localserver-a"
+        assert server.name == "local"
 
     def test_unknown_server(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.delenv("OLLAMA_SERVERS", raising=False)
@@ -80,7 +80,7 @@ class TestGetServer:
     def test_auto_calls_select(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.delenv("OLLAMA_SERVERS", raising=False)
         client = OllamaClient(server="auto")
-        mock_server = OllamaServer("localserver-a", "http://test")
+        mock_server = OllamaServer("local", "http://test")
         with patch.object(client, "select_server", return_value=mock_server):
             server = client._get_server()
         assert server == mock_server
@@ -91,12 +91,15 @@ class TestGetServer:
 
 class TestSelectServer:
     def test_selects_least_loaded(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.delenv("OLLAMA_SERVERS", raising=False)
+        monkeypatch.setenv(
+            "OLLAMA_SERVERS",
+            "server-a=http://server-a:11434,server-b=http://server-b:11434",
+        )
         client = OllamaClient()
 
         def mock_get(url, **kwargs):
             resp = MagicMock()
-            if "40" in url:
+            if "server-a" in url:
                 resp.json.return_value = {"models": []}  # 0 models
                 resp.elapsed.total_seconds.return_value = 0.1
             else:
@@ -106,10 +109,13 @@ class TestSelectServer:
 
         with patch("core.tools.local_llm.httpx.get", side_effect=mock_get):
             server = client.select_server()
-        assert server.name == "localserver-a"
+        assert server.name == "server-a"
 
     def test_handles_unreachable_server(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.delenv("OLLAMA_SERVERS", raising=False)
+        monkeypatch.setenv(
+            "OLLAMA_SERVERS",
+            "server-a=http://server-a:11434,server-b=http://server-b:11434",
+        )
         client = OllamaClient()
 
         call_count = 0
@@ -117,7 +123,7 @@ class TestSelectServer:
         def mock_get(url, **kwargs):
             nonlocal call_count
             call_count += 1
-            if "40" in url:
+            if "server-a" in url:
                 raise Exception("unreachable")
             resp = MagicMock()
             resp.json.return_value = {"models": []}
@@ -126,7 +132,7 @@ class TestSelectServer:
 
         with patch("core.tools.local_llm.httpx.get", side_effect=mock_get):
             server = client.select_server()
-        assert server.name == "localserver-b"
+        assert server.name == "server-b"
 
 
 # ── resolve_model ─────────────────────────────────────────────────
@@ -135,12 +141,12 @@ class TestSelectServer:
 class TestResolveModel:
     def test_explicit_model(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.delenv("OLLAMA_SERVERS", raising=False)
-        client = OllamaClient(model="llama3:8b", server="localserver-a")
+        client = OllamaClient(model="llama3:8b", server="local")
         assert client.resolve_model() == "llama3:8b"
 
     def test_resolve_from_server(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.delenv("OLLAMA_SERVERS", raising=False)
-        client = OllamaClient(server="localserver-a")
+        client = OllamaClient(server="local")
 
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
@@ -154,7 +160,7 @@ class TestResolveModel:
 
     def test_resolve_with_hint(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.delenv("OLLAMA_SERVERS", raising=False)
-        client = OllamaClient(server="localserver-a", hint="llama")
+        client = OllamaClient(server="local", hint="llama")
 
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
@@ -168,7 +174,7 @@ class TestResolveModel:
 
     def test_no_models_available(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.delenv("OLLAMA_SERVERS", raising=False)
-        client = OllamaClient(server="localserver-a")
+        client = OllamaClient(server="local")
 
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"models": []}
@@ -185,7 +191,7 @@ class TestResolveModel:
 class TestListModels:
     def test_list_models(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.delenv("OLLAMA_SERVERS", raising=False)
-        client = OllamaClient(server="localserver-a")
+        client = OllamaClient(server="local")
 
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
@@ -202,7 +208,7 @@ class TestListModels:
 
 
 class TestServerStatus:
-    def test_server_status(self, monkeypatch: pytest.MonkeyPatch):
+    def test_server_status_single(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.delenv("OLLAMA_SERVERS", raising=False)
         client = OllamaClient()
 
@@ -213,8 +219,24 @@ class TestServerStatus:
 
         with patch("core.tools.local_llm.httpx.get", side_effect=mock_get):
             status = client.server_status()
-        assert "localserver-a" in status
-        assert "localserver-b" in status
+        assert "local" in status
+
+    def test_server_status_multi(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv(
+            "OLLAMA_SERVERS",
+            "server-a=http://server-a:11434,server-b=http://server-b:11434",
+        )
+        client = OllamaClient()
+
+        def mock_get(url, **kwargs):
+            resp = MagicMock()
+            resp.json.return_value = {"models": []}
+            return resp
+
+        with patch("core.tools.local_llm.httpx.get", side_effect=mock_get):
+            status = client.server_status()
+        assert "server-a" in status
+        assert "server-b" in status
 
     def test_server_status_with_error(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.delenv("OLLAMA_SERVERS", raising=False)
@@ -259,24 +281,30 @@ class TestApplyThink:
 
 
 class TestGetAlternate:
-    def test_localserver-a_alternate_is_localserver-b(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.delenv("OLLAMA_SERVERS", raising=False)
+    def test_alternate_with_two_servers(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv(
+            "OLLAMA_SERVERS",
+            "server-a=http://server-a:11434,server-b=http://server-b:11434",
+        )
         client = OllamaClient()
-        alt = client._get_alternate(client.servers["localserver-a"])
+        alt = client._get_alternate(client.servers["server-a"])
         assert alt is not None
-        assert alt.name == "localserver-b"
+        assert alt.name == "server-b"
 
-    def test_localserver-b_alternate_is_localserver-a(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.delenv("OLLAMA_SERVERS", raising=False)
+    def test_alternate_reverse(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv(
+            "OLLAMA_SERVERS",
+            "server-a=http://server-a:11434,server-b=http://server-b:11434",
+        )
         client = OllamaClient()
-        alt = client._get_alternate(client.servers["localserver-b"])
+        alt = client._get_alternate(client.servers["server-b"])
         assert alt is not None
-        assert alt.name == "localserver-a"
+        assert alt.name == "server-a"
 
-    def test_localserver-c_no_alternate(self, monkeypatch: pytest.MonkeyPatch):
+    def test_single_server_no_alternate(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.delenv("OLLAMA_SERVERS", raising=False)
         client = OllamaClient()
-        alt = client._get_alternate(client.servers["localserver-c"])
+        alt = client._get_alternate(client.servers["local"])
         assert alt is None
 
 

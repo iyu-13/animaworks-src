@@ -3,5 +3,5 @@
 # Usage: bash send <recipient> "message" [--reply-to ID] [--thread-id ID]
 set -euo pipefail
 SELF="$(basename "$(pwd)")"
-MAIN="${ANIMAWORKS_PROJECT_DIR:-/home/main/dev/animaworks}/main.py"
+MAIN="${ANIMAWORKS_PROJECT_DIR:-.}/main.py"
 exec python3 "$MAIN" send "$SELF" "$@"

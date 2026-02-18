@@ -7,7 +7,6 @@
 
 """AnimaWorks local LLM tool -- Ollama API client.
 
-Rewritten from ~/dev/localmodel/localmodel (Bash).
 Provides intelligent server selection, retry with failover,
 and a clean Python API for interacting with Ollama servers.
 """
@@ -51,9 +50,7 @@ class OllamaServer:
 
 
 DEFAULT_SERVERS = {
-    "localserver-a": OllamaServer("localserver-a", "http://192.168.1.10:11434"),
-    "localserver-b": OllamaServer("localserver-b", "http://192.168.1.100:11434"),
-    "localserver-c": OllamaServer("localserver-c", "http://192.168.1.50:11434"),
+    "local": OllamaServer("local", "http://localhost:11434"),
 }
 
 
@@ -99,10 +96,10 @@ class OllamaClient:
         return self.select_server()
 
     def select_server(self) -> OllamaServer:
-        """Select the least-loaded server by querying /api/ps on localserver-a and localserver-b."""
-        candidates = [s for name, s in self.servers.items() if name in ("localserver-a", "localserver-b")]
+        """Select the least-loaded server by querying /api/ps."""
+        candidates = list(self.servers.values())
         if not candidates:
-            candidates = list(self.servers.values())[:2]
+            return OllamaServer("local", "http://localhost:11434")
         if len(candidates) == 1:
             return candidates[0]
 
@@ -318,9 +315,8 @@ class OllamaClient:
 
     def _get_alternate(self, server: OllamaServer) -> OllamaServer | None:
         """Get alternate server for failover."""
-        alternates = {"localserver-a": "localserver-b", "localserver-b": "localserver-a"}
-        alt_name = alternates.get(server.name)
-        return self.servers.get(alt_name) if alt_name else None
+        others = [s for s in self.servers.values() if s.name != server.name]
+        return others[0] if others else None
 
 
 # ---------------------------------------------------------------------------
@@ -351,7 +347,7 @@ def get_tool_schemas() -> list[dict]:
                     },
                     "server": {
                         "type": "string",
-                        "description": "Server name (localserver-a|localserver-b|localserver-c|auto). Default: auto.",
+                        "description": "Server name or 'auto' for automatic selection. Default: auto.",
                         "default": "auto",
                     },
                     "model": {
@@ -412,7 +408,7 @@ def get_tool_schemas() -> list[dict]:
                     },
                     "server": {
                         "type": "string",
-                        "description": "Server name (localserver-a|localserver-b|localserver-c|auto). Default: auto.",
+                        "description": "Server name or 'auto' for automatic selection. Default: auto.",
                         "default": "auto",
                     },
                     "model": {
@@ -450,7 +446,7 @@ def get_tool_schemas() -> list[dict]:
                 "properties": {
                     "server": {
                         "type": "string",
-                        "description": "Server name (localserver-a|localserver-b|localserver-c|auto). Default: auto.",
+                        "description": "Server name or 'auto' for automatic selection. Default: auto.",
                         "default": "auto",
                     },
                 },
@@ -494,7 +490,7 @@ def cli_main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument(
         "-s", "--server", default="auto",
-        help="Server name (localserver-a|localserver-b|localserver-c|auto). Default: auto.",
+        help="Server name or 'auto' for automatic selection. Default: auto.",
     )
     parser.add_argument(
         "-m", "--model", default=None,

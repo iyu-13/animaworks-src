@@ -54,7 +54,7 @@ post_channel(
 ```
 post_channel(
     channel="general",
-    text="@kotoha 先ほどの未返信チケットの件、ユーザーから解決済みと連絡がありました。"
+    text="@alice 先ほどの未返信チケットの件、ユーザーから解決済みと連絡がありました。"
 )
 ```
 

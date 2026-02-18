@@ -199,7 +199,7 @@ python main.py send bob alice "了解しました" --reply-to 20260215_093000_12
 
 ```
 デプロイ手順書を作成しました。
-ファイル: /home/main/.animaworks/shared/docs/deploy-procedure-v2.md
+ファイル: ~/.animaworks/shared/docs/deploy-procedure-v2.md
 
 要約: ステージング環境での確認ステップを3つ追加しました（セクション4.2参照）。
 レビューをお願いします。返答をお願いします。

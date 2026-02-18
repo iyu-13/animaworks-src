@@ -88,7 +88,7 @@ send_message(
     to="carol",
     content="""認証モジュールのコードレビューをお願いします。
 
-対象ファイル: /home/main/dev/project/auth/token_manager.py（新規追加）
+対象ファイル: ~/project/auth/token_manager.py（新規追加）
 確認観点:
 - セキュリティ上の懸念がないか（トークンの保存・失効処理）
 - エラーハンドリングの網羅性

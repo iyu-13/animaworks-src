@@ -7,7 +7,6 @@
 
 """AnimaWorks Gmail tool -- direct Gmail API access.
 
-
 Provides unread-mail listing, body reading, and draft creation.
 """
 
