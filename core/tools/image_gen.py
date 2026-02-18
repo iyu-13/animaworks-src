@@ -869,29 +869,68 @@ def _run_gltf_transform(args: list[str], glb_path: Path) -> bool:
         return False
 
 
+_GLTF_MODULES_DIR: Path | None = None
+
+
+def _ensure_gltf_transform_modules() -> Path:
+    """Install @gltf-transform/core and /functions to a persistent cache.
+
+    Returns the ``node_modules`` directory path to be used as ``NODE_PATH``.
+    Packages are installed once and reused across calls.
+    """
+    global _GLTF_MODULES_DIR  # noqa: PLW0603
+    if _GLTF_MODULES_DIR is not None and _GLTF_MODULES_DIR.exists():
+        return _GLTF_MODULES_DIR
+
+    import subprocess
+
+    from core.paths import get_data_dir
+
+    cache_dir = get_data_dir() / "cache" / "gltf_transform_modules"
+    node_modules = cache_dir / "node_modules"
+
+    if not (node_modules / "@gltf-transform" / "core").is_dir():
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        subprocess.run(
+            ["npm", "install", "--save",
+             "@gltf-transform/core", "@gltf-transform/functions"],
+            cwd=str(cache_dir),
+            check=True, capture_output=True, timeout=120,
+        )
+        logger.info("Installed @gltf-transform modules to %s", cache_dir)
+
+    _GLTF_MODULES_DIR = node_modules
+    return node_modules
+
+
 def strip_mesh_from_glb(glb_path: Path) -> bool:
     """Remove mesh/material/texture data from a GLB, keeping only skeleton + animation.
 
-    Uses a Node.js inline script via gltf-transform programmatic API because
+    Uses a Node.js script via gltf-transform programmatic API because
     the CLI does not have a dedicated 'strip meshes' command.
+
+    Packages are installed to a persistent cache directory under
+    ``~/.animaworks/cache/gltf_transform_modules/`` and referenced via
+    ``NODE_PATH`` (npm 10.x compatible).
 
     Returns True on success, False if skipped or failed.
     """
     import shutil
     import subprocess
+    import tempfile
 
     node = shutil.which("node")
     if node is None:
         logger.warning("node not found; skipping mesh strip for %s", glb_path)
         return False
 
-    script = """
+    script = """\
 const { NodeIO } = require("@gltf-transform/core");
 const { prune } = require("@gltf-transform/functions");
 
 (async () => {
     const io = new NodeIO();
-    const doc = await io.read(process.argv[1]);
+    const doc = await io.read(process.argv[2]);
     for (const node of doc.getRoot().listNodes()) {
         node.setMesh(null);
     }
@@ -902,25 +941,33 @@ const { prune } = require("@gltf-transform/functions");
         tex.dispose();
     }
     await doc.transform(prune());
-    await io.write(process.argv[1], doc);
+    await io.write(process.argv[2], doc);
 })();
-""".strip()
+"""
 
+    script_path = None
     try:
-        npx = shutil.which("npx") or "npx"
-        # Use npx to run the script with all required packages available
+        node_modules = _ensure_gltf_transform_modules()
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".cjs", delete=False,
+        ) as fd:
+            fd.write(script)
+            script_path = fd.name
+
+        import os
+        env = {**os.environ, "NODE_PATH": str(node_modules)}
         subprocess.run(
-            [npx, "--yes",
-             "-p", "@gltf-transform/core",
-             "-p", "@gltf-transform/functions",
-             node, "-e", script, str(glb_path)],
-            check=True, capture_output=True, timeout=120,
+            [node, script_path, str(glb_path)],
+            check=True, capture_output=True, timeout=120, env=env,
         )
         logger.info("Stripped mesh from %s (now %d bytes)", glb_path, glb_path.stat().st_size)
         return True
     except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
         logger.warning("Mesh strip failed for %s: %s", glb_path, exc)
         return False
+    finally:
+        if script_path is not None:
+            Path(script_path).unlink(missing_ok=True)
 
 
 def optimize_glb(glb_path: Path) -> bool:
@@ -940,6 +987,66 @@ def optimize_glb(glb_path: Path) -> bool:
                 tmp_path.rename(glb_path)
                 return True
         return False
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
+def simplify_glb(glb_path: Path, target_ratio: float = 0.27, error_threshold: float = 0.01) -> bool:
+    """Simplify mesh geometry using gltf-transform simplify (meshoptimizer).
+
+    ``target_ratio=0.27`` reduces ~30K-polygon Meshy models to ~8K polygons.
+    ``error_threshold`` controls maximum allowed deviation (lower = higher quality).
+
+    Returns True on success, False if skipped or failed.
+    """
+    tmp_path = glb_path.with_suffix(".simp.glb")
+    try:
+        if _run_gltf_transform(
+            ["simplify", str(glb_path), str(tmp_path),
+             "--ratio", str(target_ratio),
+             "--error", str(error_threshold)],
+            glb_path,
+        ):
+            tmp_path.rename(glb_path)
+            logger.info("Simplified %s (now %d bytes)", glb_path, glb_path.stat().st_size)
+            return True
+        return False
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
+def compress_textures(glb_path: Path, resolution: int = 1024) -> bool:
+    """Resize textures and convert to WebP format using gltf-transform.
+
+    Applies two-step optimization:
+    1. Resize all textures to ``resolution x resolution``
+    2. Convert textures to WebP
+
+    Returns True on success, False if skipped or failed.
+    """
+    tmp_path = glb_path.with_suffix(".tex.glb")
+    try:
+        # Step 1: resize textures
+        if not _run_gltf_transform(
+            ["resize", str(glb_path), str(tmp_path),
+             "--width", str(resolution), "--height", str(resolution)],
+            glb_path,
+        ):
+            return False
+        # Step 2: convert to WebP
+        if _run_gltf_transform(
+            ["webp", str(tmp_path), str(glb_path)],
+            glb_path,
+        ):
+            tmp_path.unlink(missing_ok=True)
+            logger.info(
+                "Compressed textures in %s to webp@%d (now %d bytes)",
+                glb_path, resolution, glb_path.stat().st_size,
+            )
+            return True
+        # resize succeeded but webp failed — keep resized version
+        tmp_path.rename(glb_path)
+        return True
     finally:
         tmp_path.unlink(missing_ok=True)
 
@@ -1325,7 +1432,9 @@ class ImageGenPipeline:
                     for anim_name, anim_bytes in basic_anims.items():
                         anim_path = self._assets_dir / f"anim_{anim_name}.glb"
                         anim_path.write_bytes(anim_bytes)
-                        strip_mesh_from_glb(anim_path)
+                        if not strip_mesh_from_glb(anim_path):
+                            result.errors.append(f"mesh_strip: failed for {anim_path.name}")
+                            logger.warning("Mesh strip failed for %s, animation saved with embedded mesh", anim_path.name)
                         result.animation_paths[anim_name] = anim_path
                         logger.info(
                             "Animation '%s' saved: %s (%d bytes)",
@@ -1370,7 +1479,9 @@ class ImageGenPipeline:
                         anim_task = meshy.poll_animation_task(anim_task_id)
                         anim_bytes = meshy.download_animation(anim_task, fmt="glb")
                         anim_path.write_bytes(anim_bytes)
-                        strip_mesh_from_glb(anim_path)
+                        if not strip_mesh_from_glb(anim_path):
+                            result.errors.append(f"mesh_strip: failed for {anim_path.name}")
+                            logger.warning("Mesh strip failed for %s, animation saved with embedded mesh", anim_path.name)
                         result.animation_paths[anim_name] = anim_path
                         logger.info(
                             "Animation '%s' saved: %s (%d bytes)",
