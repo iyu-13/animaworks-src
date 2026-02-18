@@ -6,7 +6,7 @@ from datetime import datetime
 import pytest
 from pydantic import ValidationError
 
-from core.auth.models import AuthConfig, AuthUser
+from core.auth.models import AuthConfig, AuthUser, Session
 
 
 # ── AuthUser ─────────────────────────────────────────────
@@ -94,3 +94,60 @@ class TestAuthConfig:
     def test_token_version_custom(self):
         config = AuthConfig(token_version=5)
         assert config.token_version == 5
+
+
+# ── Session ─────────────────────────────────────────────
+
+
+class TestSession:
+    def test_create_with_defaults(self):
+        session = Session(username="alice")
+        assert session.username == "alice"
+        assert isinstance(session.created_at, datetime)
+
+    def test_all_fields(self):
+        now = datetime(2026, 2, 18, 12, 0, 0)
+        session = Session(username="bob", created_at=now)
+        assert session.username == "bob"
+        assert session.created_at == now
+
+
+# ── AuthUser.role ────────────────────────────────────────
+
+
+class TestAuthUserRole:
+    def test_default_role_is_user(self):
+        user = AuthUser(username="test")
+        assert user.role == "user"
+
+    def test_role_owner(self):
+        user = AuthUser(username="admin", role="owner")
+        assert user.role == "owner"
+
+    def test_role_admin(self):
+        user = AuthUser(username="mod", role="admin")
+        assert user.role == "admin"
+
+    def test_role_invalid_rejected(self):
+        with pytest.raises(ValidationError):
+            AuthUser(username="test", role="superuser")
+
+
+# ── AuthConfig.sessions ─────────────────────────────────
+
+
+class TestAuthConfigSessions:
+    def test_sessions_default_empty(self):
+        config = AuthConfig()
+        assert config.sessions == {}
+
+    def test_sessions_with_data(self):
+        config = AuthConfig(
+            sessions={"token123": Session(username="alice")}
+        )
+        assert "token123" in config.sessions
+        assert config.sessions["token123"].username == "alice"
+
+    def test_secret_key_default_empty(self):
+        config = AuthConfig()
+        assert config.secret_key == ""

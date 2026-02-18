@@ -137,6 +137,9 @@ def create_channels_router() -> APIRouter:
         """Post a message to a channel (human-originated)."""
         if err := _validate_name(name):
             return err
+        # Override from_name with authenticated user
+        if hasattr(request.state, "user"):
+            body.from_name = request.state.user.username
         shared_dir: Path = request.app.state.shared_dir
         channels_dir = shared_dir / "channels"
 

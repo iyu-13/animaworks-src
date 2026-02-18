@@ -4,8 +4,9 @@
 
 import { state } from "./state.js";
 import { connectWebSocket } from "./websocket.js";
+// state.authMode is set by login.js checkAuth()
 import { loadSystemStatus } from "./status.js";
-import { loginAs, logout, showLoginScreen, hideLoginScreen, setStartDashboard } from "./login.js";
+import { checkAuth, logout, showLoginScreen, hideLoginScreen, setStartDashboard } from "./login.js";
 import { initRouter } from "./router.js";
 
 // ── Dashboard Startup ───────────────────────
@@ -14,6 +15,27 @@ async function startDashboard() {
   initRouter("pageContent");
   connectWebSocket();
   loadSystemStatus();
+  showAuthBannerIfNeeded();
+}
+
+function showAuthBannerIfNeeded() {
+  // Remove existing banner if any
+  const existing = document.getElementById("authBanner");
+  if (existing) existing.remove();
+
+  if (state.authMode !== "local_trust") return;
+
+  const banner = document.createElement("div");
+  banner.id = "authBanner";
+  banner.className = "auth-banner";
+  banner.innerHTML = `
+    <span>パスワードが未設定です。セキュリティのため、<a href="#/setup">セットアップページ</a>でパスワードを設定してください。</span>
+    <button class="auth-banner-close" aria-label="閉じる">&times;</button>
+  `;
+  banner.querySelector(".auth-banner-close").addEventListener("click", () => banner.remove());
+
+  const main = document.getElementById("pageContent");
+  if (main) main.parentElement.insertBefore(banner, main);
 }
 
 setStartDashboard(startDashboard);
@@ -47,7 +69,6 @@ function initMobileNav() {
     backdrop.addEventListener("click", closeNav);
   }
 
-  // Close on nav item click
   if (sidebarNav) {
     sidebarNav.addEventListener("click", (e) => {
       if (e.target.closest(".nav-item")) {
@@ -60,14 +81,15 @@ function initMobileNav() {
 // ── Init ────────────────────────────────────
 
 async function init() {
-  // Login/logout bindings
-  document.getElementById("guestLoginBtn").addEventListener("click", () => loginAs("human"));
+  // Logout button binding
   document.getElementById("logoutBtn").addEventListener("click", logout);
 
   // Mobile navigation
   initMobileNav();
 
-  if (state.currentUser) {
+  // Try to authenticate via existing session cookie
+  const authenticated = await checkAuth();
+  if (authenticated) {
     hideLoginScreen();
     await startDashboard();
   } else {

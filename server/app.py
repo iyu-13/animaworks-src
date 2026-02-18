@@ -24,6 +24,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse as StarletteJSONResponse
 
+from core.auth.manager import load_auth, validate_session, find_user
 from core.config import load_config
 from core.supervisor import ProcessSupervisor
 from server.routes import create_router
@@ -321,6 +322,52 @@ def create_app(animas_dir: Path, shared_dir: Path) -> FastAPI:
             if path.startswith("/setup"):
                 return RedirectResponse("/")
             return await call_next(request)
+
+    # ── Auth guard middleware ──────────────────────────────
+    # Paths that don't require authentication
+    _AUTH_WHITELIST_PREFIXES = ("/api/auth/login", "/api/setup", "/health")
+
+    @app.middleware("http")
+    async def auth_guard(request: Request, call_next):
+        path = request.url.path
+
+        # Skip during setup
+        if not request.app.state.setup_complete:
+            return await call_next(request)
+
+        # Load auth config
+        auth_config = load_auth()
+
+        # Skip if local_trust mode
+        if auth_config.auth_mode == "local_trust":
+            return await call_next(request)
+
+        # Skip whitelisted paths
+        if any(path.startswith(prefix) for prefix in _AUTH_WHITELIST_PREFIXES):
+            return await call_next(request)
+
+        # Only protect /api/ and /ws paths
+        if not path.startswith("/api/") and path != "/ws":
+            return await call_next(request)
+
+        # Validate session token from cookie
+        token = request.cookies.get("session_token")
+        session = validate_session(token) if token else None
+        if not session:
+            return JSONResponse(
+                {"error": "Unauthorized"},
+                status_code=401,
+            )
+
+        # Set authenticated user on request state
+        user = find_user(auth_config, session.username)
+        if not user:
+            return JSONResponse(
+                {"error": "User not found"},
+                status_code=401,
+            )
+        request.state.user = user
+        return await call_next(request)
 
     # ── Route registration ─────────────────────────────────
     # Always mount both routers; the middleware handles access control.

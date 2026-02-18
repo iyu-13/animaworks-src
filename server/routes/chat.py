@@ -344,6 +344,9 @@ def create_chat_router() -> APIRouter:
 
     @router.post("/animas/{name}/chat")
     async def chat(name: str, body: ChatRequest, request: Request):
+        # Override from_person with authenticated user
+        if hasattr(request.state, "user"):
+            body.from_person = request.state.user.username
         logger.info("chat_request anima=%s user=%s msg_len=%d", name, body.from_person, len(body.message))
         supervisor = request.app.state.supervisor
 
@@ -467,6 +470,9 @@ def create_chat_router() -> APIRouter:
     @router.post("/animas/{name}/chat/stream")
     async def chat_stream(name: str, body: ChatRequest, request: Request):
         """Stream chat response via SSE over IPC."""
+        # Override from_person with authenticated user
+        if hasattr(request.state, "user"):
+            body.from_person = request.state.user.username
         logger.info("chat_stream_request anima=%s user=%s msg_len=%d", name, body.from_person, len(body.message))
         supervisor = request.app.state.supervisor
 

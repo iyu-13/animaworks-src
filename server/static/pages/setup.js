@@ -22,9 +22,16 @@ export function render(container) {
       </div>
     </div>
 
-    <div class="card">
+    <div class="card" style="margin-bottom: 1.5rem;">
       <div class="card-header">APIキー設定状況</div>
       <div class="card-body" id="setupApiKeys">
+        <div class="loading-placeholder">読み込み中...</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom: 1.5rem;">
+      <div class="card-header">認証設定</div>
+      <div class="card-body" id="authSettings">
         <div class="loading-placeholder">読み込み中...</div>
       </div>
     </div>
@@ -32,6 +39,7 @@ export function render(container) {
 
   _loadChecklist();
   _loadConfig();
+  _loadAuthSettings();
 }
 
 export function destroy() {
@@ -161,5 +169,181 @@ async function _loadConfig() {
   } catch {
     configEl.innerHTML = '<div class="loading-placeholder">APIが未実装です</div>';
     if (keysEl) keysEl.innerHTML = '<div class="loading-placeholder">設定APIが利用できません</div>';
+  }
+}
+
+// ── Auth Settings ──────────────────────────
+
+async function _loadAuthSettings() {
+  const el = document.getElementById("authSettings");
+  if (!el) return;
+
+  try {
+    const me = await api("/api/auth/me");
+    const users = await api("/api/users");
+
+    let html = "";
+
+    // Auth mode info
+    const modeLabel = { local_trust: "ローカルトラスト（未認証）", password: "パスワード認証", multi_user: "マルチユーザー認証" };
+    html += `<div style="margin-bottom: 1rem;">
+      <strong>認証モード:</strong> <code>${escapeHtml(modeLabel[me.auth_mode] || me.auth_mode || "不明")}</code>
+    </div>`;
+
+    // Password change form
+    html += `
+      <div style="margin-bottom: 1.5rem;">
+        <h4 style="margin-bottom: 0.5rem;">パスワード変更</h4>
+        <form id="changePasswordForm" style="display:flex; flex-direction:column; gap:0.5rem; max-width:300px;">
+          <input type="password" id="currentPassword" placeholder="現在のパスワード" required>
+          <input type="password" id="newPassword" placeholder="新しいパスワード" required>
+          <input type="password" id="confirmPassword" placeholder="新しいパスワード（確認）" required>
+          <div id="pwChangeResult" class="login-error hidden"></div>
+          <button type="submit" class="btn-login" style="width:auto;">変更</button>
+        </form>
+      </div>
+    `;
+
+    // User management (owner only)
+    if (me.role === "owner") {
+      html += `
+        <div style="margin-bottom: 1.5rem;">
+          <h4 style="margin-bottom: 0.5rem;">ユーザー管理</h4>
+          <table class="data-table">
+            <thead><tr><th>ユーザー名</th><th>表示名</th><th>ロール</th><th>操作</th></tr></thead>
+            <tbody>
+              ${users.map(u => `
+                <tr>
+                  <td>${escapeHtml(u.username)}</td>
+                  <td>${escapeHtml(u.display_name)}</td>
+                  <td>${escapeHtml(u.role)}</td>
+                  <td>${u.role !== "owner" ? `<button class="btn-delete-user" data-user="${escapeHtml(u.username)}" style="color:#ef4444;cursor:pointer;border:none;background:none;">削除</button>` : "-"}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+
+        <div>
+          <h4 style="margin-bottom: 0.5rem;">ユーザー追加</h4>
+          <form id="addUserForm" style="display:flex; flex-direction:column; gap:0.5rem; max-width:300px;">
+            <input type="text" id="newUsername" placeholder="ユーザー名" required>
+            <input type="text" id="newDisplayName" placeholder="表示名">
+            <input type="password" id="newUserPassword" placeholder="パスワード" required>
+            <div id="addUserResult" class="login-error hidden"></div>
+            <button type="submit" class="btn-login" style="width:auto;">追加</button>
+          </form>
+        </div>
+      `;
+    }
+
+    el.innerHTML = html;
+
+    // Password change handler
+    const pwForm = document.getElementById("changePasswordForm");
+    if (pwForm) {
+      pwForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const result = document.getElementById("pwChangeResult");
+        const newPw = document.getElementById("newPassword").value;
+        const confirmPw = document.getElementById("confirmPassword").value;
+
+        if (newPw !== confirmPw) {
+          result.textContent = "新しいパスワードが一致しません";
+          result.classList.remove("hidden");
+          return;
+        }
+
+        try {
+          const res = await fetch("/api/users/me/password", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({
+              current_password: document.getElementById("currentPassword").value,
+              new_password: newPw,
+            }),
+          });
+          const data = await res.json();
+          if (res.ok) {
+            result.textContent = "パスワードを変更しました";
+            result.style.color = "#22c55e";
+            result.classList.remove("hidden");
+            pwForm.reset();
+          } else {
+            result.style.color = "#ef4444";
+            result.textContent = data.error || "変更に失敗しました";
+            result.classList.remove("hidden");
+          }
+        } catch {
+          result.style.color = "#ef4444";
+          result.textContent = "通信エラー";
+          result.classList.remove("hidden");
+        }
+      });
+    }
+
+    // Delete user handlers
+    el.querySelectorAll(".btn-delete-user").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const username = btn.dataset.user;
+        if (!confirm(`ユーザー "${username}" を削除しますか？`)) return;
+
+        try {
+          const res = await fetch(`/api/users/${username}`, {
+            method: "DELETE",
+            credentials: "same-origin",
+          });
+          if (res.ok) {
+            _loadAuthSettings(); // Reload
+          } else {
+            const data = await res.json();
+            alert(data.error || "削除に失敗しました");
+          }
+        } catch {
+          alert("通信エラー");
+        }
+      });
+    });
+
+    // Add user handler
+    const addForm = document.getElementById("addUserForm");
+    if (addForm) {
+      addForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const result = document.getElementById("addUserResult");
+
+        try {
+          const res = await fetch("/api/users", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({
+              username: document.getElementById("newUsername").value.trim(),
+              display_name: document.getElementById("newDisplayName").value.trim(),
+              password: document.getElementById("newUserPassword").value,
+            }),
+          });
+          const data = await res.json();
+          if (res.ok) {
+            result.textContent = `ユーザー "${data.username}" を追加しました`;
+            result.style.color = "#22c55e";
+            result.classList.remove("hidden");
+            addForm.reset();
+            _loadAuthSettings(); // Reload user list
+          } else {
+            result.style.color = "#ef4444";
+            result.textContent = data.error || "追加に失敗しました";
+            result.classList.remove("hidden");
+          }
+        } catch {
+          result.style.color = "#ef4444";
+          result.textContent = "通信エラー";
+          result.classList.remove("hidden");
+        }
+      });
+    }
+  } catch {
+    el.innerHTML = '<div class="loading-placeholder">認証設定を取得できませんでした（ローカルトラストモード）</div>';
   }
 }

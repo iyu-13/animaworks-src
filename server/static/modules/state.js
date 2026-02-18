@@ -1,7 +1,9 @@
 /* ── State & DOM refs ──────────────────────── */
 
 export const state = {
-  currentUser: localStorage.getItem("animaworks_user") || null,
+  currentUser: null,
+  currentUserRole: null,
+  authMode: null,
   animas: [],            // AnimaStatus[]
   selectedAnima: null,   // string (name)
   animaDetail: null,     // full detail object

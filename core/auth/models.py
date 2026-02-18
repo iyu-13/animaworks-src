@@ -21,6 +21,14 @@ class AuthUser(BaseModel):
     display_name: str = ""
     bio: str = ""
     password_hash: str | None = None
+    role: Literal["owner", "admin", "user"] = "user"
+    created_at: datetime = Field(default_factory=datetime.now)
+
+
+class Session(BaseModel):
+    """An active authentication session."""
+
+    username: str
     created_at: datetime = Field(default_factory=datetime.now)
 
 
@@ -31,3 +39,5 @@ class AuthConfig(BaseModel):
     owner: AuthUser | None = None
     users: list[AuthUser] = []
     token_version: int = 1
+    sessions: dict[str, Session] = {}
+    secret_key: str = ""
