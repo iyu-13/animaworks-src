@@ -80,52 +80,54 @@ _CHIBI_PROMPT = (
 # Expression-specific prompts for bustup image variants
 _EXPRESSION_PROMPTS: dict[str, str] = {
     "neutral": (
-        "Portrait of the same character from chest up. "
-        "Same outfit, same colors, same features. "
-        "Calm neutral expression, relaxed posture, looking at viewer. "
-        "Anime illustration style, soft lighting."
+        "The character with a calm relaxed expression, looking at viewer. "
+        "Soft eyes, natural closed mouth, relaxed eyebrows. "
+        "Arms at sides in a natural posture. "
+        "Bust-up portrait, anime illustration, soft lighting. "
+        "Same character identity, outfit, and hairstyle."
     ),
     "smile": (
-        "Portrait of the same character from chest up. "
-        "Same outfit, same colors, same features. "
-        "Gentle warm smile, eyes slightly softened, "
-        "body leaning slightly forward as if engaged in conversation. "
-        "Anime illustration style, soft lighting."
+        "Change the character's expression to a bright happy smile. "
+        "Cheeks raised, eyes softened with warmth, gentle closed-mouth smile. "
+        "Head tilted slightly to one side, one hand making a small wave or peace sign. "
+        "Bust-up portrait, anime illustration, soft lighting. "
+        "Same character identity, outfit, and hairstyle."
     ),
     "laugh": (
-        "Portrait of the same character from chest up. "
-        "Same outfit, same colors, same features. "
-        "Bright joyful laugh, eyes squeezed happily, mouth open in a smile, "
-        "one hand near mouth or chest, body slightly tilted with amusement. "
-        "Anime illustration style, soft lighting."
+        "Change the character's expression to joyful laughing. "
+        "Eyes squeezed shut happily, mouth wide open showing teeth, raised cheeks. "
+        "Head tilted back with amusement, one hand near mouth. "
+        "Bust-up portrait, anime illustration, soft lighting. "
+        "Same character identity, outfit, and hairstyle."
     ),
     "troubled": (
-        "Portrait of the same character from chest up. "
-        "Same outfit, same colors, same features. "
-        "Worried troubled expression, eyebrows furrowed and slightly raised, "
-        "head tilted to one side, one hand near chin or neck in an uncertain gesture. "
-        "Anime illustration style, soft lighting."
+        "Change the character's expression to worried and troubled. "
+        "Eyebrows furrowed and pinched together, slight frown, nervous eyes. "
+        "Both hands clasped together in front of chest, shoulders raised tensely. "
+        "Bust-up portrait, anime illustration, soft lighting. "
+        "Same character identity, outfit, and hairstyle."
     ),
     "surprised": (
-        "Portrait of the same character from chest up. "
-        "Same outfit, same colors, same features. "
-        "Genuinely surprised expression, eyes wide open, eyebrows raised high, "
-        "mouth slightly open, body leaning back slightly, hands raised near chest. "
-        "Anime illustration style, soft lighting."
+        "Change the character's expression to shocked surprise. "
+        "Eyes wide open as large as possible, eyebrows raised very high, "
+        "mouth dropped open in a round shape. "
+        "Both hands raised up near face, leaning back slightly in shock. "
+        "Bust-up portrait, anime illustration, soft lighting. "
+        "Same character identity, outfit, and hairstyle."
     ),
     "thinking": (
-        "Portrait of the same character from chest up. "
-        "Same outfit, same colors, same features. "
-        "Thoughtful pondering expression, looking slightly upward, "
-        "one hand on chin or touching cheek, contemplative pose. "
-        "Anime illustration style, soft lighting."
+        "Change the character's expression to deep contemplation. "
+        "Looking slightly upward, one eye slightly narrowed, thoughtful furrowed brow. "
+        "One hand on chin in a classic thinking pose, slight pout. "
+        "Bust-up portrait, anime illustration, soft lighting. "
+        "Same character identity, outfit, and hairstyle."
     ),
     "embarrassed": (
-        "Portrait of the same character from chest up. "
-        "Same outfit, same colors, same features. "
-        "Shy embarrassed expression, light blush on cheeks, "
-        "eyes averted to the side, one hand fidgeting near face or hair. "
-        "Anime illustration style, soft lighting."
+        "Change the character's expression to deeply embarrassed. "
+        "Bright red blush across entire face, eyes averted to the side. "
+        "Both hands covering cheeks or pressing index fingers together nervously. "
+        "Bust-up portrait, anime illustration, soft lighting. "
+        "Same character identity, outfit, and hairstyle."
     ),
 }
 
@@ -134,6 +136,22 @@ from core.schemas import VALID_EMOTIONS as _VALID_EXPRESSION_NAMES
 # Verify prompts cover all valid emotions
 assert set(_EXPRESSION_PROMPTS.keys()) == _VALID_EXPRESSION_NAMES, (
     f"Expression prompts mismatch: {set(_EXPRESSION_PROMPTS.keys())} != {_VALID_EXPRESSION_NAMES}"
+)
+
+# Per-expression guidance_scale for Flux Kontext.
+# Higher values force stronger prompt adherence (more dramatic expression change).
+_EXPRESSION_GUIDANCE: dict[str, float] = {
+    "neutral": 4.0,
+    "smile": 5.0,
+    "laugh": 5.0,
+    "troubled": 5.5,
+    "surprised": 5.0,
+    "thinking": 5.0,
+    "embarrassed": 5.5,
+}
+
+assert set(_EXPRESSION_GUIDANCE.keys()) == _VALID_EXPRESSION_NAMES, (
+    f"Expression guidance mismatch: {set(_EXPRESSION_GUIDANCE.keys())} != {_VALID_EXPRESSION_NAMES}"
 )
 
 # Default animation presets for office digital animas
@@ -1158,14 +1176,16 @@ class ImageGenPipeline:
         self._assets_dir.mkdir(parents=True, exist_ok=True)
 
         kontext = FluxKontextClient()
+        guidance = _EXPRESSION_GUIDANCE.get(expression, 5.0)
         result_bytes = kontext.generate_from_reference(
             reference_image=reference_image,
             prompt=prompt,
             aspect_ratio="3:4",
+            guidance_scale=guidance,
         )
 
         output_path.write_bytes(result_bytes)
-        logger.info("Generated expression '%s': %s", expression, output_path)
+        logger.info("Generated expression '%s' (guidance=%.1f): %s", expression, guidance, output_path)
         return output_path
 
     def generate_all(
@@ -1317,22 +1337,57 @@ class ImageGenPipeline:
 
         if "bustup" in enabled:
             _notify("bustup", "generating", 0)
-            expr_list = expressions or ["neutral", "smile", "laugh", "troubled", "surprised"]
+            expr_list = expressions or list(_EXPRESSION_PROMPTS.keys())
             logger.info("Step 2: Generating bustup expressions: %s", expr_list)
-            for expr in expr_list:
+
+            # Step 2a: Generate neutral bustup first (from fullbody reference).
+            # This produces a close-up where the face occupies ~40-50% of the
+            # image, making it a much better reference for expression changes
+            # than the original full-body image (~10-15% face area).
+            bustup_ref_bytes: bytes | None = None
+            neutral_path = self._assets_dir / "avatar_bustup.png"
+
+            if "neutral" in expr_list:
                 try:
                     path = self.generate_bustup_expression(
                         reference_image=fullbody_bytes,
+                        expression="neutral",
+                        skip_existing=skip_existing,
+                    )
+                    if path and path.exists():
+                        bustup_ref_bytes = path.read_bytes()
+                        result.bustup_paths["neutral"] = path
+                        result.bustup_path = path
+                except Exception as exc:
+                    result.errors.append(f"bustup_neutral: {exc}")
+                    logger.error("Bustup neutral failed: %s", exc)
+            elif neutral_path.exists():
+                # neutral not requested but exists on disk — use as reference
+                bustup_ref_bytes = neutral_path.read_bytes()
+
+            # Step 2b: Generate other expressions using bustup as reference.
+            # Fall back to fullbody if bustup reference is unavailable.
+            ref_for_expressions = bustup_ref_bytes or fullbody_bytes
+            if bustup_ref_bytes:
+                logger.info("Using neutral bustup as reference for expression variants")
+            else:
+                logger.warning("Neutral bustup unavailable, falling back to fullbody reference")
+
+            for expr in expr_list:
+                if expr == "neutral":
+                    continue  # already handled above
+                try:
+                    path = self.generate_bustup_expression(
+                        reference_image=ref_for_expressions,
                         expression=expr,
                         skip_existing=skip_existing,
                     )
                     if path:
                         result.bustup_paths[expr] = path
-                        if expr == "neutral":
-                            result.bustup_path = path
                 except Exception as exc:
                     result.errors.append(f"bustup_{expr}: {exc}")
                     logger.error("Bustup expression '%s' failed: %s", expr, exc)
+
             if not result.bustup_path and result.bustup_paths:
                 result.bustup_path = next(iter(result.bustup_paths.values()))
             logger.info("Step 2 complete: %d expressions generated", len(result.bustup_paths))

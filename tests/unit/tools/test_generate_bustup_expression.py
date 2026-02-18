@@ -9,6 +9,7 @@ import pytest
 from core.config.models import ImageGenConfig
 from core.tools.image_gen import (
     ImageGenPipeline,
+    _EXPRESSION_GUIDANCE,
     _EXPRESSION_PROMPTS,
     _VALID_EXPRESSION_NAMES,
 )
@@ -200,6 +201,7 @@ class TestFluxKontextClientCall:
             reference_image=reference_image,
             prompt=_EXPRESSION_PROMPTS["neutral"],
             aspect_ratio="3:4",
+            guidance_scale=_EXPRESSION_GUIDANCE["neutral"],
         )
 
 
