@@ -28,6 +28,7 @@ def cmd_send(args: argparse.Namespace) -> None:
         content=args.message,
         thread_id=args.thread_id or "",
         reply_to=args.reply_to or "",
+        intent=getattr(args, "intent", "") or "",
     )
     print(f"Sent: {msg.from_person} -> {msg.to_person} (id: {msg.id}, thread: {msg.thread_id})")
     _persist_replied_to_for_a1(args.to_person)

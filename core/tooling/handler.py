@@ -587,6 +587,7 @@ class ToolHandler:
 
         to = args["to"]
         content = args["content"]
+        intent = args.get("intent", "")[:50]
 
         # ── Resolve recipient: internal Anima or external user ──
         try:
@@ -632,6 +633,7 @@ class ToolHandler:
                 content=content,
                 thread_id=args.get("thread_id", ""),
                 reply_to=args.get("reply_to", ""),
+                intent=intent,
             )
 
             if self._on_message_sent:
@@ -655,6 +657,7 @@ class ToolHandler:
             content=content,
             thread_id=args.get("thread_id", ""),
             reply_to=args.get("reply_to", ""),
+            intent=intent,
         )
 
         # Depth limiter may return an error Message without delivery

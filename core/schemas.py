@@ -100,6 +100,7 @@ class Message(BaseModel):
     type: str = "message"
     content: str
     attachments: list[str] = []
+    intent: str = ""  # sender-declared intent: "delegation" | "report" | "question" | ""
     timestamp: datetime = Field(default_factory=datetime.now)
 
     # External messaging integration

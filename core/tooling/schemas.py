@@ -95,6 +95,15 @@ MEMORY_TOOLS: list[dict[str, Any]] = [
                 "content": {"type": "string", "description": "Message content"},
                 "reply_to": {"type": "string", "description": "Message ID to reply to"},
                 "thread_id": {"type": "string", "description": "Thread ID"},
+                "intent": {
+                    "type": "string",
+                    "description": (
+                        "Message intent: 'delegation' (task assignment), "
+                        "'report' (status/result report — use the report template), "
+                        "'question' (question/confirmation), "
+                        "or '' (default, casual/FYI)."
+                    ),
+                },
             },
             "required": ["to", "content"],
         },
