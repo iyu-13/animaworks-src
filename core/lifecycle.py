@@ -156,6 +156,7 @@ class LifecycleManager:
 
         logger.info("Heartbeat: %s", name)
         result = await anima.run_heartbeat()
+        self._last_msg_heartbeat_end[name] = time.monotonic()
         if self._ws_broadcast:
             await self._ws_broadcast(
                 {
