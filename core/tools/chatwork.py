@@ -181,11 +181,13 @@ class ChatworkClient:
         )
 
     def post_message(self, room_id: str, body: str) -> dict:
-        if len(body) > 10000:
-            raise ValueError(
-                f"Message exceeds 10,000 characters ({len(body)} chars)"
-            )
-        return self.post(f"/rooms/{room_id}/messages", data={"body": body})
+        # NOTE: 送信機能は一時的に無効化されています
+        raise RuntimeError("送信機能は現在無効化されています")
+        # if len(body) > 10000:
+        #     raise ValueError(
+        #         f"Message exceeds 10,000 characters ({len(body)} chars)"
+        #     )
+        # return self.post(f"/rooms/{room_id}/messages", data={"body": body})
 
     def my_tasks(self, status: str = "open") -> list[dict]:
         """List my tasks. status: open / done"""
@@ -470,27 +472,28 @@ class MessageCache(BaseMessageCache):
 def get_tool_schemas() -> list[dict]:
     """Return Anthropic tool_use schemas for Chatwork tools."""
     return [
-        {
-            "name": "chatwork_send",
-            "description": (
-                "Send a message to a Chatwork room. "
-                "The room can be specified by numeric ID or by name (partial match)."
-            ),
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "room": {
-                        "type": "string",
-                        "description": "Room name or numeric room ID.",
-                    },
-                    "message": {
-                        "type": "string",
-                        "description": "Message body text to send.",
-                    },
-                },
-                "required": ["room", "message"],
-            },
-        },
+        # NOTE: chatwork_send は一時的に無効化されています
+        # {
+        #     "name": "chatwork_send",
+        #     "description": (
+        #         "Send a message to a Chatwork room. "
+        #         "The room can be specified by numeric ID or by name (partial match)."
+        #     ),
+        #     "input_schema": {
+        #         "type": "object",
+        #         "properties": {
+        #             "room": {
+        #                 "type": "string",
+        #                 "description": "Room name or numeric room ID.",
+        #             },
+        #             "message": {
+        #                 "type": "string",
+        #                 "description": "Message body text to send.",
+        #             },
+        #         },
+        #         "required": ["room", "message"],
+        #     },
+        # },
         {
             "name": "chatwork_messages",
             "description": (
@@ -638,13 +641,16 @@ def cli_main(argv: list[str] | None = None) -> None:
         sys.exit(1)
 
     if args.command == "send":
-        room_id = client.resolve_room_id(args.room)
-        message = " ".join(args.message)
-        result = client.post_message(room_id, message)
-        if result and "message_id" in result:
-            print(f"Sent (message_id: {result['message_id']})")
-        else:
-            print(f"Result: {result}")
+        # NOTE: 送信機能は一時的に無効化されています
+        print("Error: 送信機能は現在無効化されています", file=sys.stderr)
+        sys.exit(1)
+        # room_id = client.resolve_room_id(args.room)
+        # message = " ".join(args.message)
+        # result = client.post_message(room_id, message)
+        # if result and "message_id" in result:
+        #     print(f"Sent (message_id: {result['message_id']})")
+        # else:
+        #     print(f"Result: {result}")
 
     elif args.command == "messages":
         room_id = client.resolve_room_id(args.room)
@@ -757,9 +763,11 @@ def cli_main(argv: list[str] | None = None) -> None:
 def dispatch(name: str, args: dict[str, Any]) -> Any:
     """Dispatch a tool call by schema name."""
     if name == "chatwork_send":
-        client = ChatworkClient()
-        room_id = client.resolve_room_id(args["room"])
-        return client.post_message(room_id, args["message"])
+        # NOTE: 送信機能は一時的に無効化されています
+        raise RuntimeError("送信機能は現在無効化されています")
+        # client = ChatworkClient()
+        # room_id = client.resolve_room_id(args["room"])
+        # return client.post_message(room_id, args["message"])
     if name == "chatwork_messages":
         client = ChatworkClient()
         room_id = client.resolve_room_id(args["room"])
