@@ -69,6 +69,8 @@ class ForgettingEngine:
 
         Fully protected types (skills, shared_users) are always skipped.
         Procedures use utility-based protection via ``_is_protected_procedure``.
+        Knowledge with ``success_count >= 2`` is protected via
+        ``_is_protected_knowledge``.
         The ``importance == "important"`` tag protects any memory type.
         """
         if metadata.get("memory_type") in PROTECTED_MEMORY_TYPES:
@@ -78,6 +80,28 @@ class ForgettingEngine:
         # Procedures use utility-based protection instead of blanket protection
         if metadata.get("memory_type") == "procedures":
             return self._is_protected_procedure(metadata)
+        # Knowledge with confirmed usefulness is protected
+        if metadata.get("memory_type") == "knowledge":
+            return self._is_protected_knowledge(metadata)
+        return False
+
+    def _is_protected_knowledge(self, metadata: dict) -> bool:
+        """Knowledge-specific protection check.
+
+        Returns True (protected) if any of:
+        - ``importance == "important"`` ([IMPORTANT] tag)
+        - ``success_count >= 2`` (knowledge confirmed useful multiple times)
+
+        Args:
+            metadata: Chunk metadata from the vector store.
+
+        Returns:
+            True if the knowledge chunk should be protected from forgetting.
+        """
+        if metadata.get("importance") == "important":
+            return True
+        if int(metadata.get("success_count", 0)) >= 2:
+            return True
         return False
 
     def _is_protected_procedure(self, metadata: dict) -> bool:

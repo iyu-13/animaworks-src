@@ -495,6 +495,16 @@ class MemoryIndexer:
             fm["valid_until"] = fm.pop("superseded_at")
         metadata["valid_until"] = str(fm.get("valid_until", "") or "")
 
+        # Failure tracking fields from frontmatter (knowledge + procedures)
+        if fm:
+            for field in ("success_count", "failure_count", "version"):
+                if field in fm:
+                    metadata[field] = int(fm[field])
+            if "confidence" in fm:
+                metadata["confidence"] = float(fm["confidence"])
+            if "last_used" in fm and fm["last_used"]:
+                metadata["last_used"] = str(fm["last_used"])
+
         return metadata
 
     def _generate_embeddings(self, texts: list[str]) -> list[list[float]]:

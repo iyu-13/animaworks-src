@@ -143,6 +143,10 @@ class ConsolidationEngine:
                     "confidence": 0.5,
                     "auto_consolidated": True,
                     "migrated_from_legacy": True,
+                    "success_count": 0,
+                    "failure_count": 0,
+                    "version": 1,
+                    "last_used": "",
                 }
 
                 mm.write_knowledge_with_meta(path, content, metadata)
@@ -313,7 +317,7 @@ class ConsolidationEngine:
         except Exception:
             logger.exception("Synaptic downscaling failed for anima=%s", self.anima_name)
 
-        # Reconsolidation: detect and apply prediction errors
+        # Reconsolidation: detect and apply prediction errors (procedures)
         reconsolidation_result: dict[str, Any] = {}
         try:
             reconsolidation_result = await self._run_reconsolidation(
@@ -321,6 +325,15 @@ class ConsolidationEngine:
             )
         except Exception:
             logger.exception("Reconsolidation failed for anima=%s", self.anima_name)
+
+        # Knowledge reconsolidation: revise failing knowledge files
+        knowledge_reconsolidation_result: dict[str, Any] = {}
+        try:
+            knowledge_reconsolidation_result = await self._run_knowledge_reconsolidation(model)
+        except Exception:
+            logger.exception(
+                "Knowledge reconsolidation failed for anima=%s", self.anima_name,
+            )
 
         # Contradiction check for newly created/updated knowledge files
         contradiction_result: dict[str, int] = {}
@@ -346,6 +359,7 @@ class ConsolidationEngine:
             "distillation": distillation_result,
             "downscaling": downscaling_result,
             "reconsolidation": reconsolidation_result,
+            "knowledge_reconsolidation": knowledge_reconsolidation_result,
             "contradiction": contradiction_result,
             "skipped": False,
         }
@@ -418,6 +432,33 @@ class ConsolidationEngine:
         updated_files: list[str] = [
             t.name for t in targets if t.exists()
         ]
+        if updated_files:
+            self._update_rag_index(updated_files)
+
+        return result
+
+    async def _run_knowledge_reconsolidation(
+        self,
+        model: str,
+    ) -> dict[str, Any]:
+        """Run failure-count-based reconsolidation on knowledge files.
+
+        Scans knowledge frontmatter for files with failure_count >= 2
+        and confidence < 0.6, then uses an LLM to revise them.
+
+        Args:
+            model: LLM model identifier for revision.
+
+        Returns:
+            Dict with reconsolidation results (targets_found, updated, etc.).
+        """
+        from core.memory.reconsolidation import ReconsolidationEngine
+
+        engine = ReconsolidationEngine(self.anima_dir, self.anima_name)
+        result = await engine.reconsolidate_knowledge(model)
+
+        # Re-index only the files that were actually updated
+        updated_files = result.get("updated_files", [])
         if updated_files:
             self._update_rag_index(updated_files)
 
@@ -930,6 +971,10 @@ class ConsolidationEngine:
                         "created_at": timestamp,
                         "confidence": 0.7,
                         "auto_consolidated": True,
+                        "success_count": 0,
+                        "failure_count": 0,
+                        "version": 1,
+                        "last_used": "",
                     }
                     body = f"# {filepath.stem}\n\n{content}"
                     mm.write_knowledge_with_meta(filepath, body, metadata)
@@ -974,6 +1019,10 @@ class ConsolidationEngine:
                         "source_episodes": source_episodes,
                         "confidence": 0.7,
                         "auto_consolidated": True,
+                        "success_count": 0,
+                        "failure_count": 0,
+                        "version": 1,
+                        "last_used": "",
                     }
                     mm.write_knowledge_with_meta(filepath, content, metadata)
                     files_created.append(filename)

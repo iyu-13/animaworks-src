@@ -531,6 +531,13 @@ class ContradictionDetector:
         for pair in pairs:
             try:
                 strategy = pair.resolution
+
+                # Auto-increment failure_count on the older file (file_b)
+                # BEFORE applying the resolution, since supersede/merge may
+                # archive file_b making it inaccessible at its original path.
+                if strategy in ("supersede", "merge"):
+                    self._increment_failure_count(pair.file_b)
+
                 if strategy == "supersede":
                     self._apply_supersede(pair)
                     results["superseded"] += 1
@@ -552,6 +559,9 @@ class ContradictionDetector:
                     results["errors"] += 1
                     continue
 
+                # Persist contradiction resolution to shared JSONL history
+                self._persist_contradiction_history(pair, strategy)
+
                 # Record activity log event for successful resolutions
                 self._log_resolution(pair, strategy)
 
@@ -568,6 +578,86 @@ class ContradictionDetector:
         )
 
         return results
+
+    def _persist_contradiction_history(
+        self, pair: ContradictionPair, strategy: str,
+    ) -> None:
+        """Append a contradiction resolution entry to shared JSONL history.
+
+        Writes to ``{shared_dir}/contradiction_history.jsonl`` in append mode.
+        The shared directory is derived from ``anima_dir``'s data root.
+
+        Args:
+            pair: The resolved contradiction pair
+            strategy: Resolution strategy applied (supersede/merge/coexist)
+        """
+        from core.paths import get_shared_dir
+
+        history_path = get_shared_dir() / "contradiction_history.jsonl"
+        history_path.parent.mkdir(parents=True, exist_ok=True)
+
+        entry = {
+            "ts": datetime.now().isoformat(),
+            "anima": self.anima_name,
+            "file_a": pair.file_a.name,
+            "file_b": pair.file_b.name,
+            "confidence": pair.confidence,
+            "resolution": strategy,
+            "reason": pair.reason,
+            "merged_content": pair.merged_content,
+            "meta": {},
+        }
+
+        try:
+            with history_path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except Exception:
+            logger.warning(
+                "Failed to persist contradiction history for %s vs %s",
+                pair.file_a.name, pair.file_b.name,
+            )
+
+    def _increment_failure_count(self, file_path: Path) -> None:
+        """Increment failure_count and recalculate confidence for a knowledge file.
+
+        Reads the YAML frontmatter, increments ``failure_count``, recalculates
+        ``confidence`` as ``success_count / (success_count + failure_count)``,
+        and writes the updated frontmatter back.
+
+        Only operates if the file still exists (it may have been archived).
+
+        Args:
+            file_path: Path to the knowledge file to update
+        """
+        if not file_path.exists():
+            logger.debug(
+                "Skipping failure_count increment — file already archived: %s",
+                file_path.name,
+            )
+            return
+
+        from core.memory.manager import MemoryManager
+
+        mm = MemoryManager(self.anima_dir)
+
+        try:
+            meta = mm.read_knowledge_metadata(file_path)
+            meta["failure_count"] = meta.get("failure_count", 0) + 1
+            success = meta.get("success_count", 0)
+            total = success + meta["failure_count"]
+            if total > 0:
+                meta["confidence"] = round(success / total, 4)
+            content = mm.read_knowledge_content(file_path)
+            mm.write_knowledge_with_meta(file_path, content, meta)
+            logger.debug(
+                "Incremented failure_count for %s: failure_count=%d confidence=%.4f",
+                file_path.name, meta["failure_count"], meta.get("confidence", 0),
+            )
+        except Exception:
+            logger.warning(
+                "Failed to increment failure_count for %s",
+                file_path.name,
+            )
 
     def _log_resolution(
         self, pair: ContradictionPair, strategy: str,

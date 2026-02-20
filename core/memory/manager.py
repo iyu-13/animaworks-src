@@ -858,6 +858,22 @@ class MemoryManager:
                 return meta
         return {}
 
+    def update_knowledge_metadata(self, path: Path, updates: dict) -> None:
+        """Partially update YAML frontmatter metadata of a knowledge file.
+
+        Reads the current metadata and content, merges *updates* into
+        the metadata dict, then rewrites the file with updated frontmatter.
+
+        Args:
+            path: Path to the knowledge file (absolute or relative to knowledge_dir).
+            updates: Dictionary of metadata fields to merge/overwrite.
+        """
+        target = path if path.is_absolute() else self.knowledge_dir / path
+        current = self.read_knowledge_metadata(target)
+        current.update(updates)
+        content = self.read_knowledge_content(target)
+        self.write_knowledge_with_meta(target, content, current)
+
     def write_knowledge(self, topic: str, content: str) -> None:
         safe = re.sub(r"[^\w\-_]", "_", topic)
         path = self.knowledge_dir / f"{safe}.md"

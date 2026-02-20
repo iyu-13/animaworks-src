@@ -234,7 +234,7 @@ class TestPrimingChannelDProcedures:
 
         engine = PrimingEngine(anima_dir)
 
-        result = await engine._channel_d_skill_match(["deploy"])
+        result = await engine._channel_d_skill_match("deploy pipeline", ["deploy"])
         assert "deploy-pipeline" in result
 
     async def test_channel_d_matches_procedure_content(self, anima_dir: Path) -> None:
@@ -250,7 +250,7 @@ class TestPrimingChannelDProcedures:
 
         engine = PrimingEngine(anima_dir)
 
-        result = await engine._channel_d_skill_match(["incident"])
+        result = await engine._channel_d_skill_match("incident response", ["incident"])
         assert "ops-runbook" in result
 
     async def test_channel_d_no_double_count(self, anima_dir: Path) -> None:
@@ -260,13 +260,19 @@ class TestPrimingChannelDProcedures:
         skills_dir.mkdir(parents=True, exist_ok=True)
         proc_dir.mkdir(parents=True, exist_ok=True)
 
-        (skills_dir / "deploy.md").write_text("---\ndescription: deploy skill\n---\n\n# Deploy Skill", encoding="utf-8")
-        (proc_dir / "deploy.md").write_text("---\ndescription: deploy procedure\n---\n\n# Deploy Procedure", encoding="utf-8")
+        (skills_dir / "deploy.md").write_text(
+            "---\ndescription: \"「deploy」アプリケーションのデプロイ手順\"\n---\n\n# Deploy Skill",
+            encoding="utf-8",
+        )
+        (proc_dir / "deploy.md").write_text(
+            "---\ndescription: \"「deploy」デプロイ手続き\"\n---\n\n# Deploy Procedure",
+            encoding="utf-8",
+        )
 
         from core.memory.priming import PrimingEngine
 
         engine = PrimingEngine(anima_dir)
 
-        result = await engine._channel_d_skill_match(["deploy"])
-        # "deploy" should appear only once due to dedup
+        result = await engine._channel_d_skill_match("deploy the application", ["deploy"])
+        # "deploy" should appear only once due to dedup (personal skill takes precedence)
         assert result.count("deploy") == 1

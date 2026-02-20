@@ -469,6 +469,42 @@ PROCEDURE_TOOLS: list[dict[str, Any]] = [
     },
 ]
 
+KNOWLEDGE_TOOLS: list[dict[str, Any]] = [
+    {
+        "name": "report_knowledge_outcome",
+        "description": (
+            "Report the usefulness of a knowledge file. "
+            "Updates success/failure counts and confidence. "
+            "Call this after using knowledge that was helpful (success=true) "
+            "or found to be inaccurate/irrelevant (success=false)."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": (
+                        "Relative path to the knowledge file "
+                        "(e.g. 'knowledge/deployment-notes.md')"
+                    ),
+                },
+                "success": {
+                    "type": "boolean",
+                    "description": (
+                        "Whether the knowledge was useful/accurate (true) "
+                        "or inaccurate/irrelevant (false)"
+                    ),
+                },
+                "notes": {
+                    "type": "string",
+                    "description": "Optional notes on what was useful or inaccurate",
+                },
+            },
+            "required": ["path", "success"],
+        },
+    },
+]
+
 TASK_TOOLS: list[dict[str, Any]] = [
     {
         "name": "add_task",
@@ -657,6 +693,8 @@ def build_tool_list(
     tools.extend(CHANNEL_TOOLS)
     # Procedure outcome reporting is always included
     tools.extend(PROCEDURE_TOOLS)
+    # Knowledge outcome reporting is always included
+    tools.extend(KNOWLEDGE_TOOLS)
     if include_file_tools:
         tools.extend(FILE_TOOLS)
     if include_search_tools:

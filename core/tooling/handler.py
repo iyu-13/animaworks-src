@@ -298,6 +298,7 @@ class ToolHandler:
             "refresh_tools": self._handle_refresh_tools,
             "share_tool": self._handle_share_tool,
             "report_procedure_outcome": self._handle_report_procedure_outcome,
+            "report_knowledge_outcome": self._handle_report_knowledge_outcome,
             "add_task": self._handle_add_task,
             "update_task": self._handle_update_task,
             "list_tasks": self._handle_list_tasks,
@@ -1063,6 +1064,86 @@ class ToolHandler:
             f"Procedure outcome recorded: {rel} -> {outcome_label}\n"
             f"confidence: {meta['confidence']:.2f} "
             f"(success: {meta['success_count']}, failure: {meta['failure_count']})"
+        )
+        if notes:
+            result += f"\nnotes: {notes}"
+
+        return result
+
+    # ── Knowledge outcome tracking ──────────────────────────
+
+    def _handle_report_knowledge_outcome(self, args: dict[str, Any]) -> str:
+        """Report success/failure of a knowledge file and update its metadata.
+
+        Updates frontmatter fields: success_count, failure_count, last_used,
+        and recalculates confidence = success / max(1, success + failure).
+        """
+        rel = args.get("path", "")
+        success = args.get("success", True)
+        notes = args.get("notes", "")
+
+        if not rel:
+            return _error_result("InvalidArguments", "path is required")
+
+        target = self._anima_dir / rel
+        if not target.exists():
+            return _error_result(
+                "FileNotFound",
+                f"File not found: {rel}",
+                suggestion="Check the path (e.g. knowledge/topic.md)",
+            )
+
+        # Security: must be within anima_dir
+        if not target.resolve().is_relative_to(self._anima_dir.resolve()):
+            return _error_result("PermissionDenied", "Path resolves outside anima directory")
+
+        # Read existing metadata
+        meta = self._memory.read_knowledge_metadata(target)
+
+        # Update counts
+        if success:
+            meta["success_count"] = meta.get("success_count", 0) + 1
+        else:
+            meta["failure_count"] = meta.get("failure_count", 0) + 1
+
+        # Update last_used
+        meta["last_used"] = datetime.now().isoformat()
+
+        # Recalculate confidence
+        s = meta.get("success_count", 0)
+        f = meta.get("failure_count", 0)
+        meta["confidence"] = s / max(1, s + f)
+
+        # Read body and rewrite with updated metadata
+        content = self._memory.read_knowledge_content(target)
+        self._memory.write_knowledge_with_meta(target, content, meta)
+
+        logger.info(
+            "report_knowledge_outcome path=%s success=%s confidence=%.2f",
+            rel, success, meta["confidence"],
+        )
+
+        # Activity log: knowledge outcome
+        try:
+            activity = ActivityLogger(self._anima_dir)
+            activity.log(
+                "knowledge_outcome",
+                summary=f"{'成功' if success else '失敗'}: {rel}",
+                meta={
+                    "path": rel,
+                    "success": success,
+                    "confidence": meta["confidence"],
+                    "notes": notes[:200] if notes else "",
+                },
+            )
+        except Exception:
+            pass
+
+        outcome_label = "成功" if success else "失敗"
+        result = (
+            f"Knowledge outcome recorded: {rel} -> {outcome_label}\n"
+            f"confidence: {meta.get('confidence', 0):.2f} "
+            f"(success: {meta.get('success_count', 0)}, failure: {meta.get('failure_count', 0)})"
         )
         if notes:
             result += f"\nnotes: {notes}"
