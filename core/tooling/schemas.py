@@ -78,9 +78,11 @@ MEMORY_TOOLS: list[dict[str, Any]] = [
     {
         "name": "send_message",
         "description": (
-            "Send a message to another anima or a human user. "
-            "For human users, the message is automatically routed "
-            "to the configured preferred channel (e.g. Slack, Chatwork)."
+            "Send a direct message to another anima or a human user. "
+            "DM is limited to max 2 recipients per run, 1 message each, "
+            "with intent 'report' or 'delegation' only. "
+            "For acknowledgments, questions, FYI, or messages to 3+ people, "
+            "use post_channel (Board) instead."
         ),
         "parameters": {
             "type": "object",
@@ -100,18 +102,16 @@ MEMORY_TOOLS: list[dict[str, Any]] = [
                 "intent": {
                     "type": "string",
                     "description": (
-                        "Message intent. delegation/report/question triggers "
-                        "immediate processing by the recipient. "
-                        "Unset messages are processed at the recipient's next "
-                        "scheduled heartbeat (every 30 min). "
-                        "Values: 'delegation' (task assignment), "
-                        "'report' (status/result — use report template), "
-                        "'question' (question/confirmation), "
-                        "'' (default — acknowledgment, thanks, FYI)."
+                        "Message intent (REQUIRED for DM). "
+                        "Only 'report' and 'delegation' are permitted. "
+                        "Values: 'delegation' (task assignment to subordinate), "
+                        "'report' (status/result to supervisor — use report template). "
+                        "Questions, acknowledgments, thanks, and FYI must use "
+                        "post_channel (Board) instead of DM."
                     ),
                 },
             },
-            "required": ["to", "content"],
+            "required": ["to", "content", "intent"],
         },
     },
 ]

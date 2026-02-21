@@ -21,7 +21,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from core.exceptions import ConfigError  # noqa: F401
 
@@ -236,6 +236,7 @@ class BackgroundTaskConfig(BaseModel):
 class HeartbeatConfig(BaseModel):
     """Heartbeat scheduling and cascade prevention settings."""
 
+    interval_minutes: int = Field(default=30, ge=1, le=60)  # heartbeat interval (config-driven, not parsed from heartbeat.md)
     msg_heartbeat_cooldown_s: int = 300  # message-triggered heartbeat cooldown
     cascade_window_s: int = 1800  # sliding window for cascade detection
     cascade_threshold: int = 3  # max round-trips per pair within window

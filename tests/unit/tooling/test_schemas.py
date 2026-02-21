@@ -64,7 +64,7 @@ class TestMemoryTools:
         props = schema["parameters"]["properties"]
         assert "to" in props
         assert "content" in props
-        assert set(schema["parameters"]["required"]) == {"to", "content"}
+        assert set(schema["parameters"]["required"]) == {"to", "content", "intent"}
 
 
 class TestSendMessageSchema:
@@ -72,9 +72,9 @@ class TestSendMessageSchema:
         send_msg = next(t for t in MEMORY_TOOLS if t["name"] == "send_message")
         assert "intent" in send_msg["parameters"]["properties"]
 
-    def test_intent_not_required(self):
+    def test_intent_required(self):
         send_msg = next(t for t in MEMORY_TOOLS if t["name"] == "send_message")
-        assert "intent" not in send_msg["parameters"]["required"]
+        assert "intent" in send_msg["parameters"]["required"]
 
     def test_intent_type_is_string(self):
         send_msg = next(t for t in MEMORY_TOOLS if t["name"] == "send_message")

@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 import time
+import zlib
 from typing import Any, Callable, Coroutine
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -19,6 +19,7 @@ from apscheduler.triggers.cron import CronTrigger
 from core.anima import DigitalAnima
 from core.config.models import load_config
 from core.exceptions import AnimaWorksError  # noqa: F401
+from core.schedule_parser import parse_heartbeat_config
 from core.schemas import CronTask
 
 logger = logging.getLogger("animaworks.lifecycle")
@@ -128,16 +129,26 @@ class LifecycleManager:
     # ── Heartbeat ─────────────────────────────────────────
 
     def _setup_heartbeat(self, anima: DigitalAnima) -> None:
-        config = anima.memory.read_heartbeat_config()
+        hb_content = anima.memory.read_heartbeat_config()
 
-        _HEARTBEAT_INTERVAL = 30  # Fixed system-wide; not configurable per anima
+        # Interval from config.json (not parsed from heartbeat.md)
+        app_config = load_config()
+        interval = app_config.heartbeat.interval_minutes
 
-        # Determine active hours:
-        # 1. heartbeat.md explicit time range takes priority
-        # 2. Default: 24h (hour="*")
-        m = re.search(r"(\d{1,2}):\d{0,2}\s*-\s*(\d{1,2})", config)
-        if m:
-            active_start, active_end = int(m.group(1)), int(m.group(2))
+        # Fixed offset: crc32(anima_name) % 10 → deterministic 0-9 min spread
+        offset = zlib.crc32(anima.name.encode()) % 10
+
+        # Build minute spec: base slots + offset
+        slots = []
+        m = offset
+        while m < 60:
+            slots.append(str(m))
+            m += interval
+        minute_spec = ",".join(slots)
+
+        # Determine active hours from heartbeat.md
+        active_start, active_end = parse_heartbeat_config(hb_content)
+        if active_start is not None:
             hour_spec = f"{active_start}-{active_end - 1}"
             log_active = f"active {active_start}:00-{active_end}:00"
         else:
@@ -147,7 +158,7 @@ class LifecycleManager:
         self.scheduler.add_job(
             self._heartbeat_wrapper,
             CronTrigger(
-                minute=f"*/{_HEARTBEAT_INTERVAL}",
+                minute=minute_spec,
                 hour=hour_spec,
             ),
             id=f"{anima.name}_heartbeat",
@@ -156,9 +167,11 @@ class LifecycleManager:
             replace_existing=True,
         )
         logger.info(
-            "Heartbeat '%s': every %dmin, %s",
+            "Heartbeat '%s': minute=%s (offset=%d, interval=%dmin), %s",
             anima.name,
-            _HEARTBEAT_INTERVAL,
+            minute_spec,
+            offset,
+            interval,
             log_active,
         )
 

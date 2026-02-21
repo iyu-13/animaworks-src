@@ -604,7 +604,27 @@ class ToolHandler:
 
         to = args["to"]
         content = args["content"]
-        intent = args.get("intent", "")[:50]
+        intent = args.get("intent", "")
+
+        # ── Per-run DM limits ──
+        # 1. Intent restriction: only report/delegation allowed for DM
+        if intent not in ("report", "delegation"):
+            return (
+                "Error: DMのintentは 'report' または 'delegation' のみ許可されています。"
+                "質問はBoardに投稿してください。acknowledgment・感謝・FYIも"
+                "Boardを使用してください（post_channel ツール）。"
+            )
+
+        # 2. Per-recipient limit: 1 message per recipient per run
+        if to in self._replied_to:
+            return f"Error: このrunで既に {to} にメッセージを送信済みです。追加の連絡はBoardを使用してください。"
+
+        # 3. Max recipients limit: 2 people per run
+        if len(self._replied_to) >= 2 and to not in self._replied_to:
+            return (
+                "Error: 1回のrunでDMを送れるのは最大2人までです。"
+                "3人以上への伝達はBoardを使用してください（post_channel ツール）。"
+            )
 
         # ── Resolve recipient: internal Anima or external user ──
         try:
