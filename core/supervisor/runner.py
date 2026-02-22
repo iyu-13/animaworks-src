@@ -530,11 +530,33 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _install_signal_diagnostics(anima_name: str) -> None:
+    """Install signal handlers that log before exiting.
+
+    Helps diagnose unexpected process termination by recording
+    which signal killed the child process.
+    """
+    import signal as _sig
+
+    def _handler(signum: int, frame: Any) -> None:
+        sig_name = _sig.Signals(signum).name if signum in _sig.Signals._value2member_map_ else str(signum)
+        logger.error(
+            "SIGNAL RECEIVED: %s (%d) in anima=%s — exiting",
+            sig_name, signum, anima_name,
+        )
+        sys.exit(128 + signum)
+
+    for sig in (_sig.SIGTERM, _sig.SIGINT, _sig.SIGHUP):
+        _sig.signal(sig, _handler)
+
+
 async def main() -> None:
     """Main entry point."""
     args = parse_args()
 
     setup_logging(args.anima_name, args.log_dir)
+
+    _install_signal_diagnostics(args.anima_name)
 
     runner = AnimaRunner(
         anima_name=args.anima_name,

@@ -604,9 +604,14 @@ class ProcessSupervisor:
 
         # Check if process is alive
         if not handle.is_alive():
+            # Read actual return code from the Popen object (poll() sets it)
+            actual_rc = handle.process.returncode if handle.process else None
+            handle.stats.exit_code = actual_rc
             logger.error(
-                "Process exited unexpectedly: %s (exit_code=%s)",
-                anima_name, handle.stats.exit_code
+                "Process exited unexpectedly: %s (exit_code=%s, signal=%s)",
+                anima_name,
+                actual_rc,
+                -actual_rc if actual_rc is not None and actual_rc < 0 else "N/A",
             )
             asyncio.create_task(self._handle_process_failure(anima_name, handle))
             return
