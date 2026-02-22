@@ -26,6 +26,7 @@ class BuildResult:
 
     system_prompt: str
     injected_procedures: list[Path] = field(default_factory=list)
+    injected_knowledge_files: list[str] = field(default_factory=list)
     overflow_files: list[str] = field(default_factory=list)
 
     def __str__(self) -> str:
@@ -331,8 +332,6 @@ def build_system_prompt(
     retriever: object | None = None,
     *,
     trigger: str = "",
-    distilled_entries: list[dict] | None = None,
-    overflow_files: list[str] | None = None,
 ) -> BuildResult:
     """Construct the full system prompt from Markdown files.
 
@@ -503,29 +502,39 @@ def build_system_prompt(
     ))
 
     # ── Distilled Knowledge Injection ─────────────────────
-    _overflow_files: list[str] = overflow_files if overflow_files is not None else []
-    if distilled_entries is None:
-        try:
-            from core.prompt.context import resolve_context_window as _rcw_inj
-            _model_cfg = memory.read_model_config()
-            _distilled = memory.collect_distilled_knowledge()
-            _ctx_window = _rcw_inj(_model_cfg.model)
-            distilled_entries, _overflow_files = MemoryManager.compute_injection_plan(
-                _distilled, _ctx_window,
+    # CLS theory: knowledge/ + procedures/ = neocortex (always-active)
+    from core.prompt.context import resolve_context_window
+
+    injected_knowledge_files: list[str] = []
+    overflow_files: list[str] = []
+
+    try:
+        _model_config = memory.read_model_config()
+        ctx_window = resolve_context_window(_model_config.model)
+    except Exception:
+        ctx_window = 128_000
+
+    knowledge_budget = int(ctx_window * 0.10)
+    distilled = memory.collect_distilled_knowledge()
+
+    used_tokens = 0
+    injection_parts: list[str] = []
+    for entry in distilled:
+        est_tokens = len(entry["content"]) // 3
+        if used_tokens + est_tokens <= knowledge_budget:
+            injection_parts.append(
+                f"### {entry['name']}\n\n{entry['content']}"
             )
-        except Exception:
-            logger.debug("Failed to collect distilled knowledge", exc_info=True)
-            distilled_entries = []
-            _overflow_files = []
-    if distilled_entries:
-        injection_parts: list[str] = []
-        for entry in distilled_entries:
-            injection_parts.append(f"### {entry['name']}\n\n{entry['content']}")
-        if injection_parts:
-            parts.append(
-                "## Distilled Knowledge\n\n"
-                + "\n\n---\n\n".join(injection_parts)
-            )
+            used_tokens += est_tokens
+            injected_knowledge_files.append(entry["name"])
+        else:
+            overflow_files.append(entry["name"])
+
+    if injection_parts:
+        parts.append(
+            "## Distilled Knowledge\n\n"
+            + "\n\n---\n\n".join(injection_parts)
+        )
 
     # Common knowledge reference hint
     common_knowledge_dir = data_dir / "common_knowledge"
@@ -644,7 +653,8 @@ def build_system_prompt(
     )
     return BuildResult(
         system_prompt=prompt,
-        overflow_files=_overflow_files,
+        injected_knowledge_files=injected_knowledge_files,
+        overflow_files=overflow_files,
     )
 
 

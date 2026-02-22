@@ -481,75 +481,43 @@ class MemoryManager:
         """Facade: FrontmatterService.ensure_procedure_frontmatter."""
         return self._frontmatter.ensure_procedure_frontmatter()
 
-    # ── Distilled Knowledge Collection ────────────────────
+    # ── Distilled Knowledge Collection ───────────────────
 
     def collect_distilled_knowledge(self) -> list[dict]:
         """Collect all knowledge/ and procedures/ files with confidence metadata.
 
-        Returns:
-            List of dicts with keys: path, name, content, confidence.
+        Returns list of dicts sorted by confidence descending:
+            {path, name, content, confidence, source_type}
         """
         entries: list[dict] = []
-        for directory in (self.knowledge_dir, self.procedures_dir):
+        source_dirs = [
+            (self.knowledge_dir, "knowledge"),
+            (self.procedures_dir, "procedures"),
+        ]
+        for directory, source_type in source_dirs:
             if not directory.is_dir():
                 continue
             for f in sorted(directory.glob("*.md")):
-                content = f.read_text(encoding="utf-8")
-                confidence = self._extract_confidence(content)
-                entries.append({
-                    "path": str(f),
-                    "name": f.stem,
-                    "content": content,
-                    "confidence": confidence,
-                })
+                try:
+                    if source_type == "knowledge":
+                        meta = self._frontmatter.read_knowledge_metadata(f)
+                        body = self._frontmatter.read_knowledge_content(f)
+                    else:
+                        meta = self._frontmatter.read_procedure_metadata(f)
+                        body = self._frontmatter.read_procedure_content(f)
+                    if not body.strip():
+                        continue
+                    confidence = float(meta.get("confidence", 0.5))
+                    entries.append({
+                        "path": str(f),
+                        "name": f.stem,
+                        "content": body,
+                        "confidence": confidence,
+                        "source_type": source_type,
+                    })
+                except Exception:
+                    logger.warning(
+                        "Failed to read %s for knowledge injection", f,
+                    )
+        entries.sort(key=lambda d: d["confidence"], reverse=True)
         return entries
-
-    @staticmethod
-    def _extract_confidence(content: str) -> float:
-        """Extract confidence from YAML frontmatter. Default 0.5."""
-        if not content.startswith("---"):
-            return 0.5
-        parts = content.split("---", 2)
-        if len(parts) < 3:
-            return 0.5
-        try:
-            import yaml
-            meta = yaml.safe_load(parts[1])
-            if isinstance(meta, dict):
-                return float(meta.get("confidence", 0.5))
-        except Exception:
-            pass
-        return 0.5
-
-    @staticmethod
-    def compute_injection_plan(
-        distilled: list[dict],
-        context_window: int,
-        budget_ratio: float = 0.10,
-    ) -> tuple[list[dict], list[str]]:
-        """Compute which files to inject and which overflow.
-
-        Args:
-            distilled: Entries from collect_distilled_knowledge().
-            context_window: Model context window size in tokens.
-            budget_ratio: Fraction of context window for injection budget.
-
-        Returns:
-            (injected_entries, overflow_file_names) -- injected sorted by
-            confidence desc.
-        """
-        budget = int(context_window * budget_ratio)
-        sorted_entries = sorted(
-            distilled, key=lambda d: d["confidence"], reverse=True,
-        )
-        injected: list[dict] = []
-        overflow: list[str] = []
-        used_tokens = 0
-        for entry in sorted_entries:
-            est_tokens = len(entry["content"]) // 3
-            if used_tokens + est_tokens <= budget:
-                injected.append(entry)
-                used_tokens += est_tokens
-            else:
-                overflow.append(entry["name"])
-        return injected, overflow

@@ -158,11 +158,28 @@ class PrimingEngine:
         # Extract keywords for search (simple rule-based for Phase 1)
         keywords = self._extract_keywords(message)
 
+        # Channel C: conditional based on distilled knowledge injection
+        if overflow_files is None:
+            # Legacy path: no full injection, run full Channel C
+            channel_c_coro = self._channel_c_related_knowledge(keywords)
+        elif overflow_files:
+            # Overflow path: search only among non-injected files
+            channel_c_coro = self._channel_c_related_knowledge(
+                keywords, restrict_to=overflow_files,
+            )
+        else:
+            # All files injected: skip Channel C entirely
+
+            async def _noop() -> str:
+                return ""
+
+            channel_c_coro = _noop()
+
         # Execute 5 channels in parallel
         results = await asyncio.gather(
             self._channel_a_sender_profile(sender_name),
             self._channel_b_recent_activity(sender_name, keywords),  # Unified channel
-            self._channel_c_related_knowledge(keywords, overflow_files=overflow_files),
+            channel_c_coro,
             self._channel_d_skill_match(message, keywords, channel=channel),
             self._channel_e_pending_tasks(),
             return_exceptions=True,
@@ -572,8 +589,7 @@ class PrimingEngine:
     async def _channel_c_related_knowledge(
         self,
         keywords: list[str],
-        *,
-        overflow_files: list[str] | None = None,
+        restrict_to: list[str] | None = None,
     ) -> str:
         """Channel C: Related knowledge search (vector search).
 
@@ -581,17 +597,12 @@ class PrimingEngine:
         Searches both personal knowledge and shared common_knowledge,
         merging results by score.
 
-        When *overflow_files* is an empty list (all distilled knowledge was
-        injected into the system prompt), Channel C is skipped entirely.
-        When *overflow_files* has entries, Channel C runs normally as a
-        fallback for the files that did not fit.  When *overflow_files* is
-        ``None`` (legacy path), full Channel C behaviour is preserved.
+        Args:
+            keywords: Search keywords extracted from message.
+            restrict_to: If provided, only return results whose source file
+                stem is in this list (used for overflow-only search when
+                distilled knowledge injection handles the rest).
         """
-        # Skip when all distilled knowledge was injected
-        if overflow_files is not None and len(overflow_files) == 0:
-            logger.debug("Channel C: All distilled knowledge injected, skipping")
-            return ""
-
         if not self.knowledge_dir.is_dir() or not keywords:
             logger.debug("Channel C: No knowledge dir or no keywords")
             return ""
@@ -615,6 +626,18 @@ class PrimingEngine:
                 include_shared=True,
             )
 
+            # Filter to overflow files if restriction is specified
+            if restrict_to is not None and results:
+                restrict_set = set(restrict_to)
+                from pathlib import Path as _Path
+
+                results = [
+                    r for r in results
+                    if _Path(
+                        r.metadata.get("source_file", r.doc_id)
+                    ).stem in restrict_set
+                ]
+
             if results:
                 # Record access (Hebbian LTP: memories that fire together wire together)
                 retriever.record_access(results, anima_name)
@@ -633,9 +656,11 @@ class PrimingEngine:
 
                 output = "\n".join(parts)
                 logger.debug(
-                    "Channel C: Vector search returned %d results (%d chars)",
+                    "Channel C: Vector search returned %d results (%d chars)%s",
                     len(results),
                     len(output),
+                    f" (restricted to {len(restrict_to)} overflow files)"
+                    if restrict_to else "",
                 )
                 return output
             else:

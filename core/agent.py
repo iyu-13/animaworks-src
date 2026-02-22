@@ -533,12 +533,54 @@ class AgentCore:
             return None
         return getattr(engine, "_retriever", None)
 
-    async def _run_priming(self, prompt: str, trigger: str, *, message_intent: str = "") -> str:
+    def _compute_overflow_files(self) -> list[str] | None:
+        """Pre-compute overflow files for distilled knowledge injection.
+
+        Returns:
+            List of file stems that didn't fit in the knowledge budget,
+            empty list if all fit, or None if collection failed.
+        """
+        try:
+            from core.prompt.context import resolve_context_window
+
+            model_config = self.memory.read_model_config()
+            ctx_window = resolve_context_window(model_config.model)
+            knowledge_budget = int(ctx_window * 0.10)
+            distilled = self.memory.collect_distilled_knowledge()
+
+            if not distilled:
+                return []
+
+            used_tokens = 0
+            overflow: list[str] = []
+            for entry in distilled:
+                est_tokens = len(entry["content"]) // 3
+                if used_tokens + est_tokens <= knowledge_budget:
+                    used_tokens += est_tokens
+                else:
+                    overflow.append(entry["name"])
+
+            return overflow
+        except Exception:
+            logger.debug("Failed to compute overflow files", exc_info=True)
+            return None
+
+    async def _run_priming(
+        self,
+        prompt: str,
+        trigger: str,
+        *,
+        message_intent: str = "",
+        overflow_files: list[str] | None = None,
+    ) -> str:
         """Run priming layer to automatically retrieve relevant memories.
 
         Args:
             prompt: The user message (may include conversation history)
             trigger: Trigger type (e.g., "message:yamada")
+            overflow_files: File stems that didn't fit in knowledge injection.
+                None = legacy (full Channel C), [] = all injected (skip C),
+                [...] = overflow files only for Channel C.
 
         Returns:
             Formatted priming section for system prompt injection, or empty string.
@@ -782,10 +824,12 @@ class AgentCore:
         )
 
         # ── Priming: Automatic memory retrieval ────────────────
+        overflow_files = self._compute_overflow_files()
         priming_section = await self._run_priming(
             prompt,
             trigger,
             message_intent=message_intent,
+            overflow_files=overflow_files,
         )
 
         shortterm = ShortTermMemory(self.anima_dir)
@@ -1076,10 +1120,12 @@ class AgentCore:
 
         # ── Streaming executor (A1 / A2 / all modes) ─────────────
         # Priming: Automatic memory retrieval
+        overflow_files = self._compute_overflow_files()
         priming_section = await self._run_priming(
             prompt,
             trigger,
             message_intent=message_intent,
+            overflow_files=overflow_files,
         )
 
         shortterm = ShortTermMemory(self.anima_dir)
