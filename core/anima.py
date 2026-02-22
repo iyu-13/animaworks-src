@@ -1405,12 +1405,23 @@ class DigitalAnima:
                         self._heartbeat_context = "定期巡回中"
 
                     # 3. Execute agent cycle
+                    # Suppress board fanout when replying to board_mention
+                    # to prevent praise/acknowledgement loops.
+                    has_board_mention = any(
+                        item.msg.type == "board_mention"
+                        for item in inbox_items
+                    )
+                    if has_board_mention:
+                        self.agent._tool_handler._suppress_board_fanout = True
                     heartbeat_text = "\n\n".join(parts)
                     prior_msgs = self._build_prior_messages(heartbeat_text)
-                    result = await self._execute_heartbeat_cycle(
-                        heartbeat_text, inbox_items, unread_count,
-                        prior_messages=prior_msgs,
-                    )
+                    try:
+                        result = await self._execute_heartbeat_cycle(
+                            heartbeat_text, inbox_items, unread_count,
+                            prior_messages=prior_msgs,
+                        )
+                    finally:
+                        self.agent._tool_handler._suppress_board_fanout = False
 
                     # 4. Archive processed messages
                     if unread_count > 0:

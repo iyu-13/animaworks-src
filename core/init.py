@@ -78,6 +78,7 @@ def _ensure_tool_prompt_db(data_dir: Path) -> None:
 
     # Apply incremental migrations for existing DBs
     _migrate_memory_prompts_v1(tool_store, prompts_dir)
+    _migrate_praise_loop_prevention_v1(tool_store, prompts_dir)
 
     logger.info("Tool prompt DB initialised: %s", tool_db_path)
 
@@ -145,6 +146,61 @@ def _migrate_memory_prompts_v1(
         )
         conn.commit()
         logger.info("Applied migration: memory_prompt_v1")
+    finally:
+        conn.close()
+
+
+def _migrate_praise_loop_prevention_v1(
+    tool_store: "ToolPromptStore",  # noqa: F821
+    prompts_dir: Path,
+) -> None:
+    """One-shot migration: update communication/messaging prompts to prevent praise loops.
+
+    Updates system_sections with new rules:
+    - 1往復ルール (1-round-trip rule) in communication_rules
+    - Board投稿ルール in messaging templates
+    - 送信禁止ルール in unread_messages (via messaging sections)
+
+    Idempotent — records migration key ``praise_loop_prevention_v1`` in a
+    ``migrations`` table and skips if already applied.
+    """
+    from core.tooling.prompt_db import SECTION_CONDITIONS
+
+    conn = tool_store._connect()
+    try:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS migrations "
+            "(key TEXT PRIMARY KEY, applied_at TEXT)"
+        )
+        row = conn.execute(
+            "SELECT 1 FROM migrations WHERE key = ?",
+            ("praise_loop_prevention_v1",),
+        ).fetchone()
+        if row:
+            return  # already applied
+
+        # Update sections from runtime prompts files
+        for key in (
+            "communication_rules_a1",
+            "communication_rules",
+            "messaging_a1",
+            "messaging",
+        ):
+            path = prompts_dir / f"{key}.md"
+            if path.exists():
+                content = path.read_text(encoding="utf-8").strip()
+                if content:
+                    condition = SECTION_CONDITIONS.get(key)
+                    tool_store.set_section(key, content, condition)
+
+        from core.time_utils import now_jst
+
+        conn.execute(
+            "INSERT INTO migrations (key, applied_at) VALUES (?, ?)",
+            ("praise_loop_prevention_v1", now_jst().isoformat()),
+        )
+        conn.commit()
+        logger.info("Applied migration: praise_loop_prevention_v1")
     finally:
         conn.close()
 

@@ -780,7 +780,14 @@ class ToolHandler:
         logger.info("post_channel channel=%s anima=%s", channel, self._anima_name)
 
         # ── Board mention fanout ──────────────────────────────
-        self._fanout_board_mentions(channel, text)
+        # Suppress re-fanout when this post is a reply triggered by a board_mention.
+        if not getattr(self, "_suppress_board_fanout", False):
+            self._fanout_board_mentions(channel, text)
+        else:
+            logger.info(
+                "Suppressed board fanout for board_mention reply: channel=%s anima=%s",
+                channel, self._anima_name,
+            )
 
         return f"Posted to #{channel}"
 
