@@ -297,6 +297,7 @@ class LiteLLMExecutor(BaseExecutor):
         trigger: str = "",
         images: list[dict[str, Any]] | None = None,
         prior_messages: list[dict[str, Any]] | None = None,
+        max_turns_override: int | None = None,
     ) -> ExecutionResult:
         """Run the LiteLLM tool-use loop.
 
@@ -314,7 +315,7 @@ class LiteLLMExecutor(BaseExecutor):
         all_response_text: list[str] = []
         all_tool_records: list[ToolCallRecord] = []
         llm_kwargs = self._build_llm_kwargs()
-        max_iterations = self._model_config.max_turns
+        max_iterations = max_turns_override or self._model_config.max_turns
         chain_count = 0
 
         for iteration in range(max_iterations):
@@ -456,6 +457,7 @@ class LiteLLMExecutor(BaseExecutor):
         tracker: ContextTracker,
         images: list[dict[str, Any]] | None = None,
         prior_messages: list[dict[str, Any]] | None = None,
+        max_turns_override: int | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """Stream execution events from the LiteLLM tool-use loop.
 
@@ -469,12 +471,14 @@ class LiteLLMExecutor(BaseExecutor):
             async for event in self._stream_iteration_level(
                 system_prompt, prompt, tracker, images,
                 prior_messages=prior_messages,
+                max_turns_override=max_turns_override,
             ):
                 yield event
         else:
             async for event in self._stream_token_level(
                 system_prompt, prompt, tracker, images,
                 prior_messages=prior_messages,
+                max_turns_override=max_turns_override,
             ):
                 yield event
 
@@ -487,6 +491,7 @@ class LiteLLMExecutor(BaseExecutor):
         tracker: ContextTracker,
         images: list[dict[str, Any]] | None = None,
         prior_messages: list[dict[str, Any]] | None = None,
+        max_turns_override: int | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """Token-level streaming via ``litellm.acompletion(stream=True)``.
 
@@ -503,7 +508,7 @@ class LiteLLMExecutor(BaseExecutor):
         all_response_text: list[str] = []
         all_tool_records: list[ToolCallRecord] = []
         llm_kwargs = self._build_llm_kwargs()
-        max_iterations = self._model_config.max_turns
+        max_iterations = max_turns_override or self._model_config.max_turns
 
         async with stream_error_boundary(
             all_response_text, executor_name="A2-stream",
@@ -696,6 +701,7 @@ class LiteLLMExecutor(BaseExecutor):
         tracker: ContextTracker,
         images: list[dict[str, Any]] | None = None,
         prior_messages: list[dict[str, Any]] | None = None,
+        max_turns_override: int | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """Iteration-level streaming for Ollama models.
 
@@ -715,7 +721,7 @@ class LiteLLMExecutor(BaseExecutor):
         all_response_text: list[str] = []
         all_tool_records: list[ToolCallRecord] = []
         llm_kwargs = self._build_llm_kwargs()
-        max_iterations = self._model_config.max_turns
+        max_iterations = max_turns_override or self._model_config.max_turns
 
         async with stream_error_boundary(
             all_response_text, executor_name="A2-ollama-stream",
@@ -870,6 +876,20 @@ class LiteLLMExecutor(BaseExecutor):
         ]
         if prior_messages:
             msgs.extend(prior_messages)
+            if images and msgs and msgs[-1].get("role") == "user":
+                # Inject images into the last user message
+                last = msgs[-1]
+                text = last["content"] if isinstance(last["content"], str) else ""
+                content_parts: list[dict[str, Any]] = []
+                for img in images:
+                    content_parts.append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{img['media_type']};base64,{img['data']}",
+                        },
+                    })
+                content_parts.append({"type": "text", "text": text})
+                msgs[-1] = {"role": "user", "content": content_parts}
             return msgs  # prior_messages already includes the current user msg
         if images:
             content_parts: list[dict[str, Any]] = []

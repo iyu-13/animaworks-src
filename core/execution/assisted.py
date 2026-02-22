@@ -309,6 +309,7 @@ class AssistedExecutor(BaseExecutor):
         trigger: str = "",
         images: list[dict[str, Any]] | None = None,
         prior_messages: list[dict[str, Any]] | None = None,
+        max_turns_override: int | None = None,
     ) -> ExecutionResult:
         """Run the text-based tool-call loop.
 
@@ -335,7 +336,7 @@ class AssistedExecutor(BaseExecutor):
         ]
         all_response_text: list[str] = []
         all_tool_records: list[ToolCallRecord] = []
-        max_iterations = self._model_config.max_turns
+        max_iterations = max_turns_override or self._model_config.max_turns
 
         # ── 2. Tool-call loop ────────────────────────────────
         for iteration in range(max_iterations):
@@ -467,6 +468,7 @@ class AssistedExecutor(BaseExecutor):
         tracker: ContextTracker,
         images: list[dict[str, Any]] | None = None,
         prior_messages: list[dict[str, Any]] | None = None,
+        max_turns_override: int | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """Stream execution events from the text-based tool-call loop.
 
@@ -501,7 +503,7 @@ class AssistedExecutor(BaseExecutor):
         ]
         all_response_text: list[str] = []
         all_tool_records: list[ToolCallRecord] = []
-        max_iterations = self._model_config.max_turns
+        max_iterations = max_turns_override or self._model_config.max_turns
 
         # ── 2. Tool-call loop ────────────────────────────────
         async with stream_error_boundary(

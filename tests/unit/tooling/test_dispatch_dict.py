@@ -48,6 +48,7 @@ EXPECTED_BUILTIN_TOOLS = frozenset({
     "search_memory",
     "read_memory_file",
     "write_memory_file",
+    "archive_memory_file",
     "send_message",
     "post_channel",
     "read_channel",
@@ -88,8 +89,8 @@ class TestDispatchDictCompleteness:
         assert extra == set(), f"Unexpected tools in dispatch dict: {extra}"
 
     def test_dispatch_count(self, handler: ToolHandler):
-        """Dispatch dict should have exactly 24 entries."""
-        assert len(handler._dispatch) == 24
+        """Dispatch dict should have exactly 25 entries."""
+        assert len(handler._dispatch) == 25
 
     def test_all_dispatch_values_are_callable(self, handler: ToolHandler):
         """Every value in the dispatch dict must be callable."""

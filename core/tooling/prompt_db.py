@@ -73,6 +73,11 @@ DEFAULT_DESCRIPTIONS: dict[str, str] = {
         "heartbeat.md や cron.md の更新にも使う。"
         "mode='overwrite' で全体置換、mode='append' で末尾追記。"
     ),
+    "archive_memory_file": (
+        "不要になった記憶ファイル（knowledge, procedures）をアーカイブする。"
+        "ファイルはarchive/ディレクトリに移動され、完全には削除されない。"
+        "古くなった知識、重複ファイル、陳腐化した手順の整理に使用する。"
+    ),
     "send_message": (
         "他のAnimaまたは人間ユーザーにDMを送信する。"
         "人間ユーザーへのメッセージは設定された外部チャネル（Slack等）経由で自動配信される。"

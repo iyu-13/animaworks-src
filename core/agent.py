@@ -733,6 +733,7 @@ class AgentCore:
         images: list[dict[str, Any]] | None = None,
         prior_messages: list[dict[str, Any]] | None = None,
         message_intent: str = "",
+        max_turns_override: int | None = None,
     ) -> CycleResult:
         """Run one agent cycle with autonomous memory search.
 
@@ -751,6 +752,7 @@ class AgentCore:
                 images=images,
                 prior_messages=prior_messages,
                 message_intent=message_intent,
+                max_turns_override=max_turns_override,
             )
 
     async def _run_cycle_inner(
@@ -760,6 +762,7 @@ class AgentCore:
         images: list[dict[str, Any]] | None = None,
         prior_messages: list[dict[str, Any]] | None = None,
         message_intent: str = "",
+        max_turns_override: int | None = None,
     ) -> CycleResult:
         start = time.monotonic()
         mode = self._resolve_execution_mode()
@@ -847,6 +850,7 @@ class AgentCore:
                 system_prompt=system_prompt,
                 trigger=trigger,
                 images=images,
+                max_turns_override=max_turns_override,
             )
             _save_prompt_log_end(
                 self.anima_dir,
@@ -875,6 +879,7 @@ class AgentCore:
                 shortterm=shortterm,
                 images=images,
                 prior_messages=prior_messages,
+                max_turns_override=max_turns_override,
             )
             _save_prompt_log_end(
                 self.anima_dir,
@@ -915,6 +920,7 @@ class AgentCore:
                 tracker=tracker,
                 images=images,
                 prior_messages=prior_messages,
+                max_turns_override=max_turns_override,
             )
         else:
             result = await self._executor.execute(
@@ -922,6 +928,7 @@ class AgentCore:
                 system_prompt=system_prompt,
                 tracker=tracker,
                 images=images,
+                max_turns_override=max_turns_override,
             )
         # Merge transcript-parsed replied_to for A1 mode
         if result.replied_to_from_transcript:
@@ -982,6 +989,7 @@ class AgentCore:
                     prompt=continuation_prompt,
                     system_prompt=system_prompt_2,
                     tracker=tracker,
+                    max_turns_override=max_turns_override,
                 )
                 # Merge from chained session too
                 if result_2.replied_to_from_transcript:
@@ -1031,6 +1039,7 @@ class AgentCore:
         images: list[dict[str, Any]] | None = None,
         prior_messages: list[dict[str, Any]] | None = None,
         message_intent: str = "",
+        max_turns_override: int | None = None,
     ) -> AsyncGenerator[dict, None]:
         """Streaming version of run_cycle.
 
@@ -1053,6 +1062,7 @@ class AgentCore:
                     images=images,
                     prior_messages=prior_messages,
                     message_intent=message_intent,
+                    max_turns_override=max_turns_override,
                 )
             yield {"type": "text_delta", "text": cycle.summary}
             yield {
@@ -1117,6 +1127,7 @@ class AgentCore:
                     trigger,
                     message_intent=message_intent,
                     images=images,
+                    max_turns_override=max_turns_override,
                 )
             yield {"type": "text_delta", "text": cycle.summary}
             yield {
@@ -1175,6 +1186,7 @@ class AgentCore:
                     current_system_prompt, current_prompt, tracker,
                     images=images,
                     prior_messages=prior_messages,
+                    max_turns_override=max_turns_override,
                 ):
                     if chunk["type"] == "done":
                         full_text_parts.append(chunk["full_text"])
@@ -1338,7 +1350,8 @@ class AgentCore:
 
             try:
                 async for chunk in self._executor.execute_streaming(
-                    system_prompt_2, continuation_prompt, tracker
+                    system_prompt_2, continuation_prompt, tracker,
+                    max_turns_override=max_turns_override,
                 ):
                     if chunk["type"] == "done":
                         full_text_parts.append(chunk["full_text"])
