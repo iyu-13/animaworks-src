@@ -870,6 +870,20 @@ class LiteLLMExecutor(BaseExecutor):
         ]
         if prior_messages:
             msgs.extend(prior_messages)
+            if images and msgs and msgs[-1].get("role") == "user":
+                # Inject images into the last user message
+                last = msgs[-1]
+                text = last["content"] if isinstance(last["content"], str) else ""
+                content_parts: list[dict[str, Any]] = []
+                for img in images:
+                    content_parts.append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{img['media_type']};base64,{img['data']}",
+                        },
+                    })
+                content_parts.append({"type": "text", "text": text})
+                msgs[-1] = {"role": "user", "content": content_parts}
             return msgs  # prior_messages already includes the current user msg
         if images:
             content_parts: list[dict[str, Any]] = []
