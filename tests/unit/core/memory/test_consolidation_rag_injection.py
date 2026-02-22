@@ -104,7 +104,7 @@ class TestUpdateRagIndexInjection:
             engine._update_rag_index(["test.md"])
 
             # Should call get_vector_store since no injected store
-            mock_get_vs.assert_called_once()
+            mock_get_vs.assert_called_once_with("test")
             MockIndexer.assert_called_once_with(
                 singleton_store, "test", anima_dir,
             )
@@ -167,7 +167,7 @@ class TestFetchRelatedKnowledgeInjection:
 
             engine._fetch_related_knowledge("some episode text")
 
-            mock_get_vs.assert_called_once()
+            mock_get_vs.assert_called_once_with("test")
             MockIndexer.assert_called_once_with(
                 singleton_store, "test", anima_dir,
             )
@@ -225,7 +225,7 @@ class TestRebuildRagIndexInjection:
 
             engine._rebuild_rag_index()
 
-            mock_get_vs.assert_called_once()
+            mock_get_vs.assert_called_once_with("test")
             MockIndexer.assert_called_once_with(
                 singleton_store, "test", anima_dir,
             )

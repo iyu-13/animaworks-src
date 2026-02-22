@@ -1033,11 +1033,11 @@ class ProcessSupervisor:
             try:
                 from core.memory.consolidation import ConsolidationEngine
 
-                # Inject shared RAG store to avoid independent re-creation
+                # Inject per-anima RAG store
                 rag_store = None
                 try:
                     from core.memory.rag.singleton import get_vector_store
-                    rag_store = get_vector_store()
+                    rag_store = get_vector_store(anima_name)
                 except Exception:
                     logger.debug("RAG store not available for consolidation")
 
@@ -1087,11 +1087,11 @@ class ProcessSupervisor:
             try:
                 from core.memory.consolidation import ConsolidationEngine
 
-                # Inject shared RAG store to avoid independent re-creation
+                # Inject per-anima RAG store
                 rag_store = None
                 try:
                     from core.memory.rag.singleton import get_vector_store
-                    rag_store = get_vector_store()
+                    rag_store = get_vector_store(anima_name)
                 except Exception:
                     logger.debug("RAG store not available for consolidation")
 

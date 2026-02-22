@@ -250,8 +250,8 @@ class PrimingEngine:
             from core.memory.rag.singleton import get_vector_store
             from core.memory.rag.indexer import MemoryIndexer
 
-            vector_store = get_vector_store()
             anima_name = self.anima_dir.name
+            vector_store = get_vector_store(anima_name)
             indexer = MemoryIndexer(vector_store, anima_name, self.anima_dir)
             self._retriever = MemoryRetriever(
                 vector_store, indexer, self.knowledge_dir,

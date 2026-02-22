@@ -41,8 +41,8 @@ class RAGMemorySearch:
             from core.memory.rag import MemoryIndexer
             from core.memory.rag.singleton import get_vector_store
 
-            vector_store = get_vector_store()
             anima_name = self._anima_dir.name
+            vector_store = get_vector_store(anima_name)
             self._indexer = MemoryIndexer(vector_store, anima_name, self._anima_dir)
             logger.debug("RAG indexer initialized for anima=%s", anima_name)
 

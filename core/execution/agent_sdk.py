@@ -761,6 +761,7 @@ class AgentSDKExecutor(BaseExecutor):
             model=self._resolve_agent_sdk_model(),
             env=self._build_env(),
             max_buffer_size=_SDK_MAX_BUFFER_SIZE,
+            setting_sources=[],  # CLI内蔵hook(settings.json)の読み込みを防止
             mcp_servers={
                 "aw": {
                     "command": sys.executable,
@@ -915,6 +916,7 @@ class AgentSDKExecutor(BaseExecutor):
             env=self._build_env(),
             max_buffer_size=_SDK_MAX_BUFFER_SIZE,
             include_partial_messages=True,
+            setting_sources=[],  # CLI内蔵hook(settings.json)の読み込みを防止
             mcp_servers={
                 "aw": {
                     "command": sys.executable,

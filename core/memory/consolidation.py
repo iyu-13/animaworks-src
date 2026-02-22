@@ -682,7 +682,7 @@ class ConsolidationEngine:
 
             from core.memory.rag import MemoryIndexer
 
-            vector_store = self._rag_store or get_vector_store()
+            vector_store = self._rag_store or get_vector_store(self.anima_name)
             indexer = MemoryIndexer(vector_store, self.anima_name, self.anima_dir)
             retriever = MemoryRetriever(
                 vector_store, indexer, self.knowledge_dir,
@@ -1118,7 +1118,7 @@ class ConsolidationEngine:
             from core.memory.rag import MemoryIndexer
             from core.memory.rag.singleton import get_vector_store
 
-            vector_store = self._rag_store or get_vector_store()
+            vector_store = self._rag_store or get_vector_store(self.anima_name)
             indexer = MemoryIndexer(vector_store, self.anima_name, self.anima_dir)
 
             for filename in filenames:
@@ -1270,7 +1270,7 @@ class ConsolidationEngine:
             from core.memory.rag.retriever import MemoryRetriever
             from core.memory.rag.singleton import get_vector_store
 
-            vector_store = self._rag_store or get_vector_store()
+            vector_store = self._rag_store or get_vector_store(self.anima_name)
             indexer = MemoryIndexer(vector_store, self.anima_name, self.anima_dir)
             retriever = MemoryRetriever(vector_store, indexer, self.knowledge_dir)
 
@@ -1513,7 +1513,7 @@ class ConsolidationEngine:
             from core.memory.rag import MemoryIndexer
             from core.memory.rag.singleton import get_vector_store
 
-            vector_store = self._rag_store or get_vector_store()
+            vector_store = self._rag_store or get_vector_store(self.anima_name)
             indexer = MemoryIndexer(vector_store, self.anima_name, self.anima_dir)
 
             # Re-index all knowledge files
@@ -1666,7 +1666,7 @@ class ConsolidationEngine:
                 from core.memory.rag.singleton import get_vector_store
                 from core.memory.rag import MemoryIndexer
 
-                vector_store = self._rag_store or get_vector_store()
+                vector_store = self._rag_store or get_vector_store(self.anima_name)
                 indexer = MemoryIndexer(vector_store, self.anima_name, self.anima_dir)
                 retriever = MemoryRetriever(
                     vector_store, indexer, self.knowledge_dir,
