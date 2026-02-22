@@ -16,6 +16,7 @@ instead of PostToolUse hooks.
 """
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -23,6 +24,7 @@ import shutil
 import sys
 from collections.abc import AsyncGenerator, Callable
 from dataclasses import asdict
+from datetime import datetime
 from typing import Any
 
 from core.prompt.context import CHARS_PER_TOKEN, ContextTracker, resolve_context_window
@@ -81,6 +83,41 @@ _SDK_MAX_BUFFER_SIZE = 4 * 1024 * 1024  # 4 MB
 # When estimated context usage leaves fewer than max_tokens * this factor
 # free, the PreToolUse hook triggers session termination for auto-compact.
 _CONTEXT_AUTOCOMPACT_SAFETY = 2
+
+
+# ── Session ID persistence ───────────────────────────────────
+
+_SESSION_FILE = "current_session.json"
+
+
+def _load_session_id(anima_dir: Path) -> str | None:
+    """Load persisted session ID for SDK session resume."""
+    path = anima_dir / "state" / _SESSION_FILE
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data.get("session_id")
+    except (json.JSONDecodeError, OSError):
+        logger.warning("Failed to load session ID from %s", path)
+        return None
+
+
+def _save_session_id(anima_dir: Path, session_id: str) -> None:
+    """Persist session ID for future SDK session resume."""
+    path = anima_dir / "state" / _SESSION_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({
+        "session_id": session_id,
+        "timestamp": datetime.now().isoformat(),
+    }, ensure_ascii=False), encoding="utf-8")
+
+
+def _clear_session_id(anima_dir: Path) -> None:
+    """Clear persisted session ID (e.g., after resume failure)."""
+    path = anima_dir / "state" / _SESSION_FILE
+    if path.exists():
+        path.unlink(missing_ok=True)
 
 
 def _check_a1_file_access(
@@ -386,10 +423,11 @@ def _build_pre_tool_hook(
     """Build a PreToolUse hook with security checks, output guards, and tool logging.
 
     When *session_stats* is provided the hook also performs mid-session
-    context budget estimation.  If the estimated token usage leaves fewer
+    context budget observation.  If the estimated token usage leaves fewer
     than ``max_tokens * _CONTEXT_AUTOCOMPACT_SAFETY`` tokens free, the
-    hook returns ``continue_=False`` to trigger session termination so
-    that AgentCore can chain into a fresh session.
+    hook logs the observation for monitoring but does NOT return
+    ``continue_=False`` — the SDK's built-in auto-compact handles
+    context management.
     """
     from claude_agent_sdk.types import (
         HookContext,
@@ -409,7 +447,7 @@ def _build_pre_tool_hook(
         tool_name = input_data.get("tool_name", "")
         tool_input = input_data.get("tool_input", {})
 
-        # ── Context budget check ──────────────────────────
+        # ── Context budget observation (SDK auto-compact handles limits) ──
         if session_stats is not None:
             session_stats["tool_call_count"] += 1
             estimated_tokens = (
@@ -420,27 +458,19 @@ def _build_pre_tool_hook(
             remaining = context_window - estimated_tokens
             budget = max_tokens * _CONTEXT_AUTOCOMPACT_SAFETY
             if remaining < budget:
-                session_stats["force_chain"] = True
+                logger.info(
+                    "Context approaching limit: estimated=%d remaining=%d "
+                    "context_window=%d — SDK auto-compact will handle",
+                    estimated_tokens, remaining, context_window,
+                )
+                # Do NOT return continue_=False. Let SDK handle auto-compact.
+                # Still log for observability.
                 _log_tool_use(
                     anima_dir, tool_name, tool_input,
-                    blocked=True,
+                    blocked=False,
                     block_reason=(
-                        f"context_autocompact: estimated {estimated_tokens} tokens, "
-                        f"remaining {remaining} < max_tokens*{_CONTEXT_AUTOCOMPACT_SAFETY}"
-                    ),
-                )
-                logger.warning(
-                    "Context auto-compact triggered: estimated=%d remaining=%d "
-                    "budget=%d (max_tokens=%d * %d) context_window=%d",
-                    estimated_tokens, remaining, budget,
-                    max_tokens, _CONTEXT_AUTOCOMPACT_SAFETY, context_window,
-                )
-                return SyncHookJSONOutput(
-                    continue_=False,
-                    stopReason=(
-                        f"Context auto-compact: approaching context window limit "
-                        f"(estimated {estimated_tokens}/{context_window} tokens). "
-                        f"Session will be chained."
+                        f"context_observation: estimated {estimated_tokens} tokens, "
+                        f"remaining {remaining} — SDK managing"
                     ),
                 )
 
@@ -712,6 +742,10 @@ class AgentSDKExecutor(BaseExecutor):
         shortterm: ShortTermMemory | None = None,
         trigger: str = "",
         images: list[dict[str, Any]] | None = None,
+        # S mode: prior_messages is intentionally unused. The Agent SDK manages
+        # conversation history internally via session resume. AnimaWorks only
+        # provides system_prompt (rebuilt each time with fresh Priming/RAG)
+        # and the current user message.
         prior_messages: list[dict[str, Any]] | None = None,
         max_turns_override: int | None = None,
     ) -> ExecutionResult:
@@ -729,7 +763,9 @@ class AgentSDKExecutor(BaseExecutor):
             AssistantMessage,
             ClaudeAgentOptions,
             ClaudeSDKClient,
+            ClaudeSDKError,
             HookMatcher,
+            ProcessError,
             ResultMessage,
             SystemMessage,
             TextBlock,
@@ -752,6 +788,8 @@ class AgentSDKExecutor(BaseExecutor):
             "force_chain": False,
         }
 
+        session_id_to_resume = _load_session_id(self._anima_dir)
+
         options = ClaudeAgentOptions(
             system_prompt=system_prompt,
             allowed_tools=["Read", "Write", "Edit", "Bash", "Grep", "Glob",
@@ -762,6 +800,7 @@ class AgentSDKExecutor(BaseExecutor):
             model=self._resolve_agent_sdk_model(),
             env=self._build_env(),
             max_buffer_size=_SDK_MAX_BUFFER_SIZE,
+            resume=session_id_to_resume,  # Resume prior SDK session if available
             setting_sources=[],  # CLI内蔵hook(settings.json)の読み込みを防止
             mcp_servers={
                 "aw": {
@@ -789,13 +828,18 @@ class AgentSDKExecutor(BaseExecutor):
         message_count = 0
 
         try:
-            logger.info("ClaudeSDKClient connecting (blocking mode)")
+            logger.info(
+                "ClaudeSDKClient connecting (blocking mode, resume=%s)",
+                session_id_to_resume,
+            )
             async with ClaudeSDKClient(options=options) as client:
                 logger.info("ClaudeSDKClient connected")
                 await client.query(prompt)
                 async for message in client.receive_response():
                     if isinstance(message, ResultMessage):
                         result_message = message
+                        if message.session_id:
+                            _save_session_id(self._anima_dir, message.session_id)
                         if tracker:
                             tracker.update_from_result_message(message.usage)
                     elif isinstance(message, AssistantMessage):
@@ -834,6 +878,106 @@ class AgentSDKExecutor(BaseExecutor):
                                 else:
                                     logger.info("MCP server '%s' connected successfully", name)
             logger.debug("ClaudeSDKClient disconnected")
+        except (ProcessError, ClaudeSDKError) as e:
+            if session_id_to_resume:
+                logger.warning(
+                    "SDK session resume failed (session_id=%s): %s. "
+                    "Retrying with fresh session.",
+                    session_id_to_resume, e,
+                )
+                _clear_session_id(self._anima_dir)
+                # Retry without resume
+                options = ClaudeAgentOptions(
+                    system_prompt=system_prompt,
+                    allowed_tools=["Read", "Write", "Edit", "Bash", "Grep", "Glob",
+                                   "mcp__aw__*"],
+                    permission_mode="acceptEdits",
+                    cwd=str(self._anima_dir),
+                    max_turns=max_turns_override or self._model_config.max_turns,
+                    model=self._resolve_agent_sdk_model(),
+                    env=self._build_env(),
+                    max_buffer_size=_SDK_MAX_BUFFER_SIZE,
+                    resume=None,
+                    setting_sources=[],
+                    mcp_servers={
+                        "aw": {
+                            "command": sys.executable,
+                            "args": ["-m", "core.mcp.server"],
+                            "env": self._build_mcp_env(),
+                        },
+                    },
+                    hooks={
+                        "PreToolUse": [HookMatcher(
+                            matcher=".*",
+                            hooks=[_build_pre_tool_hook(
+                                self._anima_dir,
+                                max_tokens=self._model_config.max_tokens or 4096,
+                                context_window=_cw,
+                                session_stats=session_stats,
+                            )],
+                        )],
+                    },
+                )
+                try:
+                    async with ClaudeSDKClient(options=options) as client:
+                        logger.info("ClaudeSDKClient connected (fresh session retry)")
+                        await client.query(prompt)
+                        async for message in client.receive_response():
+                            if isinstance(message, ResultMessage):
+                                result_message = message
+                                if message.session_id:
+                                    _save_session_id(self._anima_dir, message.session_id)
+                                if tracker:
+                                    tracker.update_from_result_message(message.usage)
+                            elif isinstance(message, AssistantMessage):
+                                message_count += 1
+                                for block in message.content:
+                                    if isinstance(block, TextBlock):
+                                        response_text.append(block.text)
+                                    elif isinstance(block, ToolUseBlock):
+                                        _handle_tool_use_block(
+                                            block, pending_records, None,
+                                            self._model_config.model,
+                                        )
+                            elif isinstance(message, UserMessage):
+                                if isinstance(message.content, list):
+                                    for block in message.content:
+                                        if isinstance(block, ToolResultBlock):
+                                            session_stats["total_result_bytes"] += (
+                                                _tool_result_content_len(block)
+                                            )
+                                            _handle_tool_result_block(
+                                                block, pending_records, None,
+                                                self._model_config.model,
+                                                anima_dir=self._anima_dir,
+                                            )
+                            elif isinstance(message, SystemMessage):
+                                if message.subtype == "init" and message.data:
+                                    mcp_servers = message.data.get("mcp_servers", [])
+                                    for srv in mcp_servers:
+                                        name = srv.get("name", "unknown")
+                                        status = srv.get("status", "unknown")
+                                        if status != "connected":
+                                            logger.error(
+                                                "MCP server '%s' failed to connect: status=%s",
+                                                name, status,
+                                            )
+                                        else:
+                                            logger.info("MCP server '%s' connected successfully", name)
+                except Exception as retry_exc:
+                    logger.exception("Agent SDK execution error (fresh session retry)")
+                    all_tool_records = _finalize_pending_records(pending_records)
+                    return ExecutionResult(
+                        text="\n".join(response_text) or f"[Agent SDK Error: {retry_exc}]",
+                        tool_call_records=all_tool_records,
+                    )
+            else:
+                logger.exception("Agent SDK execution error")
+                all_tool_records = _finalize_pending_records(pending_records)
+                return ExecutionResult(
+                    text="\n".join(response_text) or f"[Agent SDK Error: {e}]",
+                    tool_call_records=all_tool_records,
+                )
         except Exception as e:
             logger.exception("Agent SDK execution error")
             all_tool_records = _finalize_pending_records(pending_records)
@@ -866,6 +1010,10 @@ class AgentSDKExecutor(BaseExecutor):
         prompt: str,
         tracker: ContextTracker,
         images: list[dict[str, Any]] | None = None,
+        # S mode: prior_messages is intentionally unused. The Agent SDK manages
+        # conversation history internally via session resume. AnimaWorks only
+        # provides system_prompt (rebuilt each time with fresh Priming/RAG)
+        # and the current user message.
         prior_messages: list[dict[str, Any]] | None = None,
         max_turns_override: int | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
@@ -886,7 +1034,9 @@ class AgentSDKExecutor(BaseExecutor):
             AssistantMessage,
             ClaudeAgentOptions,
             ClaudeSDKClient,
+            ClaudeSDKError,
             HookMatcher,
+            ProcessError,
             ResultMessage,
             SystemMessage,
             TextBlock,
@@ -907,6 +1057,8 @@ class AgentSDKExecutor(BaseExecutor):
             "force_chain": False,
         }
 
+        session_id_to_resume = _load_session_id(self._anima_dir)
+
         options = ClaudeAgentOptions(
             system_prompt=system_prompt,
             allowed_tools=["Read", "Write", "Edit", "Bash", "Grep", "Glob",
@@ -918,6 +1070,7 @@ class AgentSDKExecutor(BaseExecutor):
             env=self._build_env(),
             max_buffer_size=_SDK_MAX_BUFFER_SIZE,
             include_partial_messages=True,
+            resume=session_id_to_resume,  # Resume prior SDK session if available
             setting_sources=[],  # CLI内蔵hook(settings.json)の読み込みを防止
             mcp_servers={
                 "aw": {
@@ -946,7 +1099,10 @@ class AgentSDKExecutor(BaseExecutor):
         message_count = 0
 
         try:
-            logger.info("ClaudeSDKClient connecting (streaming mode)")
+            logger.info(
+                "ClaudeSDKClient connecting (streaming mode, resume=%s)",
+                session_id_to_resume,
+            )
             async with ClaudeSDKClient(options=options) as client:
                 logger.info("ClaudeSDKClient connected")
                 await client.query(prompt)
@@ -1007,6 +1163,8 @@ class AgentSDKExecutor(BaseExecutor):
 
                     elif isinstance(message, ResultMessage):
                         result_message = message
+                        if message.session_id:
+                            _save_session_id(self._anima_dir, message.session_id)
                         tracker.update_from_result_message(message.usage)
                         break  # receive_messages() does not auto-stop on ResultMessage
 
@@ -1024,6 +1182,142 @@ class AgentSDKExecutor(BaseExecutor):
                                 else:
                                     logger.info("MCP server '%s' connected successfully", name)
             logger.debug("ClaudeSDKClient disconnected")
+        except (ProcessError, ClaudeSDKError) as e:
+            if session_id_to_resume:
+                logger.warning(
+                    "SDK session resume failed (session_id=%s): %s. "
+                    "Retrying with fresh session.",
+                    session_id_to_resume, e,
+                )
+                _clear_session_id(self._anima_dir)
+                # Retry without resume
+                options = ClaudeAgentOptions(
+                    system_prompt=system_prompt,
+                    allowed_tools=["Read", "Write", "Edit", "Bash", "Grep", "Glob",
+                                   "mcp__aw__*"],
+                    permission_mode="acceptEdits",
+                    cwd=str(self._anima_dir),
+                    max_turns=max_turns_override or self._model_config.max_turns,
+                    model=self._resolve_agent_sdk_model(),
+                    env=self._build_env(),
+                    max_buffer_size=_SDK_MAX_BUFFER_SIZE,
+                    include_partial_messages=True,
+                    resume=None,
+                    setting_sources=[],
+                    mcp_servers={
+                        "aw": {
+                            "command": sys.executable,
+                            "args": ["-m", "core.mcp.server"],
+                            "env": self._build_mcp_env(),
+                        },
+                    },
+                    hooks={
+                        "PreToolUse": [HookMatcher(
+                            matcher=".*",
+                            hooks=[_build_pre_tool_hook(
+                                self._anima_dir,
+                                max_tokens=self._model_config.max_tokens or 4096,
+                                context_window=_cw,
+                                session_stats=session_stats,
+                            )],
+                        )],
+                    },
+                )
+                try:
+                    async with ClaudeSDKClient(options=options) as client:
+                        logger.info("ClaudeSDKClient connected (fresh session retry)")
+                        await client.query(prompt)
+                        async for message in client.receive_messages():
+                            if isinstance(message, StreamEvent):
+                                event = message.event
+                                event_type = event.get("type", "")
+                                if event_type == "content_block_start":
+                                    block = event.get("content_block", {})
+                                    if block.get("type") == "tool_use":
+                                        tool_id = block.get("id", "")
+                                        tool_name = block.get("name", "")
+                                        active_tool_ids.add(tool_id)
+                                        yield {
+                                            "type": "tool_start",
+                                            "tool_name": tool_name,
+                                            "tool_id": tool_id,
+                                        }
+                                elif event_type == "content_block_delta":
+                                    delta = event.get("delta", {})
+                                    if delta.get("type") == "text_delta":
+                                        text = delta.get("text", "")
+                                        if text:
+                                            yield {"type": "text_delta", "text": text}
+                            elif isinstance(message, AssistantMessage):
+                                message_count += 1
+                                for block in message.content:
+                                    if isinstance(block, TextBlock):
+                                        response_text.append(block.text)
+                                    elif isinstance(block, ToolUseBlock):
+                                        _handle_tool_use_block(
+                                            block, pending_records, None,
+                                            self._model_config.model,
+                                        )
+                                        if block.id in active_tool_ids:
+                                            active_tool_ids.discard(block.id)
+                                            yield {
+                                                "type": "tool_end",
+                                                "tool_id": block.id,
+                                                "tool_name": block.name,
+                                            }
+                            elif isinstance(message, UserMessage):
+                                if isinstance(message.content, list):
+                                    for block in message.content:
+                                        if isinstance(block, ToolResultBlock):
+                                            session_stats["total_result_bytes"] += (
+                                                _tool_result_content_len(block)
+                                            )
+                                            _handle_tool_result_block(
+                                                block, pending_records, None,
+                                                self._model_config.model,
+                                                anima_dir=self._anima_dir,
+                                            )
+                            elif isinstance(message, ResultMessage):
+                                result_message = message
+                                if message.session_id:
+                                    _save_session_id(self._anima_dir, message.session_id)
+                                tracker.update_from_result_message(message.usage)
+                                break
+                            elif isinstance(message, SystemMessage):
+                                if message.subtype == "init" and message.data:
+                                    mcp_servers = message.data.get("mcp_servers", [])
+                                    for srv in mcp_servers:
+                                        name = srv.get("name", "unknown")
+                                        status = srv.get("status", "unknown")
+                                        if status != "connected":
+                                            logger.error(
+                                                "MCP server '%s' failed to connect: status=%s",
+                                                name, status,
+                                            )
+                                        else:
+                                            logger.info("MCP server '%s' connected successfully", name)
+                except BaseException as retry_exc:
+                    if isinstance(retry_exc, asyncio.CancelledError):
+                        raise
+                    if not isinstance(retry_exc, Exception):
+                        logger.critical(
+                            "Agent SDK raised %s during streaming retry: %s",
+                            type(retry_exc).__name__, retry_exc,
+                        )
+                    else:
+                        logger.exception("Agent SDK streaming error (fresh session retry)")
+                    partial = "\n".join(response_text)
+                    raise StreamDisconnectedError(
+                        f"Agent SDK stream error ({type(retry_exc).__name__}): {retry_exc}",
+                        partial_text=partial,
+                    ) from retry_exc
+            else:
+                # No session to resume — propagate as StreamDisconnectedError
+                partial = "\n".join(response_text)
+                raise StreamDisconnectedError(
+                    f"Agent SDK stream error ({type(e).__name__}): {e}",
+                    partial_text=partial,
+                ) from e
         except BaseException as e:
             # CancelledError は正常な asyncio ライフサイクル（SIGTERM等）。
             # 捕捉せずそのまま伝播させる。
