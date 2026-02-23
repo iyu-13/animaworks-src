@@ -89,7 +89,7 @@ _EXPRESSION_PROMPTS: dict[str, str] = {
     "smile": (
         "Change the character's expression to a bright happy smile. "
         "Cheeks raised, eyes softened with warmth, gentle closed-mouth smile. "
-        "Head tilted slightly to one side, one hand making a small wave or peace sign. "
+        "Head tilted slightly to one side, hands relaxed naturally. "
         "Bust-up portrait, anime illustration, soft lighting. "
         "Same character identity, outfit, and hairstyle."
     ),
