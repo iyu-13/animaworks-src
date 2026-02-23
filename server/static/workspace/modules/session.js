@@ -5,6 +5,8 @@ import { getState, setState } from "./state.js";
 import * as api from "./api.js";
 import { escapeHtml, renderSimpleMarkdown, timeStr } from "./utils.js";
 
+const TOOL_RESULT_TRUNCATE = 500;
+
 // Container reference for async operations
 let _container = null;
 
@@ -219,6 +221,87 @@ function renderTurns(data) {
   body.scrollTop = body.scrollHeight;
 }
 
+// ── Tool Call Rendering ──────────────────────
+
+function _renderToolCalls(toolCalls) {
+  if (!toolCalls || toolCalls.length === 0) return "";
+
+  return toolCalls.map((tc, idx) => {
+    const errorClass = tc.is_error ? " tool-call-error" : "";
+    const toolName = escapeHtml(tc.tool_name || "unknown");
+    const errorLabel = tc.is_error ? " [ERROR]" : "";
+
+    return `<div class="tool-call-row${errorClass}" data-tool-idx="${idx}">` +
+      `<span class="tool-call-row-icon">\u25B6</span>` +
+      `<span class="tool-call-row-name">${toolName}${errorLabel}</span>` +
+      `</div>` +
+      `<div class="tool-call-detail" data-tool-idx="${idx}" style="display:none;">` +
+      _renderToolCallDetail(tc) +
+      `</div>`;
+  }).join("");
+}
+
+function _renderToolCallDetail(tc) {
+  let html = "";
+
+  const input = tc.input || "";
+  if (input) {
+    const inputStr = typeof input === "string" ? input : JSON.stringify(input, null, 2);
+    html += `<div class="tool-call-label">\u5165\u529B</div>`;
+    html += `<div class="tool-call-content">${escapeHtml(inputStr)}</div>`;
+  }
+
+  const result = tc.result || "";
+  if (result) {
+    const resultStr = typeof result === "string" ? result : JSON.stringify(result, null, 2);
+    html += `<div class="tool-call-label">\u7D50\u679C</div>`;
+    if (resultStr.length > TOOL_RESULT_TRUNCATE) {
+      const truncated = resultStr.slice(0, TOOL_RESULT_TRUNCATE);
+      html += `<div class="tool-call-content" data-full-result="${escapeHtml(resultStr)}">${escapeHtml(truncated)}...</div>`;
+      html += `<button class="tool-call-show-more">\u3082\u3063\u3068\u898B\u308B</button>`;
+    } else {
+      html += `<div class="tool-call-content">${escapeHtml(resultStr)}</div>`;
+    }
+  }
+
+  return html;
+}
+
+function _bindToolCallHandlers(container) {
+  if (!container) return;
+
+  container.querySelectorAll(".tool-call-row").forEach(row => {
+    row.addEventListener("click", () => {
+      const idx = row.dataset.toolIdx;
+      const detail = row.nextElementSibling;
+      if (!detail || detail.dataset.toolIdx !== idx) return;
+
+      const isExpanded = row.classList.contains("expanded");
+      if (isExpanded) {
+        row.classList.remove("expanded");
+        detail.style.display = "none";
+      } else {
+        row.classList.add("expanded");
+        detail.style.display = "";
+      }
+    });
+  });
+
+  container.querySelectorAll(".tool-call-show-more").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const contentEl = btn.previousElementSibling;
+      if (!contentEl) return;
+      const fullResult = contentEl.dataset.fullResult;
+      if (fullResult) {
+        contentEl.textContent = fullResult;
+        delete contentEl.dataset.fullResult;
+        btn.remove();
+      }
+    });
+  });
+}
+
 function renderConversationSessions(data) {
   const body = getDetailBody();
   if (!body) return;
@@ -241,10 +324,11 @@ function renderConversationSessions(data) {
         const roleClass = msg.role === "assistant" ? "assistant" : msg.role === "system" ? "system" : "user";
         const roleLabel = msg.role === "human" ? "ユーザー" : msg.role === "system" ? "システム" : msg.role;
         const content = msg.role === "assistant" ? renderSimpleMarkdown(msg.content || "") : escapeHtml(msg.content || "");
+        const toolHtml = msg.role === "assistant" ? _renderToolCalls(msg.tool_calls) : "";
         html += `
           <div class="session-turn">
             <div class="session-turn-meta">${ts} - ${escapeHtml(roleLabel)}</div>
-            <div class="session-turn-bubble ${roleClass}">${content}</div>
+            <div class="session-turn-bubble ${roleClass}">${content}${toolHtml}</div>
           </div>`;
       }
     }
@@ -252,6 +336,7 @@ function renderConversationSessions(data) {
 
   if (!html) html = '<div class="loading-placeholder">会話データがありません</div>';
   body.innerHTML = html;
+  _bindToolCallHandlers(body);
   body.scrollTop = body.scrollHeight;
 }
 

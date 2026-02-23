@@ -277,6 +277,12 @@ let bustupInitialized = false;
 let convStreamController = null;
 let convImageInputManager = null;
 
+// ── History State (Session-Aware Rendering) ──────────
+const _historyState = {};  // { [animaName]: { sessions, hasMore, nextBefore, loading } }
+const HISTORY_PAGE_SIZE = 50;
+const TOOL_RESULT_TRUNCATE = 500;
+let _scrollObserver = null;
+
 async function openConversation(animaName) {
   if (!dom.convOverlay) return;
 
@@ -330,6 +336,18 @@ function closeConversation() {
 
   // Cleanup mobile resources
   _cleanupMobileResources();
+
+  // Cleanup infinite scroll observer
+  if (_scrollObserver) {
+    _scrollObserver.disconnect();
+    _scrollObserver = null;
+  }
+
+  // Clear history state for this anima
+  const animaName = getState().conversationAnima;
+  if (animaName) {
+    delete _historyState[animaName];
+  }
 
   setState({ conversationOpen: false, conversationAnima: null });
   setTalking(false);
@@ -387,6 +405,135 @@ async function triggerGreeting(animaName) {
   }
 }
 
+// ── Tool Call Rendering ──────────────────────
+
+function _renderToolCalls(toolCalls) {
+  if (!toolCalls || toolCalls.length === 0) return "";
+
+  return toolCalls.map((tc, idx) => {
+    const errorClass = tc.is_error ? " tool-call-error" : "";
+    const toolName = escapeHtml(tc.tool_name || "unknown");
+    const errorLabel = tc.is_error ? " [ERROR]" : "";
+
+    return `<div class="tool-call-row${errorClass}" data-tool-idx="${idx}">` +
+      `<span class="tool-call-row-icon">\u25B6</span>` +
+      `<span class="tool-call-row-name">${toolName}${errorLabel}</span>` +
+      `</div>` +
+      `<div class="tool-call-detail" data-tool-idx="${idx}" style="display:none;">` +
+      _renderToolCallDetail(tc) +
+      `</div>`;
+  }).join("");
+}
+
+function _renderToolCallDetail(tc) {
+  let html = "";
+
+  const input = tc.input || "";
+  if (input) {
+    const inputStr = typeof input === "string" ? input : JSON.stringify(input, null, 2);
+    html += `<div class="tool-call-label">\u5165\u529B</div>`;
+    html += `<div class="tool-call-content">${escapeHtml(inputStr)}</div>`;
+  }
+
+  const result = tc.result || "";
+  if (result) {
+    const resultStr = typeof result === "string" ? result : JSON.stringify(result, null, 2);
+    html += `<div class="tool-call-label">\u7D50\u679C</div>`;
+    if (resultStr.length > TOOL_RESULT_TRUNCATE) {
+      const truncated = resultStr.slice(0, TOOL_RESULT_TRUNCATE);
+      html += `<div class="tool-call-content" data-full-result="${escapeHtml(resultStr)}">${escapeHtml(truncated)}...</div>`;
+      html += `<button class="tool-call-show-more">\u3082\u3063\u3068\u898B\u308B</button>`;
+    } else {
+      html += `<div class="tool-call-content">${escapeHtml(resultStr)}</div>`;
+    }
+  }
+
+  return html;
+}
+
+function _bindToolCallHandlers(container) {
+  if (!container) return;
+
+  container.querySelectorAll(".tool-call-row").forEach(row => {
+    row.addEventListener("click", () => {
+      const idx = row.dataset.toolIdx;
+      const detail = row.nextElementSibling;
+      if (!detail || detail.dataset.toolIdx !== idx) return;
+
+      const isExpanded = row.classList.contains("expanded");
+      if (isExpanded) {
+        row.classList.remove("expanded");
+        detail.style.display = "none";
+      } else {
+        row.classList.add("expanded");
+        detail.style.display = "";
+      }
+    });
+  });
+
+  container.querySelectorAll(".tool-call-show-more").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const contentEl = btn.previousElementSibling;
+      if (!contentEl) return;
+      const fullResult = contentEl.dataset.fullResult;
+      if (fullResult) {
+        contentEl.textContent = fullResult;
+        delete contentEl.dataset.fullResult;
+        btn.remove();
+      }
+    });
+  });
+}
+
+// ── Session Divider Rendering ──────────────────────
+
+function _renderSessionDivider(session, isFirst) {
+  if (isFirst) return "";
+
+  const trigger = session.trigger || "chat";
+  let label = "";
+  let extraClass = "";
+
+  if (trigger === "heartbeat") {
+    label = "\u2764 \u30CF\u30FC\u30C8\u30D3\u30FC\u30C8";
+    extraClass = " session-divider-heartbeat";
+  } else if (trigger === "cron") {
+    label = "\u23F0 Cron\u30BF\u30B9\u30AF";
+    extraClass = " session-divider-cron";
+  } else {
+    const ts = session.session_start ? smartTimestamp(session.session_start) : "";
+    label = ts;
+  }
+
+  return `<div class="session-divider${extraClass}">` +
+    `<span class="session-divider-label">${escapeHtml(label)}</span>` +
+    `</div>`;
+}
+
+// ── History Message Rendering ──────────────────────
+
+function _renderHistoryMessage(msg) {
+  const ts = msg.ts ? smartTimestamp(msg.ts) : "";
+  const tsHtml = ts ? `<span class="chat-ts">${escapeHtml(ts)}</span>` : "";
+
+  if (msg.role === "system") {
+    return `<div class="chat-bubble assistant" style="opacity:0.7; font-style:italic;">${escapeHtml(msg.content || "")}${tsHtml}</div>`;
+  }
+
+  if (msg.role === "assistant") {
+    const content = msg.content ? renderSimpleMarkdown(msg.content) : "";
+    const toolHtml = _renderToolCalls(msg.tool_calls);
+    return `<div class="chat-bubble assistant">${content}${toolHtml}${tsHtml}</div>`;
+  }
+
+  // human / user
+  const fromLabel = msg.from_person && msg.from_person !== "human"
+    ? `<div style="font-size:0.72rem; opacity:0.7; margin-bottom:2px;">${escapeHtml(msg.from_person)}</div>`
+    : "";
+  return `<div class="chat-bubble user">${fromLabel}<div class="chat-text">${escapeHtml(msg.content || "")}</div>${tsHtml}</div>`;
+}
+
 // ── Chat Rendering in Conversation Panel ──────────────────────
 
 function renderConvBubble(msg) {
@@ -416,39 +563,93 @@ function renderConvBubble(msg) {
 
 function renderConvMessages() {
   if (!dom.convMessages) return;
+
+  const animaName = getState().conversationAnima;
+  const hs = animaName ? _historyState[animaName] : null;
   const { chatMessages } = getState();
-  if (chatMessages.length === 0) {
-    dom.convMessages.innerHTML = '<div class="chat-empty">メッセージはまだありません</div>';
+
+  // No history and no live messages
+  if ((!hs || hs.sessions.length === 0) && chatMessages.length === 0) {
+    if (hs && hs.loading) {
+      dom.convMessages.innerHTML = '<div class="chat-empty"><span class="tool-spinner"></span> \u8AAD\u307F\u8FBC\u307F\u4E2D...</div>';
+    } else {
+      dom.convMessages.innerHTML = '<div class="chat-empty">\u30E1\u30C3\u30BB\u30FC\u30B8\u306F\u307E\u3060\u3042\u308A\u307E\u305B\u3093</div>';
+    }
     return;
   }
-  dom.convMessages.innerHTML = chatMessages.map(renderConvBubble).join("");
+
+  let html = "";
+
+  // Sentinel + loading indicator for infinite scroll
+  if (hs && hs.hasMore) {
+    if (hs.loading) {
+      html += '<div class="history-loading-more"><span class="tool-spinner"></span> \u904E\u53BB\u306E\u4F1A\u8A71\u3092\u8AAD\u307F\u8FBC\u307F\u4E2D...</div>';
+    }
+    html += '<div class="chat-load-sentinel"></div>';
+  }
+
+  // Render sessions from history API
+  if (hs && hs.sessions.length > 0) {
+    for (let si = 0; si < hs.sessions.length; si++) {
+      const session = hs.sessions[si];
+      html += _renderSessionDivider(session, si === 0);
+
+      if (session.messages) {
+        for (const msg of session.messages) {
+          html += _renderHistoryMessage(msg);
+        }
+      }
+    }
+  }
+
+  // Render live chat messages (current streaming session)
+  if (chatMessages.length > 0) {
+    if (hs && hs.sessions.length > 0) {
+      html += '<div class="session-divider"><span class="session-divider-label">\u73FE\u5728\u306E\u30BB\u30C3\u30B7\u30E7\u30F3</span></div>';
+    }
+    html += chatMessages.map(renderConvBubble).join("");
+  }
+
+  dom.convMessages.innerHTML = html;
+
+  // Bind tool call handlers for history messages
+  _bindToolCallHandlers(dom.convMessages);
+
+  // Re-observe sentinel after render
+  _observeSentinel();
+
   dom.convMessages.scrollTop = dom.convMessages.scrollHeight;
 }
 
 async function loadAndRenderConvMessages(animaName) {
   if (!animaName) return;
+
+  // Initialize history state (loading)
+  _historyState[animaName] = { sessions: [], hasMore: false, nextBefore: null, loading: true };
+  setState({ chatMessages: [] });
+  renderConvMessages();  // Shows loading indicator
+
   try {
-    const data = await fetchConversationHistory(animaName);
-    if (data.sessions && data.sessions.length > 0) {
-      const messages = [];
-      for (const session of data.sessions) {
-        for (const msg of (session.messages || [])) {
-          messages.push({
-            role: msg.role === "human" ? "user" : msg.role === "system" ? "system" : "assistant",
-            text: msg.content || "",
-            timestamp: msg.ts || "",
-          });
-        }
-      }
-      setState({ chatMessages: messages });
+    const data = await fetchConversationHistory(animaName, HISTORY_PAGE_SIZE);
+    if (data && data.sessions) {
+      _historyState[animaName] = {
+        sessions: data.sessions,
+        hasMore: data.has_more || false,
+        nextBefore: data.next_before || null,
+        loading: false,
+      };
     } else {
-      setState({ chatMessages: [] });
+      _historyState[animaName] = { sessions: [], hasMore: false, nextBefore: null, loading: false };
     }
   } catch (err) {
     logger.error("Failed to load conversation", { anima: animaName, error: err.message });
-    setState({ chatMessages: [] });
+    _historyState[animaName] = { sessions: [], hasMore: false, nextBefore: null, loading: false };
   }
+
   renderConvMessages();
+
+  // Set up infinite scroll observer
+  _setupScrollObserver();
 
   // Check for active stream to resume after page reload
   resumeConversationStream(animaName);
@@ -536,6 +737,72 @@ async function resumeConversationStream(animaName) {
     if (dom.convInput) dom.convInput.disabled = false;
     if (dom.convSend) dom.convSend.disabled = false;
   }
+}
+
+// ── Infinite Scroll (Upward) ──────────────────────
+
+function _setupScrollObserver() {
+  if (!dom.convMessages) return;
+
+  if (_scrollObserver) _scrollObserver.disconnect();
+
+  _scrollObserver = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          _loadMoreHistory();
+        }
+      }
+    },
+    { root: dom.convMessages, rootMargin: "200px 0px 0px 0px" },
+  );
+
+  _observeSentinel();
+}
+
+function _observeSentinel() {
+  if (!_scrollObserver || !dom.convMessages) return;
+  const sentinel = dom.convMessages.querySelector(".chat-load-sentinel");
+  if (sentinel) _scrollObserver.observe(sentinel);
+}
+
+async function _loadMoreHistory() {
+  const animaName = getState().conversationAnima;
+  if (!animaName) return;
+
+  const hs = _historyState[animaName];
+  if (!hs || !hs.hasMore || hs.loading) return;
+
+  hs.loading = true;
+  // Show loading indicator
+  const existingIndicator = dom.convMessages.querySelector(".history-loading-more");
+  if (!existingIndicator) {
+    const indicator = document.createElement("div");
+    indicator.className = "history-loading-more";
+    indicator.innerHTML = '<span class="tool-spinner"></span> \u904E\u53BB\u306E\u4F1A\u8A71\u3092\u8AAD\u307F\u8FBC\u307F\u4E2D...';
+    dom.convMessages.insertBefore(indicator, dom.convMessages.firstChild);
+  }
+
+  try {
+    const data = await fetchConversationHistory(animaName, HISTORY_PAGE_SIZE, hs.nextBefore);
+    if (data && data.sessions && data.sessions.length > 0) {
+      hs.sessions = [...data.sessions, ...hs.sessions];
+      hs.hasMore = data.has_more || false;
+      hs.nextBefore = data.next_before || null;
+    } else {
+      hs.hasMore = false;
+    }
+  } catch (err) {
+    logger.error("Failed to load more history", { anima: animaName, error: err.message });
+    hs.hasMore = false;
+  }
+  hs.loading = false;
+
+  // Re-render preserving scroll position
+  const prevScrollHeight = dom.convMessages.scrollHeight;
+  renderConvMessages();
+  const newScrollHeight = dom.convMessages.scrollHeight;
+  dom.convMessages.scrollTop += (newScrollHeight - prevScrollHeight);
 }
 
 // ── SSE Streaming for Conversation ──────────────────────
