@@ -82,8 +82,8 @@ class TestOrgTreeE2E:
 class TestOrphanDetectionE2E:
     """E2E: Orphan detection auto-cleans trivial orphans and logs non-trivial."""
 
-    def test_nontrivial_orphan_logged_with_marker(self, data_dir, make_anima):
-        """Non-trivial orphan is logged and gets a .orphan_notified marker."""
+    def test_nontrivial_orphan_archived(self, data_dir, make_anima):
+        """Non-trivial orphan is archived and removed."""
         make_anima("sakura")
         make_anima("rin", supervisor="sakura")
 
@@ -102,11 +102,15 @@ class TestOrphanDetectionE2E:
 
         assert len(orphans) == 1
         assert orphans[0]["name"] == "rie"
-        assert orphans[0]["action"] == "logged"
+        assert orphans[0]["action"] == "archived"
+        assert not orphan_dir.exists()
 
-        assert (orphan_dir / ".orphan_notified").exists()
+        archive_root = data_dir / "archive" / "orphans"
+        archives = list(archive_root.iterdir())
+        assert len(archives) == 1
+        assert (archives[0] / "state").is_dir()
 
-        # Second run should skip the already-logged orphan
+        # Second run — orphan already gone, nothing to do
         orphans2 = detect_orphan_animas(
             data_dir / "animas", data_dir / "shared", age_threshold_s=0
         )

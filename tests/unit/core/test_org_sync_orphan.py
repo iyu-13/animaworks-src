@@ -36,8 +36,8 @@ class TestDetectOrphanAnimas:
         orphans = detect_orphan_animas(animas_dir, shared_dir, age_threshold_s=0)
         assert orphans == []
 
-    def test_nontrivial_orphan_detected_and_logged(self, data_dir, make_anima):
-        """A directory without identity.md but with state/ is a non-trivial orphan."""
+    def test_nontrivial_orphan_archived(self, data_dir, make_anima):
+        """A directory without identity.md but with state/ is archived and removed."""
         make_anima("sakura")
 
         orphan_dir = data_dir / "animas" / "rie"
@@ -51,8 +51,13 @@ class TestDetectOrphanAnimas:
         )
         assert len(orphans) == 1
         assert orphans[0]["name"] == "rie"
-        assert orphans[0]["action"] == "logged"
-        assert (orphan_dir / ".orphan_notified").exists()
+        assert orphans[0]["action"] == "archived"
+        assert not orphan_dir.exists()
+
+        archive_root = data_dir / "archive" / "orphans"
+        archives = list(archive_root.iterdir())
+        assert len(archives) == 1
+        assert archives[0].name.startswith("rie_")
 
     def test_trivial_orphan_auto_removed_empty(self, data_dir, make_anima):
         """An empty orphan directory is trivially removed."""
@@ -134,8 +139,8 @@ class TestDetectOrphanAnimas:
         )
         assert orphans == []
 
-    def test_skips_already_logged_nontrivial(self, data_dir, make_anima):
-        """Non-trivial orphans with .orphan_notified marker are skipped."""
+    def test_archives_nontrivial_even_with_marker(self, data_dir, make_anima):
+        """Non-trivial orphans with .orphan_notified marker are now archived."""
         make_anima("sakura")
 
         orphan_dir = data_dir / "animas" / "rie"
@@ -148,7 +153,9 @@ class TestDetectOrphanAnimas:
         orphans = detect_orphan_animas(
             data_dir / "animas", data_dir / "shared", age_threshold_s=0
         )
-        assert orphans == []
+        assert len(orphans) == 1
+        assert orphans[0]["action"] == "archived"
+        assert not orphan_dir.exists()
 
     def test_trivial_orphan_with_marker_still_removed(self, data_dir, make_anima):
         """Trivial orphans are auto-removed even if they have .orphan_notified."""
@@ -202,8 +209,8 @@ class TestDetectOrphanAnimas:
         assert len(rin_msgs) == 0
         assert len(sakura_msgs) == 0
 
-    def test_nontrivial_orphan_marker_created(self, data_dir, make_anima):
-        """After detecting a non-trivial orphan, .orphan_notified marker is created."""
+    def test_nontrivial_orphan_archived_with_episodes(self, data_dir, make_anima):
+        """Non-trivial orphan with episodes is archived (directory is removed)."""
         make_anima("sakura")
 
         orphan_dir = data_dir / "animas" / "rie"
@@ -216,7 +223,11 @@ class TestDetectOrphanAnimas:
             data_dir / "animas", data_dir / "shared", age_threshold_s=0
         )
 
-        assert (orphan_dir / ".orphan_notified").exists()
+        assert not orphan_dir.exists()
+        archive_root = data_dir / "archive" / "orphans"
+        assert archive_root.is_dir()
+        archives = list(archive_root.iterdir())
+        assert len(archives) == 1
 
     def test_empty_animas_dir(self, data_dir):
         """No orphans reported for empty animas directory."""

@@ -15,7 +15,9 @@ Manual config overrides are never clobbered; mismatches are logged as warnings.
 
 import json
 import logging
+import shutil
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from core.config.models import (
@@ -287,8 +289,6 @@ def _auto_cleanup_orphan(entry: Path) -> bool:
 
     Returns True on success.
     """
-    import shutil
-
     try:
         shutil.rmtree(entry)
         logger.info("Orphan detection: auto-removed trivial orphan '%s'", entry.name)
@@ -320,6 +320,111 @@ def _auto_cleanup_orphan(entry: Path) -> bool:
     return True
 
 
+_ARCHIVE_MAX_AGE_DAYS = 30
+
+
+def _archive_and_remove_orphan(entry: Path) -> bool:
+    """Archive a non-trivial orphan directory, then remove the original.
+
+    The directory is copied to ``~/.animaworks/archive/orphans/{name}_{timestamp}/``
+    before deletion so that data can be recovered if needed.
+
+    Returns True on success.
+    """
+    data_dir = entry.parent.parent  # animas/{name} -> animas -> data_dir
+    ts = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S")
+    archive_dir = data_dir / "archive" / "orphans" / f"{entry.name}_{ts}"
+
+    try:
+        archive_dir.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(entry, archive_dir)
+    except OSError:
+        logger.warning(
+            "Orphan detection: failed to archive '%s' to '%s'",
+            entry.name,
+            archive_dir,
+            exc_info=True,
+        )
+        return False
+
+    try:
+        shutil.rmtree(entry)
+        logger.info(
+            "Orphan detection: archived and removed non-trivial orphan '%s'",
+            entry.name,
+        )
+    except OSError:
+        logger.warning(
+            "Orphan detection: archived '%s' but failed to remove original",
+            entry.name,
+            exc_info=True,
+        )
+        return False
+
+    try:
+        from core.config.models import unregister_anima_from_config
+
+        if unregister_anima_from_config(data_dir, entry.name):
+            logger.info(
+                "Orphan detection: unregistered '%s' from config.json",
+                entry.name,
+            )
+    except Exception:
+        logger.debug(
+            "Orphan detection: config cleanup skipped for '%s'",
+            entry.name,
+            exc_info=True,
+        )
+
+    return True
+
+
+def cleanup_orphan_archives(
+    data_dir: Path,
+    max_age_days: int = _ARCHIVE_MAX_AGE_DAYS,
+) -> int:
+    """Remove orphan archive directories older than *max_age_days*.
+
+    Args:
+        data_dir: Runtime data directory (e.g. ``~/.animaworks/``).
+        max_age_days: Maximum age in days before an archive is deleted.
+
+    Returns:
+        Number of archive directories removed.
+    """
+    archive_root = data_dir / "archive" / "orphans"
+    if not archive_root.is_dir():
+        return 0
+
+    now = time.time()
+    max_age_s = max_age_days * 86400
+    removed = 0
+
+    for entry in sorted(archive_root.iterdir()):
+        if not entry.is_dir():
+            continue
+        try:
+            mtime = entry.stat().st_mtime
+            if (now - mtime) > max_age_s:
+                shutil.rmtree(entry)
+                logger.info(
+                    "Orphan archive cleanup: removed expired archive '%s'",
+                    entry.name,
+                )
+                removed += 1
+        except OSError:
+            logger.debug(
+                "Orphan archive cleanup: failed to remove '%s'",
+                entry.name,
+                exc_info=True,
+            )
+
+    if removed:
+        logger.info("Orphan archive cleanup: removed %d expired archive(s)", removed)
+
+    return removed
+
+
 def detect_orphan_animas(
     animas_dir: Path,
     shared_dir: Path,
@@ -338,8 +443,10 @@ def detect_orphan_animas(
     **Trivial orphans** (containing only ``vectordb/``, ``.orphan_notified``,
     ``status.json``, or ``index_meta.json``) are automatically deleted.
     **Non-trivial orphans** (containing episodes, knowledge, state, etc.)
-    are logged as warnings for human review but are *not* messaged to any
-    Anima—since Animas cannot delete directories.
+    are archived to ``archive/orphans/{name}_{timestamp}/`` and then deleted.
+
+    Also runs :func:`cleanup_orphan_archives` to purge archives older than
+    30 days.
 
     Args:
         animas_dir: Runtime animas directory (e.g. ``~/.animaworks/animas/``).
@@ -350,7 +457,7 @@ def detect_orphan_animas(
 
     Returns:
         List of dicts with keys ``name`` and ``action``
-        (``"auto_removed"``, ``"logged"``, or ``"skipped"``).
+        (``"auto_removed"``, ``"archived"``, or ``"skipped"``).
     """
     if not animas_dir.is_dir():
         return []
@@ -399,31 +506,26 @@ def detect_orphan_animas(
             })
             continue
 
-        # Non-trivial orphans → log only (no Anima notification)
-        marker = entry / ".orphan_notified"
-        if marker.exists():
-            continue
-
-        logger.warning(
-            "Orphan detection: non-trivial orphan '%s' has no valid "
-            "identity.md — manual review recommended (contents: %s)",
+        # Non-trivial orphans → archive then remove
+        logger.info(
+            "Orphan detection: non-trivial orphan '%s' — archiving "
+            "(contents: %s)",
             entry.name,
             ", ".join(sorted(c.name for c in entry.iterdir())),
         )
-
-        try:
-            marker.write_text("logged\n", encoding="utf-8")
-        except OSError:
-            pass
-
+        archived = _archive_and_remove_orphan(entry)
         results.append({
             "name": entry.name,
-            "action": "logged",
+            "action": "archived" if archived else "skipped",
         })
 
     if results:
         logger.info("Orphan detection: processed %d orphan(s)", len(results))
     else:
         logger.debug("Orphan detection: no orphans found")
+
+    # Purge expired archives (30 days)
+    data_dir = animas_dir.parent
+    cleanup_orphan_archives(data_dir)
 
     return results
