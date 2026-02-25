@@ -27,7 +27,7 @@ from core.execution._sanitize import wrap_tool_result
 from core.execution._session import build_continuation_prompt, handle_session_chaining
 from core.execution._streaming import stream_error_boundary
 from core.execution.base import BaseExecutor, ExecutionResult, StreamDisconnectedError, ToolCallRecord, _truncate_for_record, tool_input_save_budget, tool_result_save_budget
-from core.execution.reminder import MSG_CONTEXT_THRESHOLD, MSG_OUTPUT_TRUNCATED, SystemReminderQueue
+from core.execution.reminder import MSG_CONTEXT_THRESHOLD, MSG_FINAL_ITERATION, MSG_OUTPUT_TRUNCATED, SystemReminderQueue
 from core.memory import MemoryManager
 from core.prompt.builder import build_system_prompt
 from core.schemas import ModelConfig
@@ -175,19 +175,39 @@ class AnthropicFallbackExecutor(BaseExecutor):
         max_iterations = max_turns_override or self._model_config.max_turns
 
         for iteration in range(max_iterations):
+            is_final_iteration = (
+                max_iterations > 1 and iteration == max_iterations - 1
+            )
+
+            if is_final_iteration:
+                messages.append({
+                    "role": "user",
+                    "content": SystemReminderQueue.format_reminder(
+                        MSG_FINAL_ITERATION,
+                    ),
+                })
+                logger.info(
+                    "Anthropic final iteration=%d: tools removed",
+                    iteration,
+                )
+
             logger.debug(
                 "API call iteration=%d messages_count=%d",
                 iteration, len(messages),
             )
+
+            create_kwargs: dict[str, Any] = {
+                "model": self._model_config.model,
+                "max_tokens": self._model_config.max_tokens,
+                "system": system_prompt,
+                "messages": messages,
+                "timeout": httpx.Timeout(self._resolve_llm_timeout()),
+            }
+            if not is_final_iteration:
+                create_kwargs["tools"] = tools
+
             try:
-                response = await client.messages.create(
-                    model=self._model_config.model,
-                    max_tokens=self._model_config.max_tokens,
-                    system=system_prompt,
-                    messages=messages,
-                    tools=tools,
-                    timeout=httpx.Timeout(self._resolve_llm_timeout()),
-                )
+                response = await client.messages.create(**create_kwargs)
             except Exception as e:
                 logger.exception("Anthropic API error")
                 return ExecutionResult(text=f"[LLM API Error: {e}]")
@@ -344,6 +364,22 @@ class AnthropicFallbackExecutor(BaseExecutor):
             all_response_text, executor_name="AnthropicFallback",
         ):
             for iteration in range(_MAX_ITERATIONS):
+                is_final_iteration = (
+                    _MAX_ITERATIONS > 1 and iteration == _MAX_ITERATIONS - 1
+                )
+
+                if is_final_iteration:
+                    messages.append({
+                        "role": "user",
+                        "content": SystemReminderQueue.format_reminder(
+                            MSG_FINAL_ITERATION,
+                        ),
+                    })
+                    logger.info(
+                        "Streaming final iteration=%d: tools removed",
+                        iteration,
+                    )
+
                 logger.debug(
                     "Streaming API call iteration=%d messages_count=%d",
                     iteration, len(messages),
@@ -353,14 +389,17 @@ class AnthropicFallbackExecutor(BaseExecutor):
                 iteration_text_parts: list[str] = []
                 final_message = None
 
-                async with client.messages.stream(
-                    model=self._model_config.model,
-                    max_tokens=self._model_config.max_tokens,
-                    system=system_prompt,
-                    messages=messages,
-                    tools=tools,
-                    timeout=httpx.Timeout(self._resolve_llm_timeout()),
-                ) as stream:
+                stream_kwargs: dict[str, Any] = {
+                    "model": self._model_config.model,
+                    "max_tokens": self._model_config.max_tokens,
+                    "system": system_prompt,
+                    "messages": messages,
+                    "timeout": httpx.Timeout(self._resolve_llm_timeout()),
+                }
+                if not is_final_iteration:
+                    stream_kwargs["tools"] = tools
+
+                async with client.messages.stream(**stream_kwargs) as stream:
                     async for event in stream:
                         # Text deltas — forward immediately
                         if event.type == "text":

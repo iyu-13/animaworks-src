@@ -26,6 +26,10 @@ _MAX_QUEUE_SIZE = 10
 # ── Standard reminder messages ──────────────────────────────
 MSG_CONTEXT_THRESHOLD = "コンテキスト使用量: {ratio:.0%}。出力を簡潔にし、重要な状態をセッション状態に保存せよ。"
 MSG_OUTPUT_TRUNCATED = "出力がmax_tokensで途切れた。残りの内容を小さく分割して続行せよ。"
+MSG_FINAL_ITERATION = (
+    "ツールの使用回数が上限に達しました。これ以上ツールは使用できません。"
+    "これまでの作業内容と得られた情報を踏まえて、最終回答を作成してください。"
+)
 
 
 class SystemReminderQueue:
