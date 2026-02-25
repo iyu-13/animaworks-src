@@ -282,6 +282,7 @@ class AssistedExecutor(BaseExecutor):
             kwargs["api_key"] = api_key
         if self._model_config.api_base_url:
             kwargs["api_base"] = self._model_config.api_base_url
+        self._apply_provider_kwargs(kwargs)
 
         # Ollama thinking control: default to off for ollama/ models
         if self._model_config.thinking is not None:

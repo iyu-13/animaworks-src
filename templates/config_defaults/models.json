@@ -4,6 +4,7 @@
   "openai/*":              { "mode": "A", "context_window": 128000 },
   "azure/*":               { "mode": "A", "context_window": 128000 },
   "google/*":              { "mode": "A", "context_window": 1000000 },
+  "vertex_ai/*":           { "mode": "A", "context_window": 1000000 },
   "mistral/*":             { "mode": "A", "context_window": 128000 },
   "xai/*":                 { "mode": "A", "context_window": 131072 },
   "deepseek/deepseek-chat":{ "mode": "A", "context_window": 65536 },

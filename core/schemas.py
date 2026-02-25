@@ -80,6 +80,7 @@ class ModelConfig(BaseModel):
     resolved_mode: str | None = None  # "S"/"A"/"B" — resolved from config
     thinking: bool | None = None  # Ollama think param (None = auto: off for ollama/)
     llm_timeout: int | None = None  # LLM API呼び出しタイムアウト（秒）
+    extra_keys: dict[str, str] = {}  # provider-specific credential keys (e.g. api_version, vertex_project)
 
 
 class AnimaConfig(BaseModel):

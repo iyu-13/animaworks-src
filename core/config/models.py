@@ -516,6 +516,7 @@ DEFAULT_MODEL_MODE_PATTERNS: dict[str, str] = {
     "openai/*": "A",
     "azure/*": "A",
     "google/*": "A",
+    "vertex_ai/*": "A",
     "mistral/*": "A",
     "xai/*": "A",
     "cohere/*": "A",
@@ -576,10 +577,16 @@ KNOWN_MODELS: list[dict[str, str]] = [
     {"name": "openai/gpt-4o",                "mode": "A", "note": "音声対応・レガシー"},
     {"name": "openai/o3-2025-04-16",         "mode": "A", "note": "推論特化"},
     {"name": "openai/o4-mini-2025-04-16",    "mode": "A", "note": "推論・低コスト"},
+    # ── Azure OpenAI (Mode A) ──────────────────────────────────────────────────
+    {"name": "azure/gpt-4.1-mini",           "mode": "A", "note": "Azure OpenAI 4.1-mini"},
+    {"name": "azure/gpt-4.1",               "mode": "A", "note": "Azure OpenAI 4.1"},
     # ── Google Gemini (Mode A) ────────────────────────────────────────────────
     {"name": "google/gemini-2.5-pro",        "mode": "A", "note": "最高性能"},
     {"name": "google/gemini-2.5-flash",      "mode": "A", "note": "高速バランス"},
     {"name": "google/gemini-2.5-flash-lite", "mode": "A", "note": "軽量・高スループット"},
+    # ── Vertex AI (Mode A) ────────────────────────────────────────────────────
+    {"name": "vertex_ai/gemini-2.5-flash",   "mode": "A", "note": "Vertex AI Flash"},
+    {"name": "vertex_ai/gemini-2.5-pro",     "mode": "A", "note": "Vertex AI Pro"},
     # ── xAI Grok (Mode A) ─────────────────────────────────────────────────────
     {"name": "xai/grok-4",                   "mode": "A", "note": "最新Grok"},
     {"name": "xai/grok-3-beta",              "mode": "A", "note": "安定版"},
@@ -766,6 +773,7 @@ def load_model_config(anima_dir: Path) -> "ModelConfig":
         resolved_mode=mode,
         thinking=resolved.thinking,
         llm_timeout=resolved.llm_timeout,
+        extra_keys=credential.keys or {},
     )
 
 

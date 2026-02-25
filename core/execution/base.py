@@ -204,6 +204,22 @@ class BaseExecutor(ABC):
             _logger.warning("Failed to read replied_to file: %s", e)
         return names
 
+    def _apply_provider_kwargs(self, kwargs: dict[str, Any]) -> None:
+        """Apply provider-specific LiteLLM kwargs from ``extra_keys``."""
+        model = self._model_config.model
+        extra = self._model_config.extra_keys
+
+        if model.startswith("azure/"):
+            api_version = extra.get("api_version") or os.environ.get("AZURE_API_VERSION")
+            if api_version:
+                kwargs["api_version"] = api_version
+
+        elif model.startswith("vertex_ai/"):
+            for key in ("vertex_project", "vertex_location", "vertex_credentials"):
+                val = extra.get(key) or os.environ.get(key.upper())
+                if val:
+                    kwargs[key] = val
+
     def _resolve_llm_timeout(self) -> int:
         """Resolve LLM API call timeout in seconds.
 

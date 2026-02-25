@@ -241,6 +241,7 @@ class TestReadModelConfig:
         mock_credential = MagicMock()
         mock_credential.api_key = "sk-test"
         mock_credential.base_url = None
+        mock_credential.keys = {}
 
         config_path = MagicMock()
         config_path.exists.return_value = True
@@ -301,6 +302,7 @@ class TestReadModelConfig:
         mock_credential = MagicMock()
         mock_credential.api_key = ""
         mock_credential.base_url = None
+        mock_credential.keys = {}
 
         config_path = MagicMock()
         config_path.exists.return_value = True
