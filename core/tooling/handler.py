@@ -840,11 +840,11 @@ class ToolHandler:
         intent = args.get("intent", "")
 
         # ── Per-run DM limits ──
-        # 1. Intent restriction: only report/delegation allowed for DM
-        if intent not in ("report", "delegation"):
+        # 1. Intent restriction: report/delegation/question allowed for DM
+        if intent not in ("report", "delegation", "question"):
             return (
-                "Error: DMのintentは 'report' または 'delegation' のみ許可されています。"
-                "質問はBoardに投稿してください。acknowledgment・感謝・FYIも"
+                "Error: DMのintentは 'report', 'delegation', 'question' のみ許可されています。"
+                "acknowledgment・感謝・FYIは"
                 "Boardを使用してください（post_channel ツール）。"
             )
 
@@ -962,9 +962,16 @@ class ToolHandler:
         # ── Per-run guard: 同一チャネルに1回まで ──────────
         current_posted = self.posted_channels_for(active_session_type.get())
         if channel in current_posted:
+            alt_channels = {"general", "ops"} - {channel} - current_posted
+            alt_hint = ""
+            if alt_channels:
+                alt_hint = (
+                    f" 別のチャネル（{', '.join(f'#{c}' for c in sorted(alt_channels))}）"
+                    "への投稿、またはsend_message（intent: question/report）は可能です。"
+                )
             return (
                 f"Error: このrunで既に #{channel} に投稿済みです。"
-                "同一チャネルへの連投はできません。"
+                f"同一チャネルへの連投はできません。{alt_hint}"
             )
 
         # ── Cross-run guard: ファイルベース cooldown チェック ──
@@ -2212,12 +2219,13 @@ class ToolHandler:
                 return None
 
         permissions = self._memory.read_permissions()
-        if "ファイル操作" not in permissions:
+        header = self._find_section_header(permissions, self._FILE_SECTION_HEADERS)
+        if header is None:
             logger.warning("permission_denied anima=%s path=%s reason=file_ops_not_enabled", self._anima_name, path)
             return _error_result("PermissionDenied", "File operations not enabled in permissions.md")
 
         # Parse allowed directory whitelist from permissions.md
-        raw_items = self._parse_permission_section("ファイル操作")
+        raw_items = self._parse_permission_section(header)
         allowed_dirs = [
             Path(item).resolve() for item in raw_items if item.startswith("/")
         ]
@@ -2232,6 +2240,20 @@ class ToolHandler:
 
         logger.warning("permission_denied anima=%s path=%s reason=outside_allowed_dirs", self._anima_name, path)
         return _error_result("PermissionDenied", f"'{path}' is not under any allowed directory", context={"allowed_dirs": [str(d) for d in allowed_dirs]})
+
+    # Section header aliases: templates use "実行できるコマンド",
+    # older code used "コマンド実行". Accept both.
+    _CMD_SECTION_HEADERS = ("コマンド実行", "実行できるコマンド")
+    _FILE_SECTION_HEADERS = ("ファイル操作", "読める場所")
+
+    def _find_section_header(
+        self, permissions: str, candidates: tuple[str, ...],
+    ) -> str | None:
+        """Return the first matching section header found in *permissions*."""
+        for header in candidates:
+            if header in permissions:
+                return header
+        return None
 
     def _check_command_permission(self, command: str) -> str | None:
         """Check if the command is in the allowed list from permissions.md.
@@ -2249,7 +2271,8 @@ class ToolHandler:
             return _error_result("PermissionDenied", f"Command contains shell metacharacters ({_SHELL_METACHAR_RE.pattern})", suggestion="Use separate tool calls instead of chaining commands")
 
         permissions = self._memory.read_permissions()
-        if "コマンド実行" not in permissions:
+        header = self._find_section_header(permissions, self._CMD_SECTION_HEADERS)
+        if header is None:
             logger.warning("permission_denied anima=%s command=%s reason=cmd_not_enabled", self._anima_name, command[:80])
             return _error_result("PermissionDenied", "Command execution not enabled in permissions.md")
 
@@ -2263,7 +2286,7 @@ class ToolHandler:
             return "Permission denied: empty command after parsing"
 
         # Extract allowed commands (lines like "- git: OK" or "- npm: OK")
-        allowed = self._parse_permission_section("コマンド実行")
+        allowed = self._parse_permission_section(header)
         if not allowed:
             return None  # No explicit list = allow all (section exists)
 

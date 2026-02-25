@@ -129,8 +129,8 @@ MEMORY_TOOLS: list[dict[str, Any]] = [
         "description": (
             "Send a direct message to another anima or a human user. "
             "DM is limited to max 2 recipients per run, 1 message each, "
-            "with intent 'report' or 'delegation' only. "
-            "For acknowledgments, questions, FYI, or messages to 3+ people, "
+            "with intent 'report', 'delegation', or 'question' only. "
+            "For acknowledgments, FYI, or messages to 3+ people, "
             "use post_channel (Board) instead."
         ),
         "parameters": {
@@ -152,10 +152,11 @@ MEMORY_TOOLS: list[dict[str, Any]] = [
                     "type": "string",
                     "description": (
                         "Message intent (REQUIRED for DM). "
-                        "Only 'report' and 'delegation' are permitted. "
-                        "Values: 'delegation' (task assignment to subordinate), "
-                        "'report' (status/result to supervisor — use report template). "
-                        "Questions, acknowledgments, thanks, and FYI must use "
+                        "Permitted values: 'report', 'delegation', 'question'. "
+                        "'delegation' = task assignment to subordinate, "
+                        "'report' = status/result to supervisor, "
+                        "'question' = ask a specific question requiring a response. "
+                        "Acknowledgments, thanks, and FYI must use "
                         "post_channel (Board) instead of DM."
                     ),
                 },
