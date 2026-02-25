@@ -353,10 +353,12 @@ def load_config(path: Path | None = None) -> AnimaWorksConfig:
             config = AnimaWorksConfig.model_validate(data)
         except json.JSONDecodeError as exc:
             logger.error("Failed to parse %s: %s", path, exc)
+            raise ConfigError(f"Invalid JSON in {path}: {exc}") from exc
+        except ConfigError:
             raise
         except Exception as exc:
             logger.error("Failed to load config from %s: %s", path, exc)
-            raise
+            raise ConfigError(f"Failed to load config from {path}: {exc}") from exc
     else:
         logger.info("Config file not found at %s; using defaults", path)
         config = AnimaWorksConfig()

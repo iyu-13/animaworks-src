@@ -427,18 +427,17 @@ class ProcessSupervisor:
             Response result dict
 
         Raises:
-            KeyError: If anima not found
-            RuntimeError: If process not running
-            ValueError: If response contains error
+            AnimaNotFoundError: If anima not found
+            IPCConnectionError: If response contains error
         """
         handle = self.processes.get(anima_name)
         if not handle:
-            raise KeyError(f"Anima not found: {anima_name}")
+            raise AnimaNotFoundError(f"Anima not found: {anima_name}")
 
         response = await handle.send_request(method, params, timeout)
 
         if response.error:
-            raise ValueError(
+            raise IPCConnectionError(
                 f"Request failed: {response.error.get('message', 'Unknown error')}"
             )
 
@@ -465,18 +464,18 @@ class ProcessSupervisor:
             IPCResponse objects (chunks and final result)
 
         Raises:
-            KeyError: If anima not found
-            RuntimeError: If process not running
+            AnimaNotFoundError: If anima not found
+            IPCConnectionError: If response contains error
         """
         handle = self.processes.get(anima_name)
         if not handle:
-            raise KeyError(f"Anima not found: {anima_name}")
+            raise AnimaNotFoundError(f"Anima not found: {anima_name}")
 
         async for response in handle.send_request_stream(
             method, params, timeout
         ):
             if response.error:
-                raise ValueError(
+                raise IPCConnectionError(
                     f"Stream error: {response.error.get('message', 'Unknown error')}"
                 )
             yield response

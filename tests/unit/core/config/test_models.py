@@ -263,9 +263,10 @@ class TestLoadConfig:
         assert c1 is c2  # same object due to cache
 
     def test_invalid_json_raises(self, tmp_path):
+        from core.exceptions import ConfigError
         bad = tmp_path / "bad.json"
         bad.write_text("not json at all", encoding="utf-8")
-        with pytest.raises(json.JSONDecodeError):
+        with pytest.raises(ConfigError, match="Invalid JSON"):
             load_config(bad)
 
     def test_load_with_animas(self, data_dir):

@@ -457,8 +457,11 @@ class AssistedExecutor(BaseExecutor):
                     tool_args,
                     tool_id,
                 )
+            except ToolExecutionError as e:
+                logger.warning("Mode B tool execution error: %s – %s", tool_name, e)
+                result = f"ツール実行エラー: {e}"
             except Exception as e:
-                logger.exception("Mode B tool execution error: %s", tool_name)
+                logger.exception("Mode B unexpected tool error: %s", tool_name)
                 result = f"ツール実行エラー: {e}"
 
             result = _truncate_tool_output(str(result))
@@ -641,9 +644,14 @@ class AssistedExecutor(BaseExecutor):
                         tool_args,
                         tool_id,
                     )
+                except ToolExecutionError as e:
+                    logger.warning(
+                        "Mode B streaming tool error: %s – %s", tool_name, e,
+                    )
+                    result = f"ツール実行エラー: {e}"
                 except Exception as e:
                     logger.exception(
-                        "Mode B streaming tool execution error: %s", tool_name,
+                        "Mode B streaming unexpected tool error: %s", tool_name,
                     )
                     result = f"ツール実行エラー: {e}"
 

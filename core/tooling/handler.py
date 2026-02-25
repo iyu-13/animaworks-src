@@ -27,7 +27,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from core.exceptions import ToolExecutionError, MemoryWriteError, ProcessError, DeliveryError  # noqa: F401
+from core.exceptions import ToolExecutionError, MemoryWriteError, ProcessError, DeliveryError, RecipientNotFoundError  # noqa: F401
 from core.time_utils import now_iso
 
 from core.background import BackgroundTaskManager
@@ -577,11 +577,15 @@ class ToolHandler:
             self._log_tool_result_activity(name, result, tool_use_id=tool_use_id)
             return self._truncate_output(result)
 
+        except ToolExecutionError:
+            raise
+        except MemoryWriteError:
+            raise
         except Exception as e:
             logger.exception("Unhandled tool error in %s", name)
-            return _error_result(
-                "UnhandledError", f"Tool execution failed: {name}: {e}",
-            )
+            raise ToolExecutionError(
+                f"Tool execution failed: {name}: {e}"
+            ) from e
 
     def _truncate_output(self, output: str) -> str:
         """Truncate tool output if it exceeds the size limit."""
@@ -951,8 +955,7 @@ class ToolHandler:
             resolved = resolve_recipient(
                 to, known_animas, config.external_messaging,
             )
-        except ValueError as e:
-            # Unknown recipient — return helpful error
+        except (ValueError, RecipientNotFoundError) as e:
             return _error_result("UnknownRecipient", str(e))
         except Exception as e:
             logger.warning(

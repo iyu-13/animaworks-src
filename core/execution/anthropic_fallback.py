@@ -22,6 +22,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
+from core.exceptions import LLMAPIError, ToolExecutionError  # noqa: F401
 from core.prompt.context import ContextTracker, resolve_context_window
 from core.execution._sanitize import wrap_tool_result
 from core.execution._session import build_continuation_prompt, handle_session_chaining
@@ -208,9 +209,11 @@ class AnthropicFallbackExecutor(BaseExecutor):
 
             try:
                 response = await client.messages.create(**create_kwargs)
+            except LLMAPIError:
+                raise
             except Exception as e:
                 logger.exception("Anthropic API error")
-                return ExecutionResult(text=f"[LLM API Error: {e}]")
+                raise LLMAPIError(f"Anthropic API error: {e}") from e
 
             # ── Context tracking + session chaining ───────────
             if tracker:
@@ -480,8 +483,11 @@ class AnthropicFallbackExecutor(BaseExecutor):
                             tu.input,
                             tu.id,
                         )
+                    except ToolExecutionError as tool_err:
+                        logger.warning("Tool execution error: %s – %s", tu.name, tool_err)
+                        result = f"ツール実行エラー: {tool_err}"
                     except Exception as tool_err:
-                        logger.exception("Tool execution error: %s", tu.name)
+                        logger.exception("Unexpected tool error: %s", tu.name)
                         result = f"ツール実行エラー: {tool_err}"
                     tool_results.append({
                         "type": "tool_result",

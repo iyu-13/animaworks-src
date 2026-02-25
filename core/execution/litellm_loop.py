@@ -367,10 +367,12 @@ class LiteLLMExecutor(BaseExecutor):
                 call_kwargs["tools"] = tools
 
             try:
-                response = cast(Any, await litellm.acompletion(**call_kwargs))
+                response = await litellm.acompletion(**call_kwargs)
+            except LLMAPIError:
+                raise
             except Exception as e:
                 logger.exception("LiteLLM API error")
-                return ExecutionResult(text=f"[LLM API Error: {e}]")
+                raise LLMAPIError(f"LiteLLM API error: {e}") from e
 
             choice = response.choices[0]
             message = choice.message
@@ -1252,11 +1254,18 @@ class LiteLLMExecutor(BaseExecutor):
                     r = await self._execute_tool_call(shim, args_map[shim.id])
                     messages.append(r)
                     result_summary = _truncate_for_record(r.get("content", ""), tool_result_save_budget(shim.function.name, context_window))
-                except Exception as e:
+                except ToolExecutionError as e:
                     logger.warning("Serial tool execution error: %s", e)
                     error_content = _json.dumps({
                         "status": "error",
-                        "error_type": "ExecutionError",
+                        "error_type": "ToolExecutionError",
+                        "message": str(e),
+                    }, ensure_ascii=False)
+                except Exception as e:
+                    logger.warning("Serial tool execution error (unexpected): %s", e)
+                    error_content = _json.dumps({
+                        "status": "error",
+                        "error_type": type(e).__name__,
                         "message": str(e),
                     }, ensure_ascii=False)
                     messages.append({

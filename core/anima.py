@@ -29,7 +29,13 @@ from core.memory.conversation import ConversationMemory, ToolRecord
 from core.memory import MemoryManager
 from core.messenger import InboxItem, Messenger
 from core.paths import load_prompt
-from core.exceptions import AnimaWorksError  # noqa: F401
+from core.exceptions import (  # noqa: F401
+    AnimaWorksError,
+    ExecutionError,
+    LLMAPIError,
+    ToolError,
+    MemoryIOError,
+)
 from core.schemas import CycleResult, AnimaStatus, VALID_EMOTIONS
 
 logger = logging.getLogger("animaworks.anima")
@@ -643,16 +649,12 @@ class DigitalAnima:
                         yield chunk
                 except Exception as exc:
                     logger.exception("[%s] process_message_stream FAILED", self.name)
-                    # Determine error code from exception type
-                    exc_module = type(exc).__module__ or ""
-                    exc_name = type(exc).__qualname__
-                    if "tool" in exc_module.lower() or "tool" in exc_name.lower():
+                    if isinstance(exc, ToolError):
                         error_code = "TOOL_ERROR"
-                    elif any(
-                        k in exc_module.lower()
-                        for k in ("anthropic", "openai", "litellm", "llm")
-                    ):
+                    elif isinstance(exc, (LLMAPIError, ExecutionError)):
                         error_code = "LLM_ERROR"
+                    elif isinstance(exc, MemoryIOError):
+                        error_code = "MEMORY_ERROR"
                     else:
                         error_code = "STREAM_ERROR"
                     # Activity log: error

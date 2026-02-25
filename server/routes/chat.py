@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
+from core.exceptions import AnimaNotFoundError, IPCConnectionError as IPCConnError  # noqa: F401
 from core.time_utils import now_jst
 from server.dependencies import get_anima
 from server.events import emit, emit_notification, emit_direct, emit_notification_direct
@@ -490,13 +491,13 @@ async def _run_producer(
             stream.add_event("error", {"code": "STREAM_ERROR", "message": "内部エラーが発生しました。再試行してください。"})
         registry.mark_complete(stream.response_id, done=False)
 
-    except ValueError as e:
+    except (ValueError, IPCConnError) as e:
         elapsed = _time.monotonic() - _start
         logger.error("[PRODUCER] IPC_ERROR anima=%s stream=%s elapsed=%.1fs error=%s", name, stream.response_id, elapsed, e)
         stream.add_event("error", {"code": "IPC_ERROR", "message": str(e)})
         registry.mark_complete(stream.response_id, done=False)
 
-    except KeyError:
+    except (KeyError, AnimaNotFoundError):
         elapsed = _time.monotonic() - _start
         logger.error("[PRODUCER] ANIMA_NOT_FOUND anima=%s stream=%s elapsed=%.1fs", name, stream.response_id, elapsed)
         stream.add_event("error", {"code": "ANIMA_NOT_FOUND", "message": f"Anima not found: {name}"})
@@ -678,10 +679,10 @@ def create_chat_router() -> APIRouter:
             logger.info("chat_response anima=%s response_len=%d", name, len(clean_response))
             return ChatResponse(response=clean_response, anima=name)
 
-        except KeyError:
+        except (KeyError, AnimaNotFoundError):
             from fastapi import HTTPException
             raise HTTPException(status_code=404, detail=f"Anima not found: {name}")
-        except ValueError as e:
+        except (ValueError, IPCConnError) as e:
             from fastapi import HTTPException
             raise HTTPException(status_code=500, detail=str(e))
         except asyncio.TimeoutError:
@@ -726,10 +727,10 @@ def create_chat_router() -> APIRouter:
                 "anima": name,
             }
 
-        except KeyError:
+        except (KeyError, AnimaNotFoundError):
             from fastapi import HTTPException
             raise HTTPException(status_code=404, detail=f"Anima not found: {name}")
-        except ValueError as e:
+        except (ValueError, IPCConnError) as e:
             from fastapi import HTTPException
             raise HTTPException(status_code=500, detail=str(e))
         except asyncio.TimeoutError:

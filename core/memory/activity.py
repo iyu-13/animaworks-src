@@ -266,6 +266,10 @@ class ActivityLogger:
                 f.write(line + "\n")
                 f.flush()
                 os.fsync(f.fileno())
+        except OSError as exc:
+            from core.exceptions import MemoryWriteError
+            logger.exception("Failed to append activity log")
+            raise MemoryWriteError(f"Activity log write failed: {exc}") from exc
         except Exception:
             logger.exception("Failed to append activity log")
 
