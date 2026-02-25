@@ -253,11 +253,18 @@ def create_system_router() -> APIRouter:
         offset: int = 0,
         limit: int = 200,
         event_type: str | None = None,
+        grouped: bool = False,
+        group_limit: int = 50,
+        group_offset: int = 0,
     ):
         """Return recent activity events from unified ActivityLogger.
 
         Reads directly from ``{anima_dir}/activity_log/{date}.jsonl``
         — the single source of truth for all Anima interactions.
+
+        When ``grouped=true``, returns trigger-based groups instead of
+        flat events.  Pagination switches to group-based (group_limit,
+        group_offset).
         """
         from core.memory.activity import ActivityLogger
 
@@ -292,7 +299,29 @@ def create_system_router() -> APIRouter:
         # Sort all entries by ts descending (newest first)
         all_entries.sort(key=lambda e: e.ts, reverse=True)
 
-        # Apply pagination across merged results
+        if grouped:
+            # Chronological order for grouping (oldest first)
+            chrono = list(reversed(all_entries))
+            all_groups = ActivityLogger.group_by_trigger(chrono)
+            # Reverse to newest-first for display
+            all_groups.reverse()
+
+            group_limit = max(1, min(group_limit, 200))
+            group_offset = max(0, group_offset)
+            total_groups = len(all_groups)
+            total_events = len(all_entries)
+            page_groups = all_groups[group_offset:group_offset + group_limit]
+
+            return {
+                "groups": page_groups,
+                "total_groups": total_groups,
+                "total_events": total_events,
+                "group_offset": group_offset,
+                "group_limit": group_limit,
+                "has_more": (group_offset + group_limit) < total_groups,
+            }
+
+        # Flat (default) — backward compatible
         limit = max(1, min(limit, 500))
         offset = max(0, offset)
         total = len(all_entries)

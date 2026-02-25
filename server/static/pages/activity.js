@@ -1,27 +1,38 @@
 // ── Activity Timeline Page ──────────────────
 import { api } from "../modules/api.js";
-import { state, escapeHtml, smartTimestamp, renderMarkdown } from "../modules/state.js";
+import { escapeHtml, smartTimestamp, renderMarkdown } from "../modules/state.js";
 import { getIcon, getDisplaySummary, TYPE_CATEGORIES } from "../shared/activity-types.js";
 
 let _refreshInterval = null;
-let _events = [];
-let _total = 0;
-let _offset = 0;
+let _groups = [];
+let _totalGroups = 0;
+let _totalEvents = 0;
+let _groupOffset = 0;
 let _hasMore = false;
-let _expandedId = null;
+/** @type {Set<string>} */
+let _expandedGroups = new Set();
 let _selectedAnima = "";
 let _selectedTypes = [];
 
-const LIMIT = 200;
+const GROUP_LIMIT = 50;
+
+const GROUP_ICONS = {
+  heartbeat: "💓",
+  chat: "📨",
+  dm: "✉️",
+  cron: "⏰",
+  task: "📋",
+};
 
 // ── Render ─────────────────────────────────
 
 export function render(container) {
-  _events = [];
-  _total = 0;
-  _offset = 0;
+  _groups = [];
+  _totalGroups = 0;
+  _totalEvents = 0;
+  _groupOffset = 0;
   _hasMore = false;
-  _expandedId = null;
+  _expandedGroups = new Set();
   _selectedAnima = "";
   _selectedTypes = [];
 
@@ -62,23 +73,27 @@ export function destroy() {
 
 // ── Filter UI ──────────────────────────────
 
-function _buildAnimaSelect() {
+async function _buildAnimaSelect() {
   const sel = document.getElementById("activityAnimaSelect");
   if (!sel) return;
 
-  const animas = state.animas || [];
-  for (const a of animas) {
-    const opt = document.createElement("option");
-    opt.value = a.name;
-    opt.textContent = a.name;
-    sel.appendChild(opt);
+  try {
+    const animas = await api("/api/animas");
+    for (const a of animas) {
+      const opt = document.createElement("option");
+      opt.value = a.name;
+      opt.textContent = a.name;
+      sel.appendChild(opt);
+    }
+  } catch (err) {
+    console.error("Failed to load animas for activity filter:", err);
   }
 
   sel.addEventListener("change", () => {
     _selectedAnima = sel.value;
-    _offset = 0;
-    _events = [];
-    _expandedId = null;
+    _groupOffset = 0;
+    _groups = [];
+    _expandedGroups.clear();
     _loadEvents(true);
   });
 }
@@ -96,22 +111,18 @@ function _buildTypeChips() {
     btn.dataset.index = i;
 
     btn.addEventListener("click", () => {
-      // Toggle active state
       const allChip = wrap.querySelector('[data-index="0"]');
 
       if (i === 0) {
-        // "All" clicked — deactivate everything else
         for (const b of wrap.querySelectorAll(".activity-type-chip")) {
           b.classList.remove("active");
         }
         btn.classList.add("active");
         _selectedTypes = [];
       } else {
-        // Specific chip toggled
         allChip.classList.remove("active");
         btn.classList.toggle("active");
 
-        // Collect active types
         _selectedTypes = [];
         for (const b of wrap.querySelectorAll(".activity-type-chip.active")) {
           const idx = parseInt(b.dataset.index);
@@ -120,15 +131,14 @@ function _buildTypeChips() {
           }
         }
 
-        // If nothing selected, revert to "All"
         if (_selectedTypes.length === 0) {
           allChip.classList.add("active");
         }
       }
 
-      _offset = 0;
-      _events = [];
-      _expandedId = null;
+      _groupOffset = 0;
+      _groups = [];
+      _expandedGroups.clear();
       _loadEvents(true);
     });
 
@@ -140,12 +150,12 @@ function _buildTypeChips() {
 
 async function _loadEvents(reset) {
   if (reset) {
-    _offset = 0;
-    _events = [];
-    _expandedId = null;
+    _groupOffset = 0;
+    _groups = [];
+    _expandedGroups.clear();
   }
 
-  let url = `/api/activity/recent?hours=48&limit=${LIMIT}&offset=${_offset}`;
+  let url = `/api/activity/recent?hours=48&grouped=true&group_limit=${GROUP_LIMIT}&group_offset=${_groupOffset}`;
   if (_selectedAnima) {
     url += `&anima=${encodeURIComponent(_selectedAnima)}`;
   }
@@ -157,17 +167,18 @@ async function _loadEvents(reset) {
 
   try {
     const data = await api(url);
-    const newEvents = data.events || [];
-    _total = data.total ?? 0;
+    const newGroups = data.groups || [];
+    _totalGroups = data.total_groups ?? 0;
+    _totalEvents = data.total_events ?? 0;
     _hasMore = data.has_more ?? false;
 
     if (reset) {
-      _events = newEvents;
+      _groups = newGroups;
     } else {
-      _events = _events.concat(newEvents);
+      _groups = _groups.concat(newGroups);
     }
 
-    _offset = _events.length;
+    _groupOffset = _groups.length;
     _renderList();
     _updateCount();
     _renderLoadMore();
@@ -183,7 +194,7 @@ async function _loadEvents(reset) {
 function _updateCount() {
   const el = document.getElementById("activityCount");
   if (el) {
-    el.textContent = `[${_events.length}/${_total}]`;
+    el.textContent = `[${_groups.length}グループ / ${_totalEvents}件]`;
   }
 }
 
@@ -191,90 +202,160 @@ function _renderList() {
   const list = document.getElementById("activityList");
   if (!list) return;
 
-  if (_events.length === 0) {
+  if (_groups.length === 0) {
     list.innerHTML = '<div class="activity-empty">アクティビティはまだありません</div>';
     return;
   }
 
   list.innerHTML = "";
-  for (const evt of _events) {
-    const row = _createRow(evt);
-    list.appendChild(row);
+  for (const grp of _groups) {
+    const header = _createGroupHeader(grp);
+    list.appendChild(header);
 
-    if (evt.id === _expandedId) {
-      const detail = _createDetail(evt);
-      list.appendChild(detail);
+    if (_expandedGroups.has(grp.id)) {
+      const eventsContainer = _createGroupEvents(grp);
+      list.appendChild(eventsContainer);
     }
   }
 }
 
-function _createRow(evt) {
-  const row = document.createElement("div");
-  row.className = "activity-row" + (evt.id === _expandedId ? " expanded" : "");
+function _formatTimeRange(startTs, endTs) {
+  const start = startTs ? startTs.slice(11, 16) : "";
+  const end = endTs ? endTs.slice(11, 16) : "";
+  if (!start) return "";
+  return start === end ? `[${start}]` : `[${start}-${end}]`;
+}
 
-  const icon = getIcon(evt.type);
-  const time = smartTimestamp(evt.ts);
-  const anima = evt.anima || "";
-  const summary = getDisplaySummary(evt);
+function _createGroupHeader(grp) {
+  const header = document.createElement("div");
+  const isExpanded = _expandedGroups.has(grp.id);
+  header.className = "activity-group-header" + (isExpanded ? " expanded" : "");
 
-  row.innerHTML =
-    `<span class="activity-row-time">${escapeHtml(time)}</span>` +
+  if (grp.type === "single") {
+    const evt = grp.events[0];
+    const icon = getIcon(evt.type);
+    const time = smartTimestamp(evt.ts);
+    const anima = evt.anima || grp.anima || "";
+    const summary = getDisplaySummary(evt);
+
+    header.innerHTML =
+      `<span class="activity-row-time">${escapeHtml(time)}</span>` +
+      `<span class="activity-row-icon">${icon}</span>` +
+      `<span class="activity-row-anima">${escapeHtml(anima)}</span>` +
+      `<span class="activity-row-summary">${escapeHtml(summary)}</span>`;
+
+    header.addEventListener("click", () => {
+      if (_expandedGroups.has(grp.id)) {
+        _expandedGroups.delete(grp.id);
+      } else {
+        _expandedGroups.add(grp.id);
+      }
+      _renderList();
+    });
+
+    return header;
+  }
+
+  const icon = GROUP_ICONS[grp.type] || "⚙️";
+  const timeRange = _formatTimeRange(grp.start_ts, grp.end_ts);
+  const anima = grp.anima || "";
+  const count = grp.event_count || grp.events.length;
+  const chevron = isExpanded ? "▼" : "▶";
+
+  let label = "";
+  if (grp.type === "heartbeat") label = `Heartbeat ${timeRange}`;
+  else if (grp.type === "chat") label = `ユーザー対話 ${timeRange}`;
+  else if (grp.type === "dm") label = `DM ${grp.summary || ""} ${timeRange}`;
+  else if (grp.type === "cron") label = `Cron ${grp.summary || ""} ${timeRange}`;
+  else if (grp.type === "task") label = `Task ${grp.summary || ""} ${timeRange}`;
+  else label = `${grp.type} ${timeRange}`;
+
+  const openBadge = grp.is_open ? '<span class="activity-group-badge-open">(進行中)</span>' : "";
+
+  header.innerHTML =
+    `<span class="activity-group-chevron">${chevron}</span>` +
     `<span class="activity-row-icon">${icon}</span>` +
     `<span class="activity-row-anima">${escapeHtml(anima)}</span>` +
-    `<span class="activity-row-summary">${escapeHtml(summary)}</span>`;
+    `<span class="activity-group-label">${escapeHtml(label)}</span>` +
+    openBadge +
+    `<span class="activity-group-count">(${count}件)</span>`;
 
-  row.addEventListener("click", () => {
-    if (_expandedId === evt.id) {
-      _expandedId = null;
+  header.addEventListener("click", () => {
+    if (_expandedGroups.has(grp.id)) {
+      _expandedGroups.delete(grp.id);
     } else {
-      _expandedId = evt.id;
+      _expandedGroups.add(grp.id);
     }
     _renderList();
   });
 
-  return row;
+  return header;
 }
 
-function _createDetail(evt) {
-  const detail = document.createElement("div");
-  detail.className = "activity-detail";
+function _createGroupEvents(grp) {
+  const container = document.createElement("div");
+  container.className = "activity-group-events";
 
-  let html = "";
+  const events = grp.events || [];
+  const maxInitial = 30;
+  const toShow = events.slice(0, maxInitial);
 
-  // Content (fallback to summary for heartbeat etc. where content is empty)
-  const detailText = evt.content || (evt.summary && evt.summary.length > 80 ? evt.summary : "");
-  if (detailText) {
-    html += `<div class="activity-detail-content activity-markdown">${renderMarkdown(detailText)}</div>`;
+  for (let i = 0; i < toShow.length; i++) {
+    const evt = toShow[i];
+    const isLast = i === toShow.length - 1 && events.length <= maxInitial;
+    const row = _createEventRow(evt, isLast);
+    container.appendChild(row);
   }
 
-  // Metadata fields
-  const fields = [
-    ["Type", evt.type],
-    ["From", evt.from_person],
-    ["To", evt.to_person],
-    ["Channel", evt.channel],
-    ["Tool", evt.tool],
-    ["Via", evt.via],
-  ];
+  if (events.length > maxInitial) {
+    const moreBtn = document.createElement("div");
+    moreBtn.className = "activity-group-show-more";
+    moreBtn.textContent = `さらに ${events.length - maxInitial} 件を表示`;
+    moreBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      moreBtn.remove();
+      const remaining = events.slice(maxInitial);
+      for (let i = 0; i < remaining.length; i++) {
+        const row = _createEventRow(remaining[i], i === remaining.length - 1);
+        container.appendChild(row);
+      }
+    });
+    container.appendChild(moreBtn);
+  }
 
-  for (const [label, value] of fields) {
-    if (value) {
-      html += `<div class="activity-detail-field"><span class="activity-detail-label">${label}:</span>${escapeHtml(value)}</div>`;
+  return container;
+}
+
+function _createEventRow(evt, isLast) {
+  const row = document.createElement("div");
+  row.className = "activity-group-event";
+
+  const connector = isLast ? "└" : "├";
+  const icon = getIcon(evt.type);
+  const time = evt.ts ? evt.ts.slice(11, 16) : "";
+
+  let summary = "";
+  if (evt.type === "tool_use") {
+    const toolName = evt.tool || "";
+    const result = evt.tool_result;
+    if (result) {
+      const resultText = result.content || "";
+      const errClass = result.is_error ? " tool-error" : "";
+      summary = `${toolName} → <span class="activity-tool-result${errClass}">${escapeHtml(resultText)}</span>`;
+    } else {
+      summary = toolName;
     }
+  } else {
+    summary = escapeHtml(getDisplaySummary(evt));
   }
 
-  // Meta (JSON)
-  if (evt.meta && Object.keys(evt.meta).length > 0) {
-    html += `<div class="activity-detail-field"><span class="activity-detail-label">Meta:</span></div>`;
-    html += `<div class="activity-meta">${escapeHtml(JSON.stringify(evt.meta, null, 2))}</div>`;
-  }
+  row.innerHTML =
+    `<span class="activity-tree-connector">${connector}</span>` +
+    `<span class="activity-row-time">${escapeHtml(time)}</span>` +
+    `<span class="activity-row-icon">${icon}</span>` +
+    `<span class="activity-row-summary">${summary}</span>`;
 
-  if (!html) {
-    html = '<div class="activity-detail-field" style="color:var(--text-secondary,#aaa);">詳細情報なし</div>';
-  }
-
-  detail.innerHTML = html;
-  return detail;
+  return row;
 }
 
 function _renderLoadMore() {
@@ -282,7 +363,7 @@ function _renderLoadMore() {
   if (!wrap) return;
 
   if (_hasMore) {
-    wrap.innerHTML = `<button class="activity-load-more" id="activityLoadMoreBtn">もっと読み込む (${_events.length}/${_total}件)</button>`;
+    wrap.innerHTML = `<button class="activity-load-more" id="activityLoadMoreBtn">もっと読み込む (${_groups.length}/${_totalGroups}グループ)</button>`;
     const btn = document.getElementById("activityLoadMoreBtn");
     if (btn) {
       btn.addEventListener("click", () => {

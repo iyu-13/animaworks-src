@@ -80,6 +80,7 @@ class ActivityEntry:
     meta: dict[str, Any] = field(default_factory=dict)
     _line_number: int = field(default=0, init=False, repr=False)
     _anima_name: str = field(default="", init=False, repr=False)
+    _tool_result_data: dict[str, Any] | None = field(default=None, init=False, repr=False)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise to a JSON-safe dict, omitting empty fields."""
@@ -714,6 +715,177 @@ class ActivityLogger:
 
         # Single entry: use _format_entry
         return ActivityLogger._format_entry(group.entries[0], content_trim=content_trim)
+
+    # ── Trigger-based grouping (for timeline UI) ──────────────────
+
+    _TRIGGER_TYPES = frozenset({
+        "heartbeat_start", "message_received", "cron_executed",
+        "task_created", "task_updated",
+    })
+
+    _CLOSE_MAP: dict[str, frozenset[str]] = {
+        "heartbeat": frozenset({"heartbeat_end"}),
+        "chat": frozenset({"response_sent"}),
+        "dm": frozenset({"response_sent", "message_sent", "dm_sent"}),
+    }
+
+    @staticmethod
+    def group_by_trigger(
+        entries: list[ActivityEntry],
+    ) -> list[dict[str, Any]]:
+        """Group entries by trigger events for timeline display.
+
+        Trigger events (heartbeat_start, message_received, cron_executed,
+        task_created) open a new group.  Subsequent events are absorbed
+        into the open group until a closing event or the next trigger.
+
+        tool_use / tool_result pairs are merged into a single entry
+        with ``tool_result`` field attached.
+
+        This is a static method — no ``ActivityLogger`` instance is needed.
+        """
+        _AL = ActivityLogger
+        paired = _AL._pair_tool_results(entries)
+        groups: list[dict[str, Any]] = []
+        current: dict[str, Any] | None = None
+
+        for entry in paired:
+            etype = entry.type
+            evt_dict = _AL._entry_to_event_dict(entry)
+            is_trigger = etype in _AL._TRIGGER_TYPES
+
+            if is_trigger:
+                if current is not None:
+                    _AL._finalize_group(current)
+                    groups.append(current)
+                current = _AL._open_group(entry, evt_dict)
+                continue
+
+            if etype == "heartbeat_end" and current and current["type"] == "heartbeat":
+                current["events"].append(evt_dict)
+                current["end_ts"] = entry.ts
+                current["is_open"] = False
+                if entry.summary:
+                    current["summary"] = entry.summary
+                _AL._finalize_group(current)
+                groups.append(current)
+                current = None
+                continue
+
+            if current is not None:
+                close_types = _AL._CLOSE_MAP.get(current["type"], frozenset())
+                current["events"].append(evt_dict)
+                current["end_ts"] = entry.ts
+                if etype in close_types:
+                    current["is_open"] = False
+                    _AL._finalize_group(current)
+                    groups.append(current)
+                    current = None
+                continue
+
+            groups.append(_AL._make_single_group(entry, evt_dict))
+
+        if current is not None:
+            _AL._finalize_group(current)
+            groups.append(current)
+
+        return groups
+
+    @staticmethod
+    def _pair_tool_results(
+        entries: list[ActivityEntry],
+    ) -> list[ActivityEntry]:
+        """Attach tool_result data to tool_use entries, remove paired results.
+
+        Sets ``_tool_result_data`` on tool_use entries and returns a
+        filtered list excluding consumed tool_result entries.
+        """
+        result_by_id: dict[str, ActivityEntry] = {}
+        for e in entries:
+            if e.type == "tool_result":
+                tid = e.meta.get("tool_use_id", "")
+                if tid:
+                    result_by_id[tid] = e
+
+        paired_ids: set[int] = set()
+        for e in entries:
+            if e.type == "tool_use":
+                tid = e.meta.get("tool_use_id", "")
+                result_entry = result_by_id.get(tid) if tid else None
+                if not result_entry:
+                    result_entry = ActivityLogger._find_tool_result_fallback(
+                        entries, e,
+                    )
+                if result_entry:
+                    e._tool_result_data = {
+                        "content": result_entry.content or result_entry.summary,
+                        "is_error": result_entry.meta.get("is_error", False),
+                    }
+                    paired_ids.add(id(result_entry))
+
+        return [e for e in entries if id(e) not in paired_ids]
+
+    @staticmethod
+    def _entry_to_event_dict(entry: ActivityEntry) -> dict[str, Any]:
+        """Convert an entry to API dict, attaching tool_result if paired."""
+        d = entry.to_api_dict()
+        if entry.type == "tool_use" and entry._tool_result_data is not None:
+            d["tool_result"] = entry._tool_result_data
+        return d
+
+    @staticmethod
+    def _open_group(entry: ActivityEntry, evt_dict: dict[str, Any]) -> dict[str, Any]:
+        """Create a new group dict from a trigger entry."""
+        etype = entry.type
+        anima = entry._anima_name
+
+        if etype == "heartbeat_start":
+            gtype = "heartbeat"
+        elif etype == "message_received":
+            from_type = entry.meta.get("from_type", "human")
+            gtype = "dm" if from_type == "anima" else "chat"
+        elif etype == "cron_executed":
+            gtype = "cron"
+        elif etype in ("task_created", "task_updated"):
+            gtype = "task"
+        else:
+            gtype = "single"
+
+        summary = entry.summary or entry.meta.get("task_name", "")
+        if gtype == "dm":
+            summary = entry.from_person or entry.to_person or summary
+
+        return {
+            "id": f"grp-{anima}:{entry.ts}:{gtype}",
+            "type": gtype,
+            "anima": anima,
+            "start_ts": entry.ts,
+            "end_ts": entry.ts,
+            "summary": summary,
+            "event_count": 1,
+            "is_open": True,
+            "events": [evt_dict],
+        }
+
+    @staticmethod
+    def _make_single_group(entry: ActivityEntry, evt_dict: dict[str, Any]) -> dict[str, Any]:
+        anima = entry._anima_name
+        return {
+            "id": f"grp-{anima}:{entry.ts}:single",
+            "type": "single",
+            "anima": anima,
+            "start_ts": entry.ts,
+            "end_ts": entry.ts,
+            "summary": entry.summary,
+            "event_count": 1,
+            "is_open": False,
+            "events": [evt_dict],
+        }
+
+    @staticmethod
+    def _finalize_group(group: dict[str, Any]) -> None:
+        """Update event_count before returning the group."""
+        group["event_count"] = len(group["events"])
 
     # ── Conversation view ───────────────────────────────────────
 

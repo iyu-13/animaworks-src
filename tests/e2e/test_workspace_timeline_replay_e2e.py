@@ -80,8 +80,8 @@ class TestReplayEventCoversAllActivityTypes:
     # Types that are not user-actionable and do NOT need replay handling
     NON_ACTIONABLE_TYPES = {
         "status", "system", "session", "notification", "error",
-        "issue_resolved", "human_notify", "tool_use", "memory_write",
-        "heartbeat_reflection",
+        "issue_resolved", "human_notify", "tool_use", "tool_result",
+        "memory_write", "heartbeat_reflection",
     }
 
     def test_all_activity_types_handled_in_switch(self) -> None:
