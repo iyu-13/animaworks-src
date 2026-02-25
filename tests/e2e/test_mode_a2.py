@@ -134,10 +134,10 @@ class TestModeA2Mock:
 
         assert result.summary
 
-    async def test_execute_command_metachar_rejected(self, make_agent_core):
-        """A2: commands with shell metacharacters are rejected."""
+    async def test_execute_command_injection_rejected(self, make_agent_core):
+        """A2: commands with injection patterns (semicolons) are rejected."""
         agent = make_agent_core(
-            name="a2-cmd-metachar",
+            name="a2-cmd-injection",
             model="openai/gpt-4o",
             permissions="## コマンド実行\n- ls: OK\n",
         )

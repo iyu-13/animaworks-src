@@ -52,8 +52,49 @@ active_session_type: contextvars.ContextVar[str] = contextvars.ContextVar(
 # Type alias for the message-sent callback (from, to, content).
 OnMessageSentFn = Callable[[str, str, str], None]
 
-# Shell metacharacters that indicate injection attempts.
-_SHELL_METACHAR_RE = re.compile(r"[;&|`$(){}]")
+# ── Command security: blocklist + shell operator detection ────
+#
+# Instead of blanket-banning all shell metacharacters (which blocks useful
+# pipes/redirects), we use a targeted blocklist for genuinely dangerous
+# patterns while allowing pipes (|) and logical operators (&&, ||).
+#
+# Injection vectors that are ALWAYS blocked:
+#   - ; (arbitrary command chaining after intended command)
+#   - ` ` (backtick command substitution)
+#   - $() (command substitution)
+#   - $VAR / ${VAR} (variable expansion — could leak env secrets)
+#
+# Destructive / dangerous command patterns:
+#   - rm with recursive flags
+#   - curl/wget piped to sh/bash (remote code execution)
+#   - mkfs, dd of=/dev/* (disk destruction)
+#   - > /dev/sd* or > /etc/* (overwrite critical paths)
+
+# Patterns that indicate shell injection attempts (always blocked).
+_INJECTION_RE = re.compile(r"[;`]|\$\(|\$\{|\$[A-Za-z_]")
+
+# Dangerous command patterns blocked regardless of permissions.
+_BLOCKED_CMD_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"\brm\s+(-[^\s]*)*\s*-r", re.IGNORECASE),
+     "Recursive delete (rm -r) is blocked"),
+    (re.compile(r"\brm\s+-rf\b", re.IGNORECASE),
+     "rm -rf is blocked"),
+    (re.compile(r"\bmkfs\b"),
+     "Filesystem creation is blocked"),
+    (re.compile(r"\bdd\b.*\bof\s*=\s*/dev/"),
+     "Direct disk write is blocked"),
+    (re.compile(r">\s*/dev/sd|>\s*/dev/nvme|>\s*/etc/"),
+     "Redirect to device/system files is blocked"),
+    (re.compile(r"(curl|wget)\b.*\|\s*(ba)?sh\b"),
+     "Remote code execution (curl/wget|sh) is blocked"),
+    (re.compile(r"\bchmod\s+[0-7]*7[0-7]*\b"),
+     "World-writable chmod is blocked"),
+    (re.compile(r"\bshutdown\b|\breboot\b|\binit\s+[06]\b"),
+     "System shutdown/reboot is blocked"),
+]
+
+# Shell operators that require shell=True for subprocess execution.
+_NEEDS_SHELL_RE = re.compile(r"\||\&\&|\|\||>>?|<<?")
 
 # Files that animas cannot modify themselves (identity/privilege protection).
 _PROTECTED_FILES = frozenset({
@@ -2002,24 +2043,39 @@ class ToolHandler:
         if err:
             return err
         timeout = args.get("timeout", 30)
+
+        use_shell = bool(_NEEDS_SHELL_RE.search(command))
+
         try:
-            argv = shlex.split(command)
-        except ValueError as e:
-            return _error_result("InvalidArguments", f"Error parsing command: {e}")
-        try:
-            proc = subprocess.run(
-                argv,
-                shell=False,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                cwd=str(self._anima_dir),
-            )
+            if use_shell:
+                proc = subprocess.run(
+                    command,
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                    cwd=str(self._anima_dir),
+                    executable="/bin/bash",
+                )
+            else:
+                try:
+                    argv = shlex.split(command)
+                except ValueError as e:
+                    return _error_result("InvalidArguments", f"Error parsing command: {e}")
+                proc = subprocess.run(
+                    argv,
+                    shell=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                    cwd=str(self._anima_dir),
+                )
             output = proc.stdout
             if proc.stderr:
                 output += f"\n[stderr]\n{proc.stderr}"
             logger.info(
-                "execute_command cmd=%s rc=%d", command[:80], proc.returncode,
+                "execute_command cmd=%s rc=%d shell=%s",
+                command[:80], proc.returncode, use_shell,
             )
             return output[:50_000] or f"(exit code {proc.returncode})"
         except subprocess.TimeoutExpired:
@@ -2256,56 +2312,93 @@ class ToolHandler:
         return None
 
     def _check_command_permission(self, command: str) -> str | None:
-        """Check if the command is in the allowed list from permissions.md.
+        """Check if the command is allowed by permissions.md and security rules.
 
         Returns ``None`` if allowed, or an error message string if denied.
-        Rejects commands containing shell metacharacters to prevent injection.
+
+        Security layers (evaluated in order):
+          1. Injection patterns (;  `  $()  ${}) — always blocked
+          2. Dangerous command patterns (rm -rf, curl|sh, etc.) — always blocked
+          3. permissions.md section presence check
+          4. Per-command allowlist (if section lists specific commands)
+          5. Path traversal check on arguments
         """
         if not command or not command.strip():
             logger.warning("permission_denied anima=%s command=<empty>", self._anima_name)
             return _error_result("PermissionDenied", "Empty command")
 
-        # Reject shell metacharacters regardless of permissions
-        if _SHELL_METACHAR_RE.search(command):
-            logger.warning("permission_denied anima=%s command=%s reason=shell_metacharacters", self._anima_name, command[:80])
-            return _error_result("PermissionDenied", f"Command contains shell metacharacters ({_SHELL_METACHAR_RE.pattern})", suggestion="Use separate tool calls instead of chaining commands")
+        # Layer 1: Reject injection vectors (semicolons, backticks, $() etc.)
+        if _INJECTION_RE.search(command):
+            logger.warning(
+                "permission_denied anima=%s command=%s reason=injection_pattern",
+                self._anima_name, command[:80],
+            )
+            return _error_result(
+                "PermissionDenied",
+                "Command contains injection patterns (;  `  $()  $VAR)",
+                suggestion="Use pipes (|) or logical operators (&&) instead of semicolons. Avoid variable expansion.",
+            )
 
+        # Layer 2: Dangerous command patterns
+        for pattern, reason in _BLOCKED_CMD_PATTERNS:
+            if pattern.search(command):
+                logger.warning(
+                    "permission_denied anima=%s command=%s reason=blocked_pattern(%s)",
+                    self._anima_name, command[:80], reason,
+                )
+                return _error_result("PermissionDenied", reason)
+
+        # Layer 3: permissions.md section check
         permissions = self._memory.read_permissions()
         header = self._find_section_header(permissions, self._CMD_SECTION_HEADERS)
         if header is None:
             logger.warning("permission_denied anima=%s command=%s reason=cmd_not_enabled", self._anima_name, command[:80])
             return _error_result("PermissionDenied", "Command execution not enabled in permissions.md")
 
-        # Parse the command safely
-        try:
-            argv = shlex.split(command)
-        except ValueError as e:
-            return _error_result("PermissionDenied", f"Invalid command syntax: {e}")
-
-        if not argv:
-            return "Permission denied: empty command after parsing"
-
-        # Extract allowed commands (lines like "- git: OK" or "- npm: OK")
+        # Layer 4: Per-command allowlist check
         allowed = self._parse_permission_section(header)
-        if not allowed:
-            return None  # No explicit list = allow all (section exists)
-
-        cmd_base = argv[0]
-        if cmd_base not in allowed:
-            logger.warning("permission_denied anima=%s command=%s reason=not_in_allowed_list", self._anima_name, cmd_base)
-            return _error_result("PermissionDenied", f"Command '{cmd_base}' not in allowed list", context={"allowed_commands": allowed})
-
-        # Block arguments with path traversal targeting other animas
-        for arg in argv[1:]:
-            if ".." in arg:
+        if allowed:
+            # For pipelines (cmd1 | cmd2 | cmd3), check each segment's base command
+            segments = [s.strip() for s in re.split(r"\|(?!\|)|\&\&|\|\|", command) if s.strip()]
+            for segment in segments:
                 try:
-                    resolved = (self._anima_dir / arg).resolve()
-                    if not resolved.is_relative_to(self._anima_dir.resolve()):
-                        return _error_result(
-                            "PermissionDenied",
-                            f"Command argument resolves outside anima directory",
-                        )
-                except (ValueError, OSError):
-                    pass
+                    seg_argv = shlex.split(segment)
+                except ValueError as e:
+                    return _error_result("PermissionDenied", f"Invalid command syntax: {e}")
+                if not seg_argv:
+                    continue
+                cmd_base = seg_argv[0]
+                if cmd_base not in allowed:
+                    logger.warning(
+                        "permission_denied anima=%s command=%s reason=not_in_allowed_list cmd=%s",
+                        self._anima_name, command[:80], cmd_base,
+                    )
+                    return _error_result(
+                        "PermissionDenied",
+                        f"Command '{cmd_base}' not in allowed list",
+                        context={"allowed_commands": allowed},
+                    )
+        else:
+            # No explicit list = allow all (section exists but has no items)
+            # Still parse for path traversal check below
+            segments = [command]
+
+        # Layer 5: Path traversal check on all segments
+        for segment in segments:
+            try:
+                seg_argv = shlex.split(segment)
+            except ValueError:
+                continue
+            for arg in seg_argv[1:]:
+                if ".." in arg:
+                    try:
+                        resolved = (self._anima_dir / arg).resolve()
+                        if not resolved.is_relative_to(self._anima_dir.resolve()):
+                            return _error_result(
+                                "PermissionDenied",
+                                "Command argument resolves outside anima directory",
+                            )
+                    except (ValueError, OSError):
+                        pass
 
         return None
