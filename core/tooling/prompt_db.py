@@ -114,7 +114,8 @@ DEFAULT_DESCRIPTIONS: dict[str, str] = {
     # -- File tools (A2/B modes) --
     "read_file": (
         "任意のファイルを絶対パスで読む（permissions.mdの許可範囲内）。"
-        "自分の記憶ディレクトリ外のファイルを読む時に使う。"
+        "出力は行番号付き（N|content形式）でコードブロックに囲まれる。"
+        "大きいファイルはoffset（開始行、1始まり）とlimit（行数）で部分読み取り可能。"
         "自分の記憶ディレクトリ内のファイルにはread_memory_fileを使うこと。"
     ),
     "write_file": (

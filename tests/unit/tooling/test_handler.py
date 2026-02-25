@@ -19,6 +19,8 @@ from core.tooling.handler import (
     _PROTECTED_FILES,
     _is_protected_write,
     _validate_episode_path,
+    _READ_FILE_SAFETY_NOTICE,
+    _READ_MAX_LINE_CHARS,
 )
 
 
@@ -345,7 +347,11 @@ class TestFileOperations:
     def test_read_file_in_anima_dir(self, handler: ToolHandler, anima_dir: Path):
         (anima_dir / "test.txt").write_text("hello", encoding="utf-8")
         result = handler.handle("read_file", {"path": str(anima_dir / "test.txt")})
-        assert result == "hello"
+        assert "hello" in result
+        assert "1|hello" in result
+        assert "```" in result
+        assert _READ_FILE_SAFETY_NOTICE in result
+        assert "(1 lines total)" in result
 
     def test_read_file_not_found(self, handler: ToolHandler, anima_dir: Path):
         result = handler.handle("read_file", {"path": str(anima_dir / "missing.txt")})
@@ -357,16 +363,109 @@ class TestFileOperations:
         parsed = json.loads(result)
         assert parsed["error_type"] == "InvalidArguments"
 
-    def test_read_file_truncated_at_100k(self, handler: ToolHandler, anima_dir: Path):
+    def test_read_file_truncated_by_dynamic_budget(self, handler: ToolHandler, anima_dir: Path):
+        """Dynamic budget (32k ctx → 9600 chars) limits read instead of fixed 100k."""
         big_content = "x" * 200_000
         (anima_dir / "big.txt").write_text(big_content, encoding="utf-8")
         result = handler.handle("read_file", {"path": str(anima_dir / "big.txt")})
-        assert len(result) == 100_000
+        assert "char read limit" in result
 
     def test_read_file_permission_denied(self, handler: ToolHandler):
         result = handler.handle("read_file", {"path": "/etc/passwd"})
         parsed = json.loads(result)
         assert parsed["error_type"] == "PermissionDenied"
+
+    def test_read_file_budget_calculation(self, anima_dir: Path, memory: MagicMock):
+        """Verify budget for various context window sizes."""
+        cases = [
+            (8_000, 50, 2_400),       # floor applied
+            (32_000, 120, 9_600),
+            (128_000, 480, 38_400),
+            (200_000, 500, 60_000),    # ceil applied
+        ]
+        for ctx, expected_lines, expected_chars in cases:
+            h = ToolHandler(anima_dir=anima_dir, memory=memory, context_window=ctx)
+            lines, chars = h._read_file_budget()
+            assert lines == expected_lines, f"ctx={ctx}: lines {lines} != {expected_lines}"
+            assert chars == expected_chars, f"ctx={ctx}: chars {chars} != {expected_chars}"
+
+    def test_read_file_line_numbers(self, handler: ToolHandler, anima_dir: Path):
+        """Output has N| format line numbers inside code block."""
+        content = "\n".join(f"line{i}" for i in range(1, 6))
+        (anima_dir / "numbered.txt").write_text(content, encoding="utf-8")
+        result = handler.handle("read_file", {"path": str(anima_dir / "numbered.txt")})
+        assert "1|line1" in result
+        assert "5|line5" in result
+        assert result.count("```") == 2
+
+    def test_read_file_offset_limit(self, handler: ToolHandler, anima_dir: Path):
+        """offset=10, limit=5 returns only lines 10-14."""
+        content = "\n".join(f"L{i:03d}" for i in range(1, 21))
+        (anima_dir / "twenty.txt").write_text(content, encoding="utf-8")
+        result = handler.handle(
+            "read_file",
+            {"path": str(anima_dir / "twenty.txt"), "offset": 10, "limit": 5},
+        )
+        assert "L010" in result
+        assert "L014" in result
+        assert "L009" not in result
+        assert "L015" not in result
+        assert "Showing lines 10-14 of 20" in result
+        assert "6 more lines not shown" in result
+
+    def test_read_file_long_line_truncation(self, handler: ToolHandler, anima_dir: Path):
+        """Lines exceeding 500 chars are truncated with …(+N chars)."""
+        long_line = "A" * 600
+        (anima_dir / "long.txt").write_text(long_line, encoding="utf-8")
+        result = handler.handle("read_file", {"path": str(anima_dir / "long.txt")})
+        assert f"…(+100 chars)" in result
+        assert "A" * _READ_MAX_LINE_CHARS in result
+
+    def test_read_file_empty_file(self, handler: ToolHandler, anima_dir: Path):
+        """Empty files produce no error."""
+        (anima_dir / "empty.txt").write_text("", encoding="utf-8")
+        result = handler.handle("read_file", {"path": str(anima_dir / "empty.txt")})
+        assert "(0 lines total)" in result
+        assert "```" in result
+        assert "error" not in result.lower() or "error_type" not in result
+
+    def test_read_file_safety_notice(self, handler: ToolHandler, anima_dir: Path):
+        """Safety notice present in output."""
+        (anima_dir / "safe.txt").write_text("data", encoding="utf-8")
+        result = handler.handle("read_file", {"path": str(anima_dir / "safe.txt")})
+        assert "prompt injection" in result
+        assert "not instructions" in result
+
+    def test_read_file_offset_exceeds_total(self, handler: ToolHandler, anima_dir: Path):
+        """Offset beyond file returns empty code block without error."""
+        (anima_dir / "short.txt").write_text("one\ntwo", encoding="utf-8")
+        result = handler.handle(
+            "read_file",
+            {"path": str(anima_dir / "short.txt"), "offset": 100},
+        )
+        assert "```\n```" in result
+        assert "more lines not shown" not in result
+        assert "Showing lines" not in result
+
+    def test_read_file_limit_capped_by_budget(self, anima_dir: Path, memory: MagicMock):
+        """LLM-specified limit exceeding budget is capped."""
+        h = ToolHandler(anima_dir=anima_dir, memory=memory, context_window=8_000)
+        content = "\n".join(f"line{i}" for i in range(200))
+        (anima_dir / "many.txt").write_text(content, encoding="utf-8")
+        result = h.handle(
+            "read_file",
+            {"path": str(anima_dir / "many.txt"), "limit": 999},
+        )
+        assert "line49" in result
+        assert "line50" not in result
+
+    def test_read_file_binary_file(self, handler: ToolHandler, anima_dir: Path):
+        """Binary files return a clear error."""
+        (anima_dir / "bin.dat").write_bytes(b"\x00\x01\x80\xff" * 100)
+        result = handler.handle("read_file", {"path": str(anima_dir / "bin.dat")})
+        parsed = json.loads(result)
+        assert parsed["error_type"] == "ReadError"
+        assert "binary" in parsed["message"].lower()
 
     def test_write_file_in_anima_dir(self, handler: ToolHandler, anima_dir: Path):
         path = anima_dir / "output.txt"

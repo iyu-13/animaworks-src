@@ -194,6 +194,9 @@ class AgentCore:
         self._background_manager = self._build_background_manager()
 
         # Composable subsystems
+        from core.config.models import resolve_context_window
+
+        cw = resolve_context_window(self.model_config.model) or 32_000
         self._tool_handler = ToolHandler(
             anima_dir=anima_dir,
             memory=memory,
@@ -202,6 +205,7 @@ class AgentCore:
             personal_tools=self._personal_tools,
             human_notifier=human_notifier,
             background_manager=self._background_manager,
+            context_window=cw,
         )
         self._executor = self._create_executor()
 

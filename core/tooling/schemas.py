@@ -243,11 +243,23 @@ CHANNEL_TOOLS: list[dict[str, Any]] = [
 FILE_TOOLS: list[dict[str, Any]] = [
     {
         "name": "read_file",
-        "description": "Read an arbitrary file (subject to permissions).",
+        "description": (
+            "Read a file with line numbers. "
+            "For large files, use offset and limit to read specific sections. "
+            "Output lines are numbered in 'N|content' format."
+        ),
         "parameters": {
             "type": "object",
             "properties": {
                 "path": {"type": "string", "description": "Absolute file path"},
+                "offset": {
+                    "type": "integer",
+                    "description": "Starting line number (1-based, default: 1)",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of lines to read",
+                },
             },
             "required": ["path"],
         },
