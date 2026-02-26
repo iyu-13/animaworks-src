@@ -175,6 +175,15 @@ class AnthropicFallbackExecutor(BaseExecutor):
         chain_count = 0
         max_iterations = max_turns_override or self._model_config.max_turns
 
+        from core.config.models import resolve_max_tokens
+        from core.execution.base import is_adaptive_model, is_anthropic_claude, resolve_thinking_effort
+
+        _eff_max = resolve_max_tokens(
+            self._model_config.model,
+            self._model_config.max_tokens,
+            self._model_config.thinking,
+        )
+
         for iteration in range(max_iterations):
             is_final_iteration = (
                 max_iterations > 1 and iteration == max_iterations - 1
@@ -197,13 +206,6 @@ class AnthropicFallbackExecutor(BaseExecutor):
                 iteration, len(messages),
             )
 
-            from core.config.models import resolve_max_tokens
-            from core.execution.base import is_adaptive_model, is_anthropic_claude, resolve_thinking_effort
-            _eff_max = resolve_max_tokens(
-                self._model_config.model,
-                self._model_config.max_tokens,
-                self._model_config.thinking,
-            )
             create_kwargs: dict[str, Any] = {
                 "model": self._model_config.model,
                 "max_tokens": _eff_max,
@@ -214,9 +216,9 @@ class AnthropicFallbackExecutor(BaseExecutor):
             if self._model_config.thinking and is_anthropic_claude(self._model_config.model):
                 if is_adaptive_model(self._model_config.model):
                     create_kwargs["thinking"] = {"type": "adaptive"}
-                    create_kwargs["reasoning_effort"] = resolve_thinking_effort(
+                    create_kwargs["output_config"] = {"effort": resolve_thinking_effort(
                         self._model_config.model, self._model_config.thinking_effort,
-                    )
+                    )}
                 else:
                     create_kwargs["thinking"] = {"type": "enabled", "budget_tokens": 10000}
                 create_kwargs["temperature"] = 1
@@ -379,6 +381,15 @@ class AnthropicFallbackExecutor(BaseExecutor):
         all_tool_records: list[ToolCallRecord] = []
         _MAX_ITERATIONS = max_turns_override or self._model_config.max_turns
 
+        from core.config.models import resolve_max_tokens
+        from core.execution.base import is_adaptive_model, is_anthropic_claude, resolve_thinking_effort
+
+        _eff_max_s = resolve_max_tokens(
+            self._model_config.model,
+            self._model_config.max_tokens,
+            self._model_config.thinking,
+        )
+
         async with stream_error_boundary(
             all_response_text, executor_name="AnthropicFallback",
         ):
@@ -408,13 +419,6 @@ class AnthropicFallbackExecutor(BaseExecutor):
                 iteration_text_parts: list[str] = []
                 final_message = None
 
-                from core.config.models import resolve_max_tokens
-                from core.execution.base import is_adaptive_model, is_anthropic_claude, resolve_thinking_effort
-                _eff_max_s = resolve_max_tokens(
-                    self._model_config.model,
-                    self._model_config.max_tokens,
-                    self._model_config.thinking,
-                )
                 stream_kwargs: dict[str, Any] = {
                     "model": self._model_config.model,
                     "max_tokens": _eff_max_s,
@@ -425,9 +429,9 @@ class AnthropicFallbackExecutor(BaseExecutor):
                 if self._model_config.thinking and is_anthropic_claude(self._model_config.model):
                     if is_adaptive_model(self._model_config.model):
                         stream_kwargs["thinking"] = {"type": "adaptive"}
-                        stream_kwargs["reasoning_effort"] = resolve_thinking_effort(
+                        stream_kwargs["output_config"] = {"effort": resolve_thinking_effort(
                             self._model_config.model, self._model_config.thinking_effort,
-                        )
+                        )}
                     else:
                         stream_kwargs["thinking"] = {"type": "enabled", "budget_tokens": 10000}
                     stream_kwargs["temperature"] = 1
