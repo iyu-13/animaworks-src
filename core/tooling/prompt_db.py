@@ -408,12 +408,10 @@ DEFAULT_DESCRIPTIONS: dict[str, dict[str, str]] = {
 
 
 def _get_locale() -> str:
-    """Get locale from config lazily."""
-    try:
-        from core.config.models import load_config
-        return load_config().locale
-    except Exception:
-        return "ja"
+    """Get locale from config lazily.  Delegates to core.paths."""
+    from core.paths import _get_locale as _paths_get_locale
+
+    return _paths_get_locale()
 
 
 def get_default_description(tool_name: str, locale: str | None = None) -> str:

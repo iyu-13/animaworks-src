@@ -68,7 +68,7 @@ def _gs(key: str) -> str:
     entry = _GUIDE_STRINGS.get(key, {})
     if isinstance(entry, str):
         return entry
-    from core.tooling.prompt_db import _get_locale
+    from core.paths import _get_locale
 
     loc = _get_locale()
     return entry.get(loc) or entry.get("en") or entry.get("ja", "")
