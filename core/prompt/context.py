@@ -13,7 +13,7 @@ and direct usage data from the Anthropic SDK fallback path.
 
 The compaction threshold is auto-scaled based on model context window size:
 large models (1M+ tokens) use the configured value (e.g. 0.50), while
-smaller models get a progressively higher threshold (up to 0.95) so that
+smaller models get a progressively higher threshold (up to 0.98) so that
 the fixed-size system prompt does not trigger immediate compaction.
 """
 
@@ -70,7 +70,7 @@ _DEFAULT_CONTEXT_WINDOW = 128_000
 # Reference window size at which the configured threshold is used as-is.
 _THRESHOLD_REFERENCE_WINDOW = 1_000_000
 # Upper bound for the auto-scaled threshold (smallest models).
-_THRESHOLD_CEILING = 0.95
+_THRESHOLD_CEILING = 0.98
 
 
 def resolve_context_threshold(
@@ -81,14 +81,14 @@ def resolve_context_threshold(
 
     Large context windows (>= 1M tokens) keep the configured threshold
     (typically 0.50).  Smaller windows get a linearly higher threshold,
-    sliding up to 0.95, so that the fixed-size system prompt does not
+    sliding up to 0.98, so that the fixed-size system prompt does not
     immediately trigger compaction on small models.
 
     Examples (configured=0.50):
         1 000 000 tokens → 0.50
-          200 000 tokens → 0.86
-          128 000 tokens → 0.89
-           30 000 tokens → 0.94
+          200 000 tokens → 0.884
+          128 000 tokens → 0.919
+           30 000 tokens → 0.966
     """
     if context_window >= _THRESHOLD_REFERENCE_WINDOW:
         return configured

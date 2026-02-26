@@ -124,9 +124,9 @@ class TestResolveContextThreshold:
         assert result < _THRESHOLD_CEILING
 
     def test_very_small_model_near_ceiling(self):
-        """Very small windows approach the ceiling (0.95)."""
+        """Very small windows approach the ceiling (0.98)."""
         result = resolve_context_threshold(0.50, 30_000)
-        assert result >= 0.90
+        assert result >= 0.95
 
     def test_ceiling_not_exceeded(self):
         """Threshold should never exceed the ceiling."""
@@ -143,9 +143,9 @@ class TestResolveContextThreshold:
     def test_expected_values(self):
         """Smoke-test specific expected values (configured=0.50)."""
         assert resolve_context_threshold(0.50, 1_000_000) == 0.50
-        assert resolve_context_threshold(0.50, 200_000) == pytest.approx(0.86, abs=0.01)
-        assert resolve_context_threshold(0.50, 128_000) == pytest.approx(0.89, abs=0.01)
-        assert resolve_context_threshold(0.50, 30_000) == pytest.approx(0.94, abs=0.01)
+        assert resolve_context_threshold(0.50, 200_000) == pytest.approx(0.884, abs=0.01)
+        assert resolve_context_threshold(0.50, 128_000) == pytest.approx(0.919, abs=0.01)
+        assert resolve_context_threshold(0.50, 30_000) == pytest.approx(0.966, abs=0.01)
 
 
 # ── ContextTracker init ───────────────────────────────────
