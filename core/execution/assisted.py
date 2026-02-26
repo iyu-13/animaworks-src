@@ -318,9 +318,13 @@ class AssistedExecutor(BaseExecutor):
             kwargs["api_base"] = self._model_config.api_base_url
         self._apply_provider_kwargs(kwargs)
 
-        # Ollama thinking control: default to off for ollama/ models
+        # Extended thinking / reasoning control
         if self._model_config.thinking is not None:
-            kwargs["think"] = self._model_config.thinking
+            if self._model_config.model.startswith("bedrock/"):
+                if self._model_config.thinking:
+                    kwargs["reasoning_effort"] = "medium"
+            else:
+                kwargs["think"] = self._model_config.thinking
         elif self._model_config.model.startswith("ollama/"):
             kwargs["think"] = False
 

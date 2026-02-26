@@ -93,7 +93,7 @@ class AnimaDefaults(BaseModel):
     execution_mode: str | None = None  # None = auto-detect from model
     supervisor: str | None = None
     speciality: str | None = None
-    thinking: bool | None = None  # Ollama thinking mode
+    thinking: bool | None = None  # Extended thinking (Bedrock: reasoning_effort, Ollama: think)
     llm_timeout: int = 600  # default LLM API timeout (seconds)
 
 
