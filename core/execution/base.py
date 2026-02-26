@@ -220,6 +220,12 @@ class BaseExecutor(ABC):
                 if val:
                     kwargs[key] = val
 
+        elif model.startswith("bedrock/"):
+            for key in ("aws_access_key_id", "aws_secret_access_key", "aws_region_name"):
+                val = extra.get(key) or os.environ.get(key.upper())
+                if val:
+                    kwargs[key] = val
+
     def _resolve_llm_timeout(self) -> int:
         """Resolve LLM API call timeout in seconds.
 

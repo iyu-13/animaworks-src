@@ -526,6 +526,7 @@ DEFAULT_MODEL_MODE_PATTERNS: dict[str, str] = {
     # ── A: Cloud API providers (LiteLLM + tool_use) ──────
     "openai/*": "A",
     "azure/*": "A",
+    "bedrock/*": "A",
     "google/*": "A",
     "vertex_ai/*": "A",
     "mistral/*": "A",
