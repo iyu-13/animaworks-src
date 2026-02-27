@@ -46,26 +46,52 @@ description: >-
 
 応答テキスト内にMarkdown画像構文を直接書いて画像を表示する。
 
-### 自分のアセット画像を見せる場合
+### 短縮パス（推奨）
+
+フロントエンドが自動的に自分のAnima名でAPIパスを補完する。ファイル名だけ書けばOK:
 
 ```
-![説明](/api/animas/{自分の名前}/assets/{ファイル名})
+![説明](attachments/ファイル名)
+![説明](assets/ファイル名)
 ```
 
 例:
 
 ```
-これが私のアバターです！
-![アバター](/api/animas/miyuki/assets/avatar_fullbody.png)
+スクショ撮りました！
+![ANAトップページ](attachments/ana_top.png)
 ```
 
-自分のアセット一覧は `list_files("assets/")` で確認できる。
+### フルパス
 
-### 添付画像を見せる場合
+明示的にAPIパスを書くこともできる:
 
 ```
+![説明](/api/animas/{自分の名前}/assets/{ファイル名})
 ![説明](/api/animas/{自分の名前}/attachments/{ファイル名})
 ```
+
+## スクリーンショットの保存先
+
+agent-browser等でスクリーンショットを撮る場合、**自分のattachmentsディレクトリに直接保存する**のが確実:
+
+```bash
+agent-browser screenshot ~/.animaworks/animas/{自分の名前}/attachments/screenshot.png
+```
+
+例（meiの場合）:
+
+```bash
+agent-browser screenshot ~/.animaworks/animas/mei/attachments/page_screenshot.png
+```
+
+保存後、応答に以下を書けば表示される:
+
+```
+![ページのスクショ](attachments/page_screenshot.png)
+```
+
+`~/.animaworks/tmp/attachments/` に保存した場合もフォールバックで表示されるが、一時ディレクトリなので永続性は保証されない。
 
 ## 注意事項
 

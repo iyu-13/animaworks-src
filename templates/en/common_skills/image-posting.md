@@ -46,26 +46,52 @@ Image URLs from other domains are blocked by the proxy.
 
 Write Markdown image syntax directly in response text to display images.
 
-### Showing Your Own Assets
+### Short Paths (Recommended)
+
+The frontend automatically prepends the API path with your Anima name. Just write the filename:
 
 ```
-![description](/api/animas/{your_name}/assets/{filename})
+![description](attachments/filename)
+![description](assets/filename)
 ```
 
 Example:
 
 ```
-Here's my avatar!
-![Avatar](/api/animas/miyuki/assets/avatar_fullbody.png)
+Here's a screenshot!
+![ANA Top Page](attachments/ana_top.png)
 ```
 
-Use `list_files("assets/")` to see available assets.
+### Full Paths
 
-### Showing Attachments
+You can also write the full API path explicitly:
 
 ```
+![description](/api/animas/{your_name}/assets/{filename})
 ![description](/api/animas/{your_name}/attachments/{filename})
 ```
+
+## Saving Screenshots
+
+When taking screenshots with agent-browser, **save directly to your own attachments directory**:
+
+```bash
+agent-browser screenshot ~/.animaworks/animas/{your_name}/attachments/screenshot.png
+```
+
+Example (for mei):
+
+```bash
+agent-browser screenshot ~/.animaworks/animas/mei/attachments/page_screenshot.png
+```
+
+Then include in your response:
+
+```
+![Page screenshot](attachments/page_screenshot.png)
+```
+
+Files saved to `~/.animaworks/tmp/attachments/` will also work via fallback, but the temp directory does not guarantee persistence.
 
 ## Notes
 

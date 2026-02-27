@@ -1289,10 +1289,13 @@ html, body {
   border: 1px solid #ddd;
   border-radius: 12px;
   background: #fff;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: stretch;
   overflow: visible;
   transition: border-color 0.15s;
+  padding: 8px;
 }
 
 .ws-conv-input-area .chat-input-wrap:focus-within {
@@ -1300,17 +1303,18 @@ html, body {
 }
 
 .ws-conv-input {
-  flex: 1;
-  padding: 10px 14px 4px;
+  width: 100%;
+  padding: 12px 14px;
   border: none;
   background: transparent;
   color: #1a1a1a;
   font-family: inherit;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
+  line-height: 1.5;
   resize: none;
   outline: none;
-  min-height: 36px;
-  max-height: 120px;
+  min-height: 112px;
+  max-height: 220px;
 }
 
 .ws-conv-input::placeholder {
@@ -1322,8 +1326,8 @@ html, body {
 }
 
 .ws-conv-send {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   padding: 0;
   display: inline-flex;
   align-items: center;
@@ -1340,12 +1344,22 @@ html, body {
 }
 
 .chat-input-actions {
+  display: grid;
+  grid-template-columns: repeat(2, 40px);
+  grid-auto-rows: 40px;
+  gap: 8px;
+  justify-content: center;
+  align-content: center;
+  padding: 0;
+  min-height: 0;
+}
+
+.ws-conv-input-area .voice-controls {
   display: flex;
-  gap: 4px;
-  justify-content: flex-end;
   align-items: center;
-  padding: 2px 6px 4px;
-  min-height: 36px;
+  justify-content: center;
+  min-width: 40px;
+  min-height: 40px;
 }
 
 .ws-conv-send:hover {
@@ -1474,8 +1488,8 @@ html, body {
 }
 
 .chat-queue-btn {
-  width: 28px;
-  height: 28px;
+  width: 40px;
+  height: 40px;
   padding: 0;
   display: inline-flex;
   align-items: center;
@@ -2157,8 +2171,8 @@ html, body {
 
   .chat-queue-btn,
   .chat-attach-btn {
-    width: 36px;
-    height: 36px;
+    width: 40px;
+    height: 40px;
   }
 
   .right-tab {
@@ -2197,7 +2211,7 @@ html, body {
 
   /* Conversation input: reduce max-height for mobile */
   .ws-conv-input {
-    max-height: 100px;
+    max-height: 140px;
     font-size: 16px;
   }
 
@@ -2547,8 +2561,8 @@ html, body {
 }
 
 .chat-attach-btn {
-  width: 28px;
-  height: 28px;
+  width: 40px;
+  height: 40px;
   border: 1px solid #ddd;
   border-radius: 50%;
   background: transparent;

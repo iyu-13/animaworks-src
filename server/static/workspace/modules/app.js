@@ -783,7 +783,7 @@ function _renderHistoryMessage(msg) {
   }
 
   if (msg.role === "assistant") {
-    const content = msg.content ? renderSimpleMarkdown(msg.content) : "";
+    const content = msg.content ? renderSimpleMarkdown(msg.content, getState().conversationAnima) : "";
     const toolHtml = _renderToolCalls(msg.tool_calls);
     const imagesHtml = renderChatImages(msg.images, { animaName: getState().conversationAnima });
     return `<div class="chat-bubble assistant">${content}${imagesHtml}${toolHtml}${tsHtml}</div>`;
@@ -817,7 +817,7 @@ function renderConvBubble(msg) {
   }
   let content = "";
   if (msg.text) {
-    content = renderSimpleMarkdown(msg.text);
+    content = renderSimpleMarkdown(msg.text, getState().conversationAnima);
   } else if (msg.streaming) {
     content = '<span class="cursor-blink"></span>';
   }
@@ -1521,7 +1521,7 @@ function updateStreamingBubble(msg) {
   } else if (msg.afterHeartbeatRelay && !msg.text) {
     mainHtml = '<div class="heartbeat-relay-indicator"><span class="tool-spinner"></span>応答を準備中...</div>';
   } else if (msg.text) {
-    mainHtml = renderSimpleMarkdown(msg.text);
+    mainHtml = renderSimpleMarkdown(msg.text, getState().conversationAnima);
   } else {
     mainHtml = '<span class="cursor-blink"></span>';
   }
@@ -2286,7 +2286,7 @@ async function startDashboard() {
   // Auto-resize conversation input + dynamic button update
   dom.convInput?.addEventListener("input", () => {
     dom.convInput.style.height = "auto";
-    const maxH = isMobileView() ? 100 : 120;
+    const maxH = isMobileView() ? 140 : 220;
     dom.convInput.style.height = Math.min(dom.convInput.scrollHeight, maxH) + "px";
     _wsSaveDraft();
     _wsUpdateSendButton(!!convStreamController);

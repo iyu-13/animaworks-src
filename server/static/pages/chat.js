@@ -1268,7 +1268,7 @@ function _renderChat(scrollToBottom = true) {
         }
         let content = "";
         if (m.text) {
-          content = renderMarkdown(m.text);
+          content = renderMarkdown(m.text, _selectedAnima);
         } else if (m.streaming) {
           content = '<span class="cursor-blink"></span>';
         }
@@ -1321,7 +1321,7 @@ function _renderStreamingBubble(msg) {
   } else if (msg.afterHeartbeatRelay && !msg.text) {
     mainHtml = `<div class="heartbeat-relay-indicator"><span class="tool-spinner"></span>${t("chat.heartbeat_relay_done")}</div>`;
   } else if (msg.text) {
-    mainHtml = renderMarkdown(msg.text);
+    mainHtml = renderMarkdown(msg.text, _selectedAnima);
   } else {
     mainHtml = '<span class="cursor-blink"></span>';
   }
@@ -1425,7 +1425,7 @@ function _renderHistoryMessage(msg) {
   }
 
   if (msg.role === "assistant") {
-    const content = msg.content ? renderMarkdown(msg.content) : "";
+    const content = msg.content ? renderMarkdown(msg.content, _selectedAnima) : "";
     const toolHtml = _renderToolCalls(msg.tool_calls);
     const imagesHtml = renderChatImages(msg.images, { animaName: _selectedAnima });
     return `<div class="chat-bubble assistant">${content}${imagesHtml}${toolHtml}${tsHtml}</div>`;
@@ -2184,7 +2184,7 @@ async function _loadArchivedSession(sessionId) {
   try {
     const data = await api(`/api/animas/${encodeURIComponent(_selectedAnima)}/sessions/${encodeURIComponent(sessionId)}`);
     if (data.markdown) {
-      if (conv) conv.innerHTML = `<div class="history-markdown">${renderMarkdown(data.markdown)}</div>`;
+      if (conv) conv.innerHTML = `<div class="history-markdown">${renderMarkdown(data.markdown, _selectedAnima)}</div>`;
     } else if (data.data) {
       const d = data.data;
       let html = `<div class="history-session-meta">
@@ -2196,7 +2196,7 @@ async function _loadArchivedSession(sessionId) {
         html += `<div class="history-section"><div class="history-section-label">${t("chat.request_label")}</div><pre class="history-pre">${escapeHtml(d.original_prompt)}</pre></div>`;
       }
       if (d.accumulated_response) {
-        html += `<div class="history-section"><div class="history-section-label">${t("chat.response_label")}</div><div>${renderMarkdown(d.accumulated_response)}</div></div>`;
+        html += `<div class="history-section"><div class="history-section-label">${t("chat.response_label")}</div><div>${renderMarkdown(d.accumulated_response, _selectedAnima)}</div></div>`;
       }
       if (conv) conv.innerHTML = html;
     } else {
@@ -2231,7 +2231,7 @@ function _renderTranscriptDetail(data) {
       const ts = turn.timestamp ? timeStr(turn.timestamp) : "";
       const bubbleClass = turn.role === "assistant" ? "assistant" : "user";
       const roleLabel = turn.role === "human" ? t("chat.role_human") : turn.role;
-      const content = turn.role === "assistant" ? renderMarkdown(turn.content || "") : escapeHtml(turn.content || "");
+      const content = turn.role === "assistant" ? renderMarkdown(turn.content || "", _selectedAnima) : escapeHtml(turn.content || "");
       html += `
         <div class="history-turn">
           <div class="history-turn-meta">${ts} - ${escapeHtml(roleLabel)}</div>
@@ -2253,7 +2253,7 @@ async function _loadEpisode(date) {
 
   try {
     const data = await api(`/api/animas/${encodeURIComponent(_selectedAnima)}/episodes/${encodeURIComponent(date)}`);
-    if (conv) conv.innerHTML = `<div class="history-markdown">${renderMarkdown(data.content || t("chat.no_content"))}</div>`;
+    if (conv) conv.innerHTML = `<div class="history-markdown">${renderMarkdown(data.content || t("chat.no_content"), _selectedAnima)}</div>`;
   } catch {
     if (conv) conv.innerHTML = `<div class="loading-placeholder">${t("common.load_failed")}</div>`;
   }

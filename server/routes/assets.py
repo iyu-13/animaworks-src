@@ -302,7 +302,11 @@ def create_assets_router() -> APIRouter:
 
         file_path = anima_dir / "attachments" / safe_name
         if not file_path.exists() or not file_path.is_file():
-            raise HTTPException(status_code=404, detail="Attachment not found")
+            tmp_path = animas_dir.parent / "tmp" / "attachments" / safe_name
+            if tmp_path.exists() and tmp_path.is_file():
+                file_path = tmp_path
+            else:
+                raise HTTPException(status_code=404, detail="Attachment not found")
 
         suffix = file_path.suffix.lower()
         content_type = _ASSET_CONTENT_TYPES.get(suffix, "application/octet-stream")
