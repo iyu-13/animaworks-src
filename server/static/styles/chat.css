@@ -204,17 +204,20 @@
 }
 
 .chat-send-btn {
-  padding: 10px 20px;
+  padding: 8px 0;
+  width: 36px;
   background: var(--aw-color-accent);
   color: var(--aw-color-bg-primary);
   border: none;
-  border-radius: 8px;
-  font-size: 0.88rem;
+  border-radius: 50%;
+  font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s;
   flex-shrink: 0;
   align-self: flex-end;
+  text-align: center;
+  line-height: 1;
 }
 
 .chat-send-btn:hover:not(:disabled),
@@ -297,7 +300,17 @@
   color: var(--aw-color-error);
 }
 
-/* Send button: interrupt mode */
+/* Send button: stop mode (streaming, no pending) */
+.chat-send-btn.stop {
+  background: var(--aw-color-danger, #dc2626);
+  color: #fff;
+}
+
+.chat-send-btn.stop:hover:not(:disabled) {
+  filter: brightness(0.9);
+}
+
+/* Send button: interrupt mode (streaming + pending) */
 .chat-send-btn.interrupt {
   background: var(--aw-color-warning, #d97706);
   color: #fff;

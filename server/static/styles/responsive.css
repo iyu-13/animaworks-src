@@ -278,7 +278,9 @@
 
   .chat-send-btn {
     min-height: 44px;
-    padding: 10px 16px;
+    min-width: 44px;
+    width: 44px;
+    padding: 8px 0;
   }
 
   .chat-input {

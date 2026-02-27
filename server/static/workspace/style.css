@@ -716,16 +716,19 @@ html, body {
 }
 
 .chat-send-btn {
-  padding: 10px 20px;
+  padding: 8px 0;
+  width: 36px;
   background: #2563eb;
   color: #fff;
   border: none;
-  border-radius: 8px;
+  border-radius: 50%;
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: 1rem;
   cursor: pointer;
   transition: background 0.15s;
   align-self: flex-end;
+  text-align: center;
+  line-height: 1;
 }
 
 .chat-send-btn:hover {
@@ -1212,16 +1215,19 @@ html, body {
 }
 
 .ws-conv-send {
-  padding: 10px 20px;
+  padding: 8px 0;
+  width: 36px;
   background: #2563eb;
   color: #fff;
   border: none;
-  border-radius: 8px;
+  border-radius: 50%;
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: 1rem;
   cursor: pointer;
   transition: background 0.15s;
   align-self: flex-end;
+  text-align: center;
+  line-height: 1;
 }
 
 .ws-conv-send:hover {
@@ -1231,6 +1237,14 @@ html, body {
 .ws-conv-send:disabled {
   background: #93c5fd;
   cursor: not-allowed;
+}
+
+.ws-conv-send.stop {
+  background: #dc2626;
+}
+
+.ws-conv-send.stop:hover {
+  filter: brightness(0.9);
 }
 
 .ws-conv-send.interrupt {
@@ -1892,7 +1906,9 @@ html, body {
   .chat-send-btn,
   .ws-conv-send {
     min-height: 44px;
-    padding: 10px 20px;
+    min-width: 44px;
+    width: 44px;
+    padding: 8px 0;
   }
 
   .right-tab {

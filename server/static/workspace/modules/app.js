@@ -335,7 +335,7 @@ function mapAnimaStatusToAnim(status) {
 let bustupInitialized = false;
 let convStreamController = null;
 let convImageInputManager = null;
-let convPendingMessage = null;  // { text, images, displayImages } or null
+let convPendingQueue = [];      // Array<{ text, images, displayImages }>
 
 // ── History State (Session-Aware Rendering) ──────────
 const _historyState = {};  // { [animaName]: { sessions, hasMore, nextBefore, loading } }
@@ -419,8 +419,8 @@ function closeConversation() {
   setState({ conversationOpen: false, conversationAnima: null });
   setTalking(false);
 
-  // Clear pending message
-  convPendingMessage = null;
+  // Clear pending queue
+  convPendingQueue = [];
   _wsHidePendingIndicator();
 
   // Abort any active stream
@@ -831,12 +831,12 @@ async function resumeConversationStream(animaName) {
     _wsUpdateSendButton(false);
     dom.convInput?.focus();
 
-    const pending = convPendingMessage;
-    if (pending) {
-      convPendingMessage = null;
-      _wsHidePendingIndicator();
+    if (convPendingQueue.length > 0) {
+      const next = convPendingQueue.shift();
+      _wsShowPendingIndicator();
+      if (convPendingQueue.length === 0) _wsHidePendingIndicator();
       setTimeout(() => {
-        _sendConversationFromPending(pending);
+        _sendConversation(next.text, { images: next.images, displayImages: next.displayImages });
       }, 150);
     }
   }
@@ -924,32 +924,29 @@ function _wsSubmitConversation() {
     return;
   }
 
-  // ── Streaming + already pending → interrupt and send ──
-  if (convPendingMessage) {
-    if (text) {
-      convPendingMessage.text = text;
-      convPendingMessage.images = convImageInputManager?.getPendingImages() || [];
-      convPendingMessage.displayImages = convImageInputManager?.getDisplayImages() || [];
-      convImageInputManager?.clearImages();
-    }
+  // ── Streaming + has input → add to queue ──
+  if (text || hasImages) {
+    convPendingQueue.push({
+      text: text || "",
+      images: convImageInputManager?.getPendingImages() || [],
+      displayImages: convImageInputManager?.getDisplayImages() || [],
+    });
     dom.convInput.value = "";
     dom.convInput.style.height = "auto";
+    convImageInputManager?.clearImages();
+    _wsShowPendingIndicator();
+    _wsUpdateSendButton(true);
+    return;
+  }
+
+  // ── Streaming + empty input + has queue → interrupt & drain queue ──
+  if (convPendingQueue.length > 0) {
     _wsInterruptAndSendPending();
     return;
   }
 
-  // ── Streaming + no pending → queue as pending ──
-  if (!text && !hasImages) return;
-  convPendingMessage = {
-    text: text || "",
-    images: convImageInputManager?.getPendingImages() || [],
-    displayImages: convImageInputManager?.getDisplayImages() || [],
-  };
-  dom.convInput.value = "";
-  dom.convInput.style.height = "auto";
-  convImageInputManager?.clearImages();
-  _wsShowPendingIndicator();
-  _wsUpdateSendButton(true);
+  // ── Streaming + empty input + no queue → just stop ──
+  _wsStopStreaming();
 }
 
 async function sendConversationMessage() {
@@ -1082,32 +1079,27 @@ async function _sendConversation(text, overrideImages = null) {
     _wsUpdateSendButton(false);
     dom.convInput?.focus();
 
-    const pending = convPendingMessage;
-    if (pending) {
-      convPendingMessage = null;
-      _wsHidePendingIndicator();
+    if (convPendingQueue.length > 0) {
+      const next = convPendingQueue.shift();
+      _wsShowPendingIndicator();
+      if (convPendingQueue.length === 0) _wsHidePendingIndicator();
       setTimeout(() => {
-        _sendConversationFromPending(pending);
+        _sendConversation(next.text, { images: next.images, displayImages: next.displayImages });
       }, 150);
     }
   }
 }
 
-function _sendConversationFromPending(pending) {
-  _sendConversation(pending.text, { images: pending.images, displayImages: pending.displayImages });
-}
-
 // ── Workspace Pending Message Helpers ──────────────────────
 
 function _wsShowPendingIndicator() {
-  if (!dom.convPending || !dom.convPendingText || !convPendingMessage) return;
-  const preview = convPendingMessage.text.length > 50
-    ? convPendingMessage.text.slice(0, 50) + "..."
-    : convPendingMessage.text;
-  const imgCount = convPendingMessage.images?.length || 0;
-  dom.convPendingText.textContent = imgCount > 0
-    ? `${preview} (+${imgCount}枚の画像)`
-    : preview || "(画像のみ)";
+  if (!dom.convPending || !dom.convPendingText || convPendingQueue.length === 0) return;
+  const parts = convPendingQueue.map((p, i) => {
+    const txt = p.text.length > 40 ? p.text.slice(0, 40) + "…" : p.text;
+    const img = p.images?.length ? ` (+${p.images.length}画像)` : "";
+    return `${i + 1}. ${txt || "(画像のみ)"}${img}`;
+  });
+  dom.convPendingText.textContent = parts.join("  ");
   dom.convPending.style.display = "";
 }
 
@@ -1117,26 +1109,35 @@ function _wsHidePendingIndicator() {
 
 function _wsUpdateSendButton(isStreaming) {
   if (!dom.convSend) return;
-  if (isStreaming && convPendingMessage) {
-    dom.convSend.textContent = "⏹ 停止して送信";
+  const hasInput = (dom.convInput?.value?.trim() || "").length > 0;
+
+  dom.convSend.classList.remove("stop", "interrupt");
+  if (!isStreaming) {
+    dom.convSend.textContent = "↑";
+  } else if (hasInput) {
+    dom.convSend.textContent = "↑";
+  } else if (convPendingQueue.length > 0) {
+    dom.convSend.textContent = "■↑";
     dom.convSend.classList.add("interrupt");
   } else {
-    dom.convSend.textContent = "送信";
-    dom.convSend.classList.remove("interrupt");
+    dom.convSend.textContent = "■";
+    dom.convSend.classList.add("stop");
   }
 }
 
-function _wsInterruptAndSendPending() {
+function _wsStopStreaming() {
   const animaName = getState().conversationAnima;
   if (!animaName) return;
-
   if (convStreamController) {
     convStreamController.abort();
   }
-
   fetch(`/api/animas/${encodeURIComponent(animaName)}/interrupt`, {
     method: "POST",
   }).catch(() => {});
+}
+
+function _wsInterruptAndSendPending() {
+  _wsStopStreaming();
 }
 
 // ── Streaming update with rAF throttle ──────────────────────
@@ -1893,18 +1894,19 @@ async function startDashboard() {
     }
   });
 
-  // Pending message cancel
+  // Pending queue cancel
   dom.convPendingCancel?.addEventListener("click", () => {
-    convPendingMessage = null;
+    convPendingQueue = [];
     _wsHidePendingIndicator();
     _wsUpdateSendButton(!!convStreamController);
   });
 
-  // Auto-resize conversation input (100px max on mobile, 120px on desktop)
+  // Auto-resize conversation input + dynamic button update
   dom.convInput?.addEventListener("input", () => {
     dom.convInput.style.height = "auto";
     const maxH = isMobileView() ? 100 : 120;
     dom.convInput.style.height = Math.min(dom.convInput.scrollHeight, maxH) + "px";
+    if (convStreamController) _wsUpdateSendButton(true);
   });
 
   // ── Conversation Image Input Setup ────────────────
