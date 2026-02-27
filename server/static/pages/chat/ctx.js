@@ -44,6 +44,7 @@ export function createChatContext() {
     animaTabAvatarUrls: {},
     animaTabAvatarLoading: {},
     chatPollingInFlight: false,
+    rightPaneVisible: true,
   };
 
   const deps = {

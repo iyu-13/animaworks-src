@@ -41,14 +41,16 @@ export function render(container) {
       <button class="chat-mobile-tab" data-panel="info" id="chatMobileTabInfo">${t("chat.character_summary")}</button>
     </nav>
 
-    <div class="chat-page-layout">
+    <div class="chat-page-layout" id="chatPageLayout">
       <!-- Left: Chat Panel -->
       <div class="chat-page-main">
         <div class="chat-anima-tabs-header">
           <div class="anima-tabs" id="chatAnimaTabs"></div>
-          <div class="chat-add-conversation" id="chatAddConversationArea">
-            <button type="button" id="chatAddConversationBtn" class="chat-add-conversation-btn">${t("chat.anima_select")}</button>
-            <div id="chatAddConversationMenu" class="chat-add-conversation-menu" role="listbox" aria-label="${t("chat.anima_select")}"></div>
+          <div class="chat-header-actions">
+            <div class="chat-add-conversation" id="chatAddConversationArea">
+              <button type="button" id="chatAddConversationBtn" class="chat-add-conversation-btn">${t("chat.anima_select")}</button>
+              <div id="chatAddConversationMenu" class="chat-add-conversation-menu" role="listbox" aria-label="${t("chat.anima_select")}"></div>
+            </div>
           </div>
         </div>
 
@@ -97,6 +99,20 @@ export function render(container) {
           </div>
           <input type="file" id="chatPageFileInput" accept="image/jpeg,image/png,image/gif,image/webp" multiple style="display:none" />
         </form>
+      </div>
+
+      <div class="chat-right-pane-handle">
+        <button
+          type="button"
+          id="chatRightPaneToggleBtn"
+          class="chat-right-pane-toggle-btn"
+          aria-label="右ペインを表示・非表示"
+          title="右ペインを表示・非表示"
+        >
+          <svg class="chat-right-pane-toggle-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M15 6l-6 6 6 6" />
+          </svg>
+        </button>
       </div>
 
       <!-- Right: Sidebar -->
@@ -148,6 +164,7 @@ export function render(container) {
   `;
 
   // ── Wire up ──
+  ctx.controllers.sidebar.initRightPaneVisibility();
   ctx.controllers.events.bindEvents();
   ctx.controllers.anima.loadAnimas();
 
@@ -195,6 +212,7 @@ export function destroy() {
   state.imageInputManager = null;
   state.animaTabAvatarUrls = {};
   state.animaTabAvatarLoading = {};
+  state.rightPaneVisible = true;
 
   _ctx = null;
 }

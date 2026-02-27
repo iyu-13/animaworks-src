@@ -89,6 +89,7 @@ export function createEventsController(ctx) {
     for (const tabId of ["chatTabState", "chatTabActivity", "chatTabHistory"]) {
       addListener(tabId, "click", e => ctx.controllers.sidebar.switchRightTab(e.target.dataset.tab));
     }
+    addListener("chatRightPaneToggleBtn", "click", () => ctx.controllers.sidebar.toggleRightPane());
 
     // Memory tabs
     state.container.querySelectorAll(".memory-tab").forEach(btn => {

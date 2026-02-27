@@ -1,9 +1,38 @@
 // ── Sidebar / Tab Switching Controller ─────────
 import { $ } from "./ctx.js";
 
+const RIGHT_PANE_VISIBLE_KEY = "aw-chat-right-pane-visible";
+
 export function createSidebarController(ctx) {
-  const { state, deps } = ctx;
-  const { t } = deps;
+  const { state } = ctx;
+
+  function applyRightPaneToggleButton(visible) {
+    const btn = $("chatRightPaneToggleBtn");
+    if (!btn) return;
+    btn.classList.toggle("is-collapsed", !visible);
+    btn.setAttribute("aria-pressed", visible ? "true" : "false");
+    btn.setAttribute("aria-label", visible ? "右ペインを隠す" : "右ペインを表示");
+    btn.setAttribute("title", visible ? "右ペインを隠す" : "右ペインを表示");
+  }
+
+  function setRightPaneVisible(visible, { persist = true } = {}) {
+    const nextVisible = Boolean(visible);
+    state.rightPaneVisible = nextVisible;
+    const layout = $("chatPageLayout");
+    if (layout) layout.classList.toggle("sidebar-hidden", !nextVisible);
+    applyRightPaneToggleButton(nextVisible);
+    if (persist) localStorage.setItem(RIGHT_PANE_VISIBLE_KEY, nextVisible ? "1" : "0");
+  }
+
+  function toggleRightPane() {
+    setRightPaneVisible(!state.rightPaneVisible);
+  }
+
+  function initRightPaneVisibility() {
+    const stored = localStorage.getItem(RIGHT_PANE_VISIBLE_KEY);
+    const isVisible = stored !== "0";
+    setRightPaneVisible(isVisible, { persist: false });
+  }
 
   function switchMobileTab(panel) {
     const chatTab = $("chatMobileTabChat");
@@ -47,5 +76,5 @@ export function createSidebarController(ctx) {
     if (tab === "activity") ctx.controllers.activity.loadActivity();
   }
 
-  return { switchMobileTab, switchRightTab };
+  return { switchMobileTab, switchRightTab, toggleRightPane, initRightPaneVisibility };
 }

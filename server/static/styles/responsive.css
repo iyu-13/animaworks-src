@@ -522,8 +522,20 @@ body.sidebar-collapsed .sidebar-collapse-btn {
     width: 100%;
   }
 
+  .chat-header-actions {
+    width: 100%;
+  }
+
   .chat-add-conversation-btn {
     width: 100%;
+  }
+
+  .chat-right-pane-toggle-btn {
+    display: none;
+  }
+
+  .chat-right-pane-handle {
+    display: none;
   }
 
   .chat-add-conversation-menu {
