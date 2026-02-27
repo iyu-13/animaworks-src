@@ -785,7 +785,8 @@ function _renderHistoryMessage(msg) {
   if (msg.role === "assistant") {
     const content = msg.content ? renderSimpleMarkdown(msg.content) : "";
     const toolHtml = _renderToolCalls(msg.tool_calls);
-    return `<div class="chat-bubble assistant">${content}${toolHtml}${tsHtml}</div>`;
+    const imagesHtml = renderChatImages(msg.images, { animaName: getState().conversationAnima });
+    return `<div class="chat-bubble assistant">${content}${imagesHtml}${toolHtml}${tsHtml}</div>`;
   }
 
   // human / user
@@ -805,7 +806,7 @@ function renderConvBubble(msg) {
     return `<div class="chat-visit-marker">${escapeHtml(msg.text)}${tsHtml}</div>`;
   }
   if (msg.role === "user") {
-    const imagesHtml = renderChatImages(msg.images);
+    const imagesHtml = renderChatImages(msg.images, { animaName: getState().conversationAnima });
     const textHtml = msg.text ? `<div class="chat-text">${escapeHtml(msg.text)}</div>` : "";
     return `<div class="chat-bubble user">${imagesHtml}${textHtml}${tsHtml}</div>`;
   }
@@ -823,7 +824,8 @@ function renderConvBubble(msg) {
   const toolHtml = msg.activeTool
     ? `<div class="tool-indicator"><span class="tool-spinner"></span>${escapeHtml(msg.activeTool)} を実行中...</div>`
     : "";
-  return `<div class="chat-bubble assistant${streamClass}">${thinkingHtml}${content}${toolHtml}${tsHtml}</div>`;
+  const imagesHtml = renderChatImages(msg.images, { animaName: getState().conversationAnima });
+  return `<div class="chat-bubble assistant${streamClass}">${thinkingHtml}${content}${imagesHtml}${toolHtml}${tsHtml}</div>`;
 }
 
 function renderConvMessages() {
@@ -1012,8 +1014,9 @@ async function resumeConversationStream(animaName) {
         streamingMsg.thinking = false;
         updateStreamingBubble(streamingMsg);
       },
-      onDone: ({ summary, emotion }) => {
+      onDone: ({ summary, emotion, images }) => {
         if (summary) streamingMsg.text = summary;
+        streamingMsg.images = images || [];
         if (!streamingMsg.text) streamingMsg.text = "(空の応答)";
         streamingMsg.streaming = false;
         streamingMsg.activeTool = null;
@@ -1292,11 +1295,12 @@ async function _sendConversation(text, overrideImages = null) {
         streamingMsg.thinking = false;
         updateStreamingBubble(streamingMsg);
       },
-      onDone: ({ summary, emotion }) => {
+      onDone: ({ summary, emotion, images }) => {
         if (summary) {
           streamingMsg.text = summary;
           updateStreamingBubble(streamingMsg);
         }
+        streamingMsg.images = images || [];
         setExpression(emotion);
         setTimeout(() => setExpression("neutral"), 3000);
       },

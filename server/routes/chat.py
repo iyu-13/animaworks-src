@@ -56,6 +56,7 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     response: str
     anima: str
+    images: list[dict[str, Any]] = []
 
 
 # ── Image Helpers ─────────────────────────────────────────────
@@ -696,7 +697,11 @@ def create_chat_router() -> APIRouter:
             await emit(request, "anima.status", {"name": name, "status": "idle"})
 
             logger.info("chat_response anima=%s response_len=%d", name, len(clean_response))
-            return ChatResponse(response=clean_response, anima=name)
+            images = result.get("images") or []
+            cycle_result = result.get("cycle_result") or {}
+            if not images and isinstance(cycle_result, dict):
+                images = cycle_result.get("images") or cycle_result.get("artifacts") or []
+            return ChatResponse(response=clean_response, anima=name, images=images)
 
         except (KeyError, AnimaNotFoundError):
             from fastapi import HTTPException
