@@ -204,8 +204,12 @@
 }
 
 .chat-send-btn {
-  padding: 8px 0;
   width: 36px;
+  height: 36px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: var(--aw-color-accent);
   color: var(--aw-color-bg-primary);
   border: none;
@@ -216,8 +220,6 @@
   transition: background 0.15s;
   flex-shrink: 0;
   align-self: flex-end;
-  text-align: center;
-  line-height: 1;
 }
 
 .chat-send-btn:hover:not(:disabled),
@@ -337,8 +339,12 @@
 
 /* Queue add button */
 .chat-queue-btn {
-  padding: 6px 0;
   width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: transparent;
   color: var(--aw-color-text-muted);
   border: 1px solid var(--aw-color-border, #ddd);
@@ -348,8 +354,6 @@
   transition: all 0.15s;
   flex-shrink: 0;
   align-self: flex-end;
-  text-align: center;
-  line-height: 1;
 }
 
 .chat-queue-btn:hover:not(:disabled) {
