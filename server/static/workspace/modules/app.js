@@ -84,6 +84,9 @@ function cacheDom() {
   dom.convPreviewBar = document.getElementById("wsConvPreviewBar");
   dom.convAttachBtn = document.getElementById("wsConvAttachBtn");
   dom.convFileInput = document.getElementById("wsConvFileInput");
+  dom.convPending = document.getElementById("wsConvPending");
+  dom.convPendingText = document.getElementById("wsConvPendingText");
+  dom.convPendingCancel = document.getElementById("wsConvPendingCancel");
 
   // Mobile controls
   dom.mobileSidebarToggle = document.getElementById("wsMobileSidebarToggle");
@@ -332,6 +335,7 @@ function mapAnimaStatusToAnim(status) {
 let bustupInitialized = false;
 let convStreamController = null;
 let convImageInputManager = null;
+let convPendingMessage = null;  // { text, images, displayImages } or null
 
 // ── History State (Session-Aware Rendering) ──────────
 const _historyState = {};  // { [animaName]: { sessions, hasMore, nextBefore, loading } }
@@ -414,6 +418,10 @@ function closeConversation() {
 
   setState({ conversationOpen: false, conversationAnima: null });
   setTalking(false);
+
+  // Clear pending message
+  convPendingMessage = null;
+  _wsHidePendingIndicator();
 
   // Abort any active stream
   if (convStreamController) {
@@ -750,9 +758,8 @@ async function resumeConversationStream(animaName) {
     setState({ chatMessages: [...chatMessages, streamingMsg] });
     renderConvMessages();
 
-    dom.convInput.disabled = true;
-    dom.convSend.disabled = true;
     convStreamController = new AbortController();
+    _wsUpdateSendButton(true);
 
     const resumeBody = JSON.stringify({
       message: "",
@@ -816,11 +823,22 @@ async function resumeConversationStream(animaName) {
       renderConvMessages();
     }
   } catch (err) {
-    logger.error("Resume stream error", { anima: animaName, error: err.message });
+    if (err.name !== "AbortError") {
+      logger.error("Resume stream error", { anima: animaName, error: err.message });
+    }
   } finally {
     convStreamController = null;
-    if (dom.convInput) dom.convInput.disabled = false;
-    if (dom.convSend) dom.convSend.disabled = false;
+    _wsUpdateSendButton(false);
+    dom.convInput?.focus();
+
+    const pending = convPendingMessage;
+    if (pending) {
+      convPendingMessage = null;
+      _wsHidePendingIndicator();
+      setTimeout(() => {
+        _sendConversationFromPending(pending);
+      }, 150);
+    }
   }
 }
 
@@ -892,21 +910,59 @@ async function _loadMoreHistory() {
 
 // ── SSE Streaming for Conversation ──────────────────────
 
-async function sendConversationMessage() {
+function _wsSubmitConversation() {
   const text = dom.convInput?.value?.trim();
-  const images = convImageInputManager?.getPendingImages() || [];
+  const hasImages = convImageInputManager && convImageInputManager.getImageCount() > 0;
+  const isStreaming = !!convStreamController;
+
+  // ── Not streaming: normal send ──
+  if (!isStreaming) {
+    if (!text && !hasImages) return;
+    dom.convInput.value = "";
+    dom.convInput.style.height = "auto";
+    _sendConversation(text);
+    return;
+  }
+
+  // ── Streaming + already pending → interrupt and send ──
+  if (convPendingMessage) {
+    if (text) {
+      convPendingMessage.text = text;
+      convPendingMessage.images = convImageInputManager?.getPendingImages() || [];
+      convPendingMessage.displayImages = convImageInputManager?.getDisplayImages() || [];
+      convImageInputManager?.clearImages();
+    }
+    dom.convInput.value = "";
+    dom.convInput.style.height = "auto";
+    _wsInterruptAndSendPending();
+    return;
+  }
+
+  // ── Streaming + no pending → queue as pending ──
+  if (!text && !hasImages) return;
+  convPendingMessage = {
+    text: text || "",
+    images: convImageInputManager?.getPendingImages() || [],
+    displayImages: convImageInputManager?.getDisplayImages() || [],
+  };
+  dom.convInput.value = "";
+  dom.convInput.style.height = "auto";
+  convImageInputManager?.clearImages();
+  _wsShowPendingIndicator();
+  _wsUpdateSendButton(true);
+}
+
+async function sendConversationMessage() {
+  _wsSubmitConversation();
+}
+
+async function _sendConversation(text, overrideImages = null) {
+  const images = overrideImages?.images || convImageInputManager?.getPendingImages() || [];
+  const displayImages = overrideImages?.displayImages || convImageInputManager?.getDisplayImages() || [];
   if (!text && images.length === 0) return;
 
   const animaName = getState().conversationAnima;
   if (!animaName) return;
-
-  // Capture display images (with dataUrl for rendering)
-  const displayImages = convImageInputManager?.getDisplayImages() || [];
-
-  // Clear input
-  dom.convInput.value = "";
-  dom.convInput.disabled = true;
-  dom.convSend.disabled = true;
 
   // Add user message + streaming assistant placeholder
   const { chatMessages } = getState();
@@ -916,11 +972,12 @@ async function sendConversationMessage() {
   setState({ chatMessages: [...chatMessages, userMsg, streamingMsg] });
   renderConvMessages();
 
-  // Clear images after capturing
-  convImageInputManager?.clearImages();
+  if (!overrideImages) {
+    convImageInputManager?.clearImages();
+  }
 
-  // Create AbortController for cancellable streaming
   convStreamController = new AbortController();
+  _wsUpdateSendButton(true);
 
   try {
     const userName = getCurrentUser() || "guest";
@@ -983,7 +1040,6 @@ async function sendConversationMessage() {
         updateStreamingBubble(streamingMsg);
       },
       onDone: ({ summary, emotion }) => {
-        // Use clean summary (emotion tag already stripped server-side)
         if (summary) {
           streamingMsg.text = summary;
           updateStreamingBubble(streamingMsg);
@@ -1000,27 +1056,87 @@ async function sendConversationMessage() {
 
     setTalking(false);
 
-    // Finalize streaming message
     streamingMsg.streaming = false;
     if (!streamingMsg.text) streamingMsg.text = "(空の応答)";
     setState({ chatMessages: [...getState().chatMessages] });
     renderConvMessages();
   } catch (err) {
-    if (err.name === "AbortError") return;
-    logger.error("Conversation stream error", { anima: animaName, error: err.message, name: err.name });
-    streamingMsg.text = `[エラー] ${err.message}`;
-    streamingMsg.streaming = false;
-    streamingMsg.activeTool = null;
-    setState({ chatMessages: [...getState().chatMessages] });
-    renderConvMessages();
-    setExpression("troubled");
+    if (err.name === "AbortError") {
+      streamingMsg.streaming = false;
+      streamingMsg.activeTool = null;
+      if (!streamingMsg.text) streamingMsg.text = "(中断されました)";
+      setState({ chatMessages: [...getState().chatMessages] });
+      renderConvMessages();
+    } else {
+      logger.error("Conversation stream error", { anima: animaName, error: err.message, name: err.name });
+      streamingMsg.text = `[エラー] ${err.message}`;
+      streamingMsg.streaming = false;
+      streamingMsg.activeTool = null;
+      setState({ chatMessages: [...getState().chatMessages] });
+      renderConvMessages();
+      setExpression("troubled");
+    }
     setTalking(false);
   } finally {
     convStreamController = null;
-    if (dom.convInput) dom.convInput.disabled = false;
-    if (dom.convSend) dom.convSend.disabled = false;
+    _wsUpdateSendButton(false);
     dom.convInput?.focus();
+
+    const pending = convPendingMessage;
+    if (pending) {
+      convPendingMessage = null;
+      _wsHidePendingIndicator();
+      setTimeout(() => {
+        _sendConversationFromPending(pending);
+      }, 150);
+    }
   }
+}
+
+function _sendConversationFromPending(pending) {
+  _sendConversation(pending.text, { images: pending.images, displayImages: pending.displayImages });
+}
+
+// ── Workspace Pending Message Helpers ──────────────────────
+
+function _wsShowPendingIndicator() {
+  if (!dom.convPending || !dom.convPendingText || !convPendingMessage) return;
+  const preview = convPendingMessage.text.length > 50
+    ? convPendingMessage.text.slice(0, 50) + "..."
+    : convPendingMessage.text;
+  const imgCount = convPendingMessage.images?.length || 0;
+  dom.convPendingText.textContent = imgCount > 0
+    ? `${preview} (+${imgCount}枚の画像)`
+    : preview || "(画像のみ)";
+  dom.convPending.style.display = "";
+}
+
+function _wsHidePendingIndicator() {
+  if (dom.convPending) dom.convPending.style.display = "none";
+}
+
+function _wsUpdateSendButton(isStreaming) {
+  if (!dom.convSend) return;
+  if (isStreaming && convPendingMessage) {
+    dom.convSend.textContent = "⏹ 停止して送信";
+    dom.convSend.classList.add("interrupt");
+  } else {
+    dom.convSend.textContent = "送信";
+    dom.convSend.classList.remove("interrupt");
+  }
+}
+
+function _wsInterruptAndSendPending() {
+  const animaName = getState().conversationAnima;
+  if (!animaName) return;
+
+  if (convStreamController) {
+    convStreamController.abort();
+  }
+
+  fetch(`/api/animas/${encodeURIComponent(animaName)}/interrupt`, {
+    method: "POST",
+  }).catch(() => {});
 }
 
 // ── Streaming update with rAF throttle ──────────────────────
@@ -1760,23 +1876,28 @@ async function startDashboard() {
     // Close when clicking the backdrop (outside the card)
     if (e.target === dom.convOverlay) closeConversation();
   });
-  dom.convSend?.addEventListener("click", sendConversationMessage);
+  dom.convSend?.addEventListener("click", () => _wsSubmitConversation());
   dom.convInput?.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       if (isMobileView()) {
-        // Mobile: Enter sends, Shift+Enter inserts newline
         if (!e.shiftKey) {
           e.preventDefault();
-          sendConversationMessage();
+          _wsSubmitConversation();
         }
       } else {
-        // Desktop: Ctrl/Cmd+Enter sends
         if (e.ctrlKey || e.metaKey) {
           e.preventDefault();
-          sendConversationMessage();
+          _wsSubmitConversation();
         }
       }
     }
+  });
+
+  // Pending message cancel
+  dom.convPendingCancel?.addEventListener("click", () => {
+    convPendingMessage = null;
+    _wsHidePendingIndicator();
+    _wsUpdateSendButton(!!convStreamController);
   });
 
   // Auto-resize conversation input (100px max on mobile, 120px on desktop)

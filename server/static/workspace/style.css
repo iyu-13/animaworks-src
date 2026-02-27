@@ -1233,6 +1233,14 @@ html, body {
   cursor: not-allowed;
 }
 
+.ws-conv-send.interrupt {
+  background: #d97706;
+}
+
+.ws-conv-send.interrupt:hover {
+  filter: brightness(0.9);
+}
+
 /* Right: Live2D Character */
 .ws-conv-character {
   width: 350px;

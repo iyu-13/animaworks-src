@@ -27,6 +27,8 @@ const _HISTORY_PAGE_SIZE = 50;
 const _TOOL_RESULT_TRUNCATE = 500;
 let _imageInputManager = null;
 let _bustupUrl = null;
+let _pendingMessage = null;   // { text, images, displayImages } or null
+let _chatAbortController = null;
 
 // ── DOM refs (local) ───────────────────────
 
@@ -72,6 +74,16 @@ export function render(container) {
         <!-- Chat Input -->
         <form id="chatPageForm" class="chat-input-form" style="padding:0.75rem; border-top:1px solid var(--border-color, #eee);">
           <div class="image-preview-bar" id="chatPagePreviewBar" style="display:none"></div>
+          <div class="pending-message-bar" id="chatPagePending" style="display:none">
+            <div class="pending-message-content">
+              <span class="pending-message-icon">⏳</span>
+              <span class="pending-message-text" id="chatPagePendingText"></span>
+            </div>
+            <div class="pending-message-actions">
+              <span class="pending-message-hint">Ctrl+Enter で停止して送信</span>
+              <button class="pending-message-cancel" id="chatPagePendingCancel" type="button">✕</button>
+            </div>
+          </div>
           <div class="chat-input-row">
             <textarea
               id="chatPageInput"
@@ -157,6 +169,8 @@ export function destroy() {
   }
   _boundListeners = [];
   if (_chatObserver) { _chatObserver.disconnect(); _chatObserver = null; }
+  if (_chatAbortController) { _chatAbortController.abort(); _chatAbortController = null; }
+  _pendingMessage = null;
   _removeBustupOverlay();
   _bustupUrl = null;
   _container = null;
@@ -205,6 +219,13 @@ function _bindEvents() {
       e.preventDefault();
       _submitChat();
     }
+  });
+
+  // Pending message cancel
+  _addListener("chatPagePendingCancel", "click", () => {
+    _pendingMessage = null;
+    _hidePendingIndicator();
+    _updateSendButton();
   });
 
   // Auto-resize textarea
@@ -319,6 +340,8 @@ function _renderAnimaDropdown() {
 
 async function _selectAnima(name) {
   _selectedAnima = name;
+  _pendingMessage = null;
+  _hidePendingIndicator();
   _updateVoiceAnima(name);
 
   const select = _$("chatPageAnimaSelect");
@@ -758,15 +781,48 @@ function _submitChat() {
   if (!input) return;
   const msg = input.value.trim();
   const hasImages = _imageInputManager && _imageInputManager.getImageCount() > 0;
+
+  // ── Not streaming: normal send ──
+  if (!_isChatStreaming) {
+    if (!msg && !hasImages) return;
+    input.value = "";
+    input.style.height = "auto";
+    _sendChat(msg);
+    return;
+  }
+
+  // ── Streaming + already pending → interrupt and send ──
+  if (_pendingMessage) {
+    if (msg) {
+      _pendingMessage.text = msg;
+      _pendingMessage.images = _imageInputManager?.getPendingImages() || [];
+      _pendingMessage.displayImages = _imageInputManager?.getDisplayImages() || [];
+      _imageInputManager?.clearImages();
+    }
+    input.value = "";
+    input.style.height = "auto";
+    _interruptAndSendPending();
+    return;
+  }
+
+  // ── Streaming + no pending → queue as pending ──
   if (!msg && !hasImages) return;
+  _pendingMessage = {
+    text: msg,
+    images: _imageInputManager?.getPendingImages() || [],
+    displayImages: _imageInputManager?.getDisplayImages() || [],
+  };
   input.value = "";
   input.style.height = "auto";
-  _sendChat(msg);
+  _imageInputManager?.clearImages();
+  _showPendingIndicator();
+  _updateSendButton();
 }
 
-async function _sendChat(message) {
+async function _sendChat(message, overrideImages = null) {
   const name = _selectedAnima;
-  const images = _imageInputManager?.getPendingImages() || [];
+  const images = overrideImages?.images || _imageInputManager?.getPendingImages() || [];
+  const displayImages = overrideImages?.displayImages || _imageInputManager?.getDisplayImages() || [];
   if (!name || (!message.trim() && images.length === 0)) return;
 
   // Guard: block sending to bootstrapping animas
@@ -786,9 +842,6 @@ async function _sendChat(message) {
   if (!_chatHistories[name]) _chatHistories[name] = [];
   const history = _chatHistories[name];
 
-  // Capture display images (with dataUrl for rendering)
-  const displayImages = _imageInputManager?.getDisplayImages() || [];
-
   const sendTs = new Date().toISOString();
   history.push({ role: "user", text: message, images: displayImages, timestamp: sendTs });
   const streamingMsg = { role: "assistant", text: "", streaming: true, activeTool: null, timestamp: sendTs, thinkingText: "", thinking: false };
@@ -797,12 +850,14 @@ async function _sendChat(message) {
 
   const input = _$("chatPageInput");
   const sendBtn = _$("chatPageSendBtn");
-  if (input) input.disabled = true;
-  if (sendBtn) sendBtn.disabled = true;
   _isChatStreaming = true;
+  _chatAbortController = new AbortController();
+  _updateSendButton();
+  if (input) input.placeholder = `${name} が応答中... メッセージを入力して送信待ちにできます`;
 
-  // Clear images after capturing
-  _imageInputManager?.clearImages();
+  if (!overrideImages) {
+    _imageInputManager?.clearImages();
+  }
 
   _addLocalActivity("chat", name, `ユーザー: ${message}`);
 
@@ -815,7 +870,7 @@ async function _sendChat(message) {
     const body = JSON.stringify(bodyObj);
 
     logger.debug(`_sendChat: starting stream for ${name} msg_len=${message.length}`);
-    await streamChat(name, body, null, {
+    await streamChat(name, body, _chatAbortController.signal, {
       onTextDelta: (text) => {
         streamingMsg.afterHeartbeatRelay = false;
         streamingMsg.text += text;
@@ -905,19 +960,93 @@ async function _sendChat(message) {
     }
     logger.debug(`_sendChat: stream completed for ${name}`);
   } catch (err) {
-    if (err.name !== "AbortError") {
+    if (err.name === "AbortError") {
+      streamingMsg.streaming = false;
+      streamingMsg.activeTool = null;
+      if (!streamingMsg.text) streamingMsg.text = "(中断されました)";
+      _renderChat();
+    } else {
       logger.error("Chat stream error", { anima: name, error: err.message, name: err.name });
+      streamingMsg.text += `\n[エラー] ${err.message}`;
+      streamingMsg.streaming = false;
+      streamingMsg.activeTool = null;
+      _renderChat();
     }
-    logger.debug(`_sendChat: catch — error=${err.message} name=${err.name}`);
-    streamingMsg.text = `[エラー] ${err.message}`;
-    streamingMsg.streaming = false;
-    streamingMsg.activeTool = null;
-    _renderChat();
   } finally {
     _isChatStreaming = false;
-    if (input) { input.disabled = false; input.focus(); }
-    if (sendBtn) sendBtn.disabled = false;
+    _chatAbortController = null;
+    if (input) {
+      input.placeholder = `${name} にメッセージ...`;
+      input.focus();
+    }
+    _updateSendButton();
+
+    // Auto-send pending message
+    const pending = _pendingMessage;
+    if (pending) {
+      _pendingMessage = null;
+      _hidePendingIndicator();
+      setTimeout(() => {
+        _sendChat(pending.text, { images: pending.images, displayImages: pending.displayImages });
+      }, 150);
+    }
   }
+}
+
+// ── Pending Message Helpers ─────────────────
+
+function _showPendingIndicator() {
+  const bar = _$("chatPagePending");
+  const textEl = _$("chatPagePendingText");
+  if (!bar || !textEl || !_pendingMessage) return;
+  const preview = _pendingMessage.text.length > 60
+    ? _pendingMessage.text.slice(0, 60) + "..."
+    : _pendingMessage.text;
+  const imgCount = _pendingMessage.images?.length || 0;
+  textEl.textContent = imgCount > 0
+    ? `${preview} (+${imgCount}枚の画像)`
+    : preview || "(画像のみ)";
+  bar.style.display = "";
+}
+
+function _hidePendingIndicator() {
+  const bar = _$("chatPagePending");
+  if (bar) bar.style.display = "none";
+}
+
+function _updateSendButton() {
+  const sendBtn = _$("chatPageSendBtn");
+  if (!sendBtn) return;
+
+  if (_isChatStreaming && _pendingMessage) {
+    sendBtn.textContent = "⏹ 停止して送信";
+    sendBtn.classList.add("interrupt");
+    sendBtn.disabled = false;
+  } else if (_isChatStreaming) {
+    sendBtn.textContent = "送信";
+    sendBtn.classList.remove("interrupt");
+    sendBtn.disabled = false;
+  } else {
+    sendBtn.textContent = "送信";
+    sendBtn.classList.remove("interrupt");
+    sendBtn.disabled = !_selectedAnima;
+  }
+}
+
+function _interruptAndSendPending() {
+  if (!_selectedAnima) return;
+
+  // Abort the SSE connection
+  if (_chatAbortController) {
+    _chatAbortController.abort();
+  }
+
+  // Fire-and-forget interrupt to stop the Anima's LLM session
+  fetch(`/api/animas/${encodeURIComponent(_selectedAnima)}/interrupt`, {
+    method: "POST",
+  }).catch(() => {});
+
+  // _sendChat's finally block will detect _pendingMessage and auto-send it
 }
 
 // ── Mobile Tab Switching ─────────────────────
