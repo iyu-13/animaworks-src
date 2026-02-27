@@ -104,6 +104,10 @@ _STRINGS: dict[str, dict[str, str]] = {
     "handler.task_add_log": {"ja": "タスク追加: {summary}", "en": "Task added: {summary}"},
     "handler.task_update_log": {"ja": "タスク更新: {summary} → {status}", "en": "Task updated: {summary} → {status}"},
     "handler.no_file_ops_paths": {"ja": "No allowed paths listed under ファイル操作", "en": "No allowed paths listed under file operations"},
+    "handler.none_value": {"ja": "(なし)", "en": "(none)"},
+    "handler.reason_prefix": {"ja": "理由: {reason}", "en": "Reason: {reason}"},
+    "handler.all_descendants": {"ja": "全配下", "en": "All descendants"},
+    "handler.tool_creation_keyword": {"ja": "ツール作成", "en": "Tool Creation"},
     # ── anima.py ──
     "anima.bg_task_done": {"ja": "バックグラウンドタスク完了: {tool}", "en": "Background task completed: {tool}"},
     "anima.bg_task_failed": {"ja": "バックグラウンドタスク失敗: {tool}", "en": "Background task failed: {tool}"},
@@ -204,8 +208,22 @@ _STRINGS: dict[str, dict[str, str]] = {
     "agent.recent_dialogue_consider": {"ja": "進行中のタスクや指示がある場合、この内容を考慮してください。", "en": "Consider this content if there are ongoing tasks or instructions."},
     # ── messenger.py ──
     "messenger.depth_exceeded": {"ja": "ConversationDepthExceeded: {to}との会話が10分間に6ターンに達しました。次のハートビートサイクルまでお待ちください", "en": "ConversationDepthExceeded: Conversation with {to} reached 6 turns in 10 minutes. Please wait until the next heartbeat cycle."},
+    "messenger.more_count": {"ja": "(+{count}件)", "en": "(+{count} more)"},
+    "messenger.read_receipt": {"ja": "[既読通知] {count}件のメッセージを受信しました: {summary}", "en": "[Read receipt] Received {count} messages: {summary}"},
     # ── execution/assisted.py ──
     "assisted.output_truncated": {"ja": "... [出力切り捨て: 元のサイズ {size}バイト]", "en": "... [Output truncated: original size {size} bytes]"},
+    "assisted.unknown_tool": {
+        "ja": "エラー: 不明なツール '{tool_name}' です。利用可能なツール: {available}",
+        "en": "Error: Unknown tool '{tool_name}'. Available tools: {available}",
+    },
+    "assisted.tool_exec_error": {
+        "ja": "ツール実行エラー: {error}",
+        "en": "Tool execution error: {error}",
+    },
+    "assisted.tool_result_header": {
+        "ja": "ツール実行結果:",
+        "en": "Tool execution result:",
+    },
     # ── agent.py (additional) ──
     "agent.priming_tier_light_header": {"ja": "## あなたが思い出していること\n\n### {sender_name} について\n\n", "en": "## What you recall\n\n### About {sender_name}\n\n"},
     "agent.omitted_rest": {"ja": "\n\n（以降省略）", "en": "\n\n(omitted)"},

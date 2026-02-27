@@ -378,11 +378,11 @@ class Messenger:
                     for sender, sender_msgs in senders.items():
                         summary = ", ".join(m.content[:50] for m in sender_msgs[:3])
                         if len(sender_msgs) > 3:
-                            summary += f" (+{len(sender_msgs) - 3}件)"
+                            summary += " " + t("messenger.more_count", count=len(sender_msgs) - 3)
                         try:
                             self.send(
                                 to=sender,
-                                content=f"[既読通知] {len(sender_msgs)}件のメッセージを受信しました: {summary}",
+                                content=t("messenger.read_receipt", count=len(sender_msgs), summary=summary),
                                 msg_type="ack",
                                 skip_logging=True,
                             )

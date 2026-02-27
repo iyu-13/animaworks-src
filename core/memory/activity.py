@@ -1178,7 +1178,7 @@ class ActivityLogger:
                 }
                 if e.meta.get("blocked"):
                     tc["is_error"] = True
-                    tc["result"] = f"ブロック: {e.meta.get('reason', '')}"
+                    tc["result"] = t("activity.blocked", reason=e.meta.get("reason", ""))
                 pending_tool_calls.append(tc)
 
             elif e.type == "tool_result":
@@ -1190,7 +1190,7 @@ class ActivityLogger:
                 messages.append({
                     "ts": e.ts,
                     "role": "system",
-                    "content": e.summary or "定期巡回開始",
+                    "content": e.summary or t("activity.heartbeat_start"),
                     "from_person": "",
                     "tool_calls": [],
                     "_trigger": "heartbeat",
@@ -1201,7 +1201,7 @@ class ActivityLogger:
                 messages.append({
                     "ts": e.ts,
                     "role": "system",
-                    "content": e.summary or e.content or "定期巡回完了",
+                    "content": e.summary or e.content or t("activity.heartbeat_end"),
                     "from_person": "",
                     "tool_calls": [],
                     "_trigger": "heartbeat",

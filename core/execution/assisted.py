@@ -523,9 +523,10 @@ class AssistedExecutor(BaseExecutor):
                 messages.append({"role": "assistant", "content": content})
                 messages.append({
                     "role": "user",
-                    "content": (
-                        f"エラー: 不明なツール '{tool_name}' です。"
-                        f"利用可能なツール: {sorted(self._known_tools)}"
+                    "content": t(
+                        "assisted.unknown_tool",
+                        tool_name=tool_name,
+                        available=sorted(self._known_tools),
                     ),
                 })
                 continue
@@ -548,10 +549,10 @@ class AssistedExecutor(BaseExecutor):
                 )
             except ToolExecutionError as e:
                 logger.warning("Mode B tool execution error: %s – %s", tool_name, e)
-                result = f"ツール実行エラー: {e}"
+                result = t("assisted.tool_exec_error", error=e)
             except Exception as e:
                 logger.exception("Mode B unexpected tool error: %s", tool_name)
-                result = f"ツール実行エラー: {e}"
+                result = t("assisted.tool_exec_error", error=e)
 
             result = _truncate_tool_output(str(result))
             all_tool_records.append(ToolCallRecord(
@@ -569,7 +570,7 @@ class AssistedExecutor(BaseExecutor):
             messages.append({"role": "assistant", "content": content})
             messages.append({
                 "role": "user",
-                "content": f"ツール実行結果:\n{wrap_tool_result(tool_name, result)}",
+                "content": t("assisted.tool_result_header") + "\n" + wrap_tool_result(tool_name, result),
             })
 
             # ── Drain reminder queue into tool result message ──
@@ -721,9 +722,10 @@ class AssistedExecutor(BaseExecutor):
                     messages.append({"role": "assistant", "content": content})
                     messages.append({
                         "role": "user",
-                        "content": (
-                            f"エラー: 不明なツール '{tool_name}' です。"
-                            f"利用可能なツール: {sorted(self._known_tools)}"
+                        "content": t(
+                            "assisted.unknown_tool",
+                            tool_name=tool_name,
+                            available=sorted(self._known_tools),
                         ),
                     })
                     continue
@@ -761,12 +763,12 @@ class AssistedExecutor(BaseExecutor):
                     logger.warning(
                         "Mode B streaming tool error: %s – %s", tool_name, e,
                     )
-                    result = f"ツール実行エラー: {e}"
+                    result = t("assisted.tool_exec_error", error=e)
                 except Exception as e:
                     logger.exception(
                         "Mode B streaming unexpected tool error: %s", tool_name,
                     )
-                    result = f"ツール実行エラー: {e}"
+                    result = t("assisted.tool_exec_error", error=e)
 
                 result = _truncate_tool_output(str(result))
                 all_tool_records.append(ToolCallRecord(
@@ -787,7 +789,7 @@ class AssistedExecutor(BaseExecutor):
                 messages.append({"role": "assistant", "content": content})
                 messages.append({
                     "role": "user",
-                    "content": f"ツール実行結果:\n{wrap_tool_result(tool_name, result)}",
+                    "content": t("assisted.tool_result_header") + "\n" + wrap_tool_result(tool_name, result),
                 })
 
                 # ── Drain reminder queue into tool result message ──

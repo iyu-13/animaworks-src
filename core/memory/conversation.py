@@ -730,9 +730,9 @@ class ConversationMemory:
 
         user_content = ""
         if old_summary:
-            user_content += f"## 既存の要約\n\n{old_summary}\n\n---\n\n"
-        user_content += f"## 新しい会話ターン\n\n{new_turns}\n\n"
-        user_content += "上記を統合した新しい要約を作成してください。"
+            user_content += f"{t('conversation.existing_summary_header')}\n\n{old_summary}\n\n---\n\n"
+        user_content += f"{t('conversation.new_turns_header')}\n\n{new_turns}\n\n"
+        user_content += t("conversation.integrate_instruction")
 
         return await self._call_llm(system, user_content, max_tokens=2000)
 
@@ -898,7 +898,7 @@ class ConversationMemory:
                 return ""
 
             # Format as context
-            lines = ["## セッション中のその他の活動"]
+            lines = [t("conversation.activity_context_header")]
             for e in session_entries:
                 text = e.summary or e.content[:100]
                 lines.append(f"- [{e.type}] {text}")

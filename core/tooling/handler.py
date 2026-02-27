@@ -1383,7 +1383,7 @@ class ToolHandler:
             return _error_result(
                 "PermissionDenied",
                 t("handler.not_direct_subordinate", target_name=target_name),
-                context={"supervisor": target_cfg.supervisor or "(なし)"},
+                context={"supervisor": target_cfg.supervisor or t("handler.none_value")},
             )
 
         return None
@@ -1492,7 +1492,7 @@ class ToolHandler:
 
         result = t("handler.disabled_success", target_name=target_name)
         if reason:
-            result += f"\n理由: {reason}"
+            result += "\n" + t("handler.reason_prefix", reason=reason)
         return result
 
     def _handle_enable_subordinate(self, args: dict[str, Any]) -> str:
@@ -1600,7 +1600,7 @@ class ToolHandler:
 
         result = t("handler.model_changed", target_name=target_name, model=model)
         if reason:
-            result += f"\n理由: {reason}"
+            result += "\n" + t("handler.reason_prefix", reason=reason)
         return result + warn_msg
 
     def _handle_restart_subordinate(self, args: dict[str, Any]) -> str:
@@ -1653,7 +1653,7 @@ class ToolHandler:
 
         result = t("handler.restart_success", target_name=target_name)
         if reason:
-            result += f"\n理由: {reason}"
+            result += "\n" + t("handler.reason_prefix", reason=reason)
         return result
 
     def _handle_org_dashboard(self, args: dict[str, Any]) -> str:
@@ -1838,7 +1838,7 @@ class ToolHandler:
         self._activity.log(
             "tool_use",
             tool="ping_subordinate",
-            summary=t("handler.ping_summary", target="全配下" if not target_name else target_name),
+            summary=t("handler.ping_summary", target=t("handler.all_descendants") if not target_name else target_name),
         )
 
         return _json.dumps(results, ensure_ascii=False, indent=2)
@@ -2141,7 +2141,9 @@ class ToolHandler:
     def _check_tool_creation_permission(self, kind: str) -> bool:
         """Check if tool creation is permitted via permissions.md."""
         permissions = self._memory.read_permissions() if self._memory else ""
-        if "ツール作成" not in permissions:
+        kw_ja = t("handler.tool_creation_keyword", locale="ja")
+        kw_en = t("handler.tool_creation_keyword", locale="en")
+        if kw_ja not in permissions and kw_en not in permissions:
             return False
         _perm_re = re.compile(
             rf"[-*]?\s*{re.escape(kind)}\s*:\s*(OK|yes|enabled|true)\s*$",
@@ -2339,7 +2341,7 @@ class ToolHandler:
         # Activity log: knowledge outcome
         self._activity.log(
             "knowledge_outcome",
-            summary=f"{'成功' if success else '失敗'}: {rel}",
+            summary=f"{t('handler.outcome_success') if success else t('handler.outcome_failure')}: {rel}",
             meta={
                 "path": rel,
                 "success": success,
@@ -2370,7 +2372,7 @@ class ToolHandler:
         context = args.get("context", "")
 
         if not skill_name:
-            return "skill_name パラメータは必須です。"
+            return t("handler.skill_name_required")
 
         return load_and_render_skill(
             skill_name=skill_name,
@@ -2454,7 +2456,7 @@ class ToolHandler:
         # Activity log: task created
         self._activity.log(
             "task_created",
-            summary=f"タスク追加: {summary[:100]}",
+            summary=t("handler.task_add_log", summary=summary[:100]),
             meta={"task_id": entry.task_id, "source": source, "assignee": assignee},
         )
 
@@ -2483,7 +2485,7 @@ class ToolHandler:
         # Activity log: task updated
         self._activity.log(
             "task_updated",
-            summary=f"タスク更新: {entry.summary[:100]} → {status}",
+            summary=t("handler.task_update_log", summary=entry.summary[:100], status=status),
             meta={"task_id": task_id, "status": status},
         )
 

@@ -2,8 +2,15 @@
 
 let _translations = {};
 let _locale = 'ja';
+let _initPromise = null;
 
 export async function initI18n() {
+  if (_initPromise) return _initPromise;
+  _initPromise = _doInit();
+  return _initPromise;
+}
+
+async function _doInit() {
   const stored = localStorage.getItem('animaworks-locale');
   if (stored) {
     _locale = stored;
@@ -21,6 +28,7 @@ export async function initI18n() {
 }
 
 export async function loadTranslations(locale) {
+  _locale = locale;
   try {
     const res = await fetch(`/i18n/${locale}.json`);
     _translations = await res.json();
