@@ -1,6 +1,7 @@
 // ── App Entry Point ──────────────────────
 // Initialization, screen switching, and event delegation.
 
+import { initI18n, applyTranslations } from "/shared/i18n.js";
 import { getState, setState, subscribe } from "./state.js";
 import { fetchSystemStatus, fetchConversationHistory, greetAnima } from "./api.js";
 import { connect, onEvent } from "./websocket.js";
@@ -2073,7 +2074,10 @@ function applyTheme() {
   document.body.classList.toggle("theme-business", theme === "business");
 }
 
-export function init() {
+export async function init() {
+  await initI18n();
+  applyTranslations();
+
   applyTheme();
   cacheDom();
 

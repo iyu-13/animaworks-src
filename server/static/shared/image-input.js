@@ -2,6 +2,8 @@
 // Shared image input handling for chat UIs.
 // Supports: Ctrl+V paste, drag & drop, file picker button.
 
+import { t } from "/shared/i18n.js";
+
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB per image
 const MAX_DIMENSION = 1568; // Max pixel dimension (Anthropic recommendation)
 const SUPPORTED_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
@@ -91,7 +93,7 @@ export function createImageInput({ container, inputArea, previewContainer, onIma
     previewContainer.innerHTML = pendingImages.map((img, i) => `
       <div class="image-preview-item" data-index="${i}">
         <img src="${img.dataUrl}" alt="Preview ${i + 1}" />
-        <button class="image-preview-remove" data-index="${i}" title="削除">&times;</button>
+        <button class="image-preview-remove" data-index="${i}" title="${t("assets.delete")}">&times;</button>
       </div>
     `).join("");
 

@@ -3,6 +3,7 @@
  * Integrates into existing chat input areas and renders voice chat bubbles.
  */
 import { voiceManager } from './voice.js';
+import { t } from '/shared/i18n.js';
 
 let _uiElements = null;
 let _voiceStreamingMsg = null;
@@ -27,7 +28,7 @@ export function initVoiceUI(chatInputForm, animaName, callbacks) {
   const micBtn = document.createElement('button');
   micBtn.type = 'button';
   micBtn.className = 'voice-mic-btn';
-  micBtn.title = '音声入力';
+  micBtn.title = t('voice.mic_input');
   micBtn.innerHTML = MIC_ICON_SVG;
 
   const recIndicator = document.createElement('span');
@@ -42,7 +43,7 @@ export function initVoiceUI(chatInputForm, animaName, callbacks) {
   modeToggle.type = 'button';
   modeToggle.className = 'voice-mode-toggle';
   modeToggle.textContent = 'PTT';
-  modeToggle.title = '入力モード切替（PTT/自動）';
+  modeToggle.title = t('voice.mode_toggle');
   modeToggle.style.display = 'none';
 
   const volumeSlider = document.createElement('input');

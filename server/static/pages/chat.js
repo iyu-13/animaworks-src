@@ -1,4 +1,5 @@
 // ── Chat Page (Self-Contained) ──────────────
+import { t } from "/shared/i18n.js";
 import { api } from "../modules/api.js";
 import { escapeHtml, renderMarkdown, renderSafeMarkdown, timeStr, smartTimestamp } from "../modules/state.js";
 import { streamChat } from "../shared/chat-stream.js";
@@ -51,8 +52,8 @@ export function render(container) {
   container.innerHTML = `
     <!-- Mobile Tab Bar (hidden on desktop, visible on mobile) -->
     <nav class="chat-mobile-tabs" id="chatMobileTabs">
-      <button class="chat-mobile-tab active" data-panel="chat" id="chatMobileTabChat">チャット</button>
-      <button class="chat-mobile-tab" data-panel="info" id="chatMobileTabInfo">キャラクター概要</button>
+      <button class="chat-mobile-tab active" data-panel="chat" id="chatMobileTabChat">${t("nav.chat")}</button>
+      <button class="chat-mobile-tab" data-panel="info" id="chatMobileTabInfo">${t("chat.character_summary")}</button>
     </nav>
 
     <div class="chat-page-layout">
@@ -62,13 +63,13 @@ export function render(container) {
         <div style="display:flex; align-items:center; gap:0.75rem; padding:0.75rem; border-bottom:1px solid var(--border-color, #eee);">
           <div id="chatPageAvatar" class="anima-avatar-container"></div>
           <select id="chatPageAnimaSelect" class="anima-dropdown" style="flex:1;">
-            <option value="" disabled selected>Animaを選択...</option>
+            <option value="" disabled selected>${t("chat.anima_select")}</option>
           </select>
         </div>
 
         <!-- Chat Messages -->
         <div id="chatPageMessages" class="chat-messages" style="flex:1; overflow-y:auto; padding:1rem;">
-          <div class="chat-empty">Animaを選択してチャットを開始</div>
+          <div class="chat-empty">${t("chat.anima_select_first")}</div>
         </div>
 
         <!-- Chat Input -->
@@ -76,8 +77,8 @@ export function render(container) {
           <div class="image-preview-bar" id="chatPagePreviewBar" style="display:none"></div>
           <div class="pending-queue-bar" id="chatPagePending" style="display:none">
             <div class="pending-queue-header">
-              <span class="pending-queue-label" id="chatPagePendingLabel">キュー</span>
-              <button class="pending-queue-clear" id="chatPagePendingCancel" type="button" title="全クリア">✕ all</button>
+              <span class="pending-queue-label" id="chatPagePendingLabel">${t("chat.queue_label")}</span>
+              <button class="pending-queue-clear" id="chatPagePendingCancel" type="button" title="${t("chat.queue_clear_all")}">✕ all</button>
             </div>
             <div id="chatPagePendingList"></div>
           </div>
@@ -85,14 +86,14 @@ export function render(container) {
             <textarea
               id="chatPageInput"
               class="chat-input"
-              placeholder="メッセージを入力... (Ctrl+Enter で送信, Alt+Enter でキュー)"
+              placeholder="${t("chat.placeholder")}"
               autocomplete="off"
               rows="1"
               disabled
             ></textarea>
             <div class="chat-input-actions">
-              <button type="button" class="chat-attach-btn" id="chatPageAttachBtn" title="画像を添付">+</button>
-              <button type="button" class="chat-queue-btn" id="chatPageQueueBtn" disabled title="キューに追加 (Alt+Enter)">↓</button>
+              <button type="button" class="chat-attach-btn" id="chatPageAttachBtn" title="${t("chat.attach_image")}">+</button>
+              <button type="button" class="chat-queue-btn" id="chatPageQueueBtn" disabled title="${t("chat.queue_add")}">↓</button>
               <button type="submit" class="chat-send-btn" id="chatPageSendBtn" disabled>↑</button>
             </div>
           </div>
@@ -104,29 +105,29 @@ export function render(container) {
       <div class="chat-page-sidebar mobile-hidden">
         <!-- Right tabs -->
         <nav class="right-tabs" style="display:flex; border-bottom:1px solid var(--border-color, #eee);">
-          <button class="right-tab active" data-tab="state" id="chatTabState">現在の状態</button>
-          <button class="right-tab" data-tab="activity" id="chatTabActivity">アクティビティ</button>
-          <button class="right-tab" data-tab="history" id="chatTabHistory">会話履歴</button>
+          <button class="right-tab active" data-tab="state" id="chatTabState">${t("chat.state_current")}</button>
+          <button class="right-tab" data-tab="activity" id="chatTabActivity">${t("nav.activity")}</button>
+          <button class="right-tab" data-tab="history" id="chatTabHistory">${t("chat.history_conversation")}</button>
         </nav>
 
         <div id="chatRightTabContent" style="flex:1; overflow-y:auto; padding:0.75rem;">
           <!-- State pane (default) -->
           <div id="chatPaneState">
-            <pre class="state-content" id="chatAnimaState" style="white-space:pre-wrap; word-break:break-word; margin:0;">Animaを選択してください</pre>
+            <pre class="state-content" id="chatAnimaState" style="white-space:pre-wrap; word-break:break-word; margin:0;">${t("chat.anima_select_first")}</pre>
           </div>
           <!-- Activity pane -->
           <div id="chatPaneActivity" style="display:none;">
             <div id="chatActivityFeed" class="activity-feed">
-              <div class="activity-empty">イベントを待機中...</div>
+              <div class="activity-empty">${t("activity.feed_empty")}</div>
             </div>
           </div>
           <!-- History pane -->
           <div id="chatPaneHistory" style="display:none;">
             <div id="chatHistorySessionList">
-              <div class="loading-placeholder">Animaを選択してください</div>
+              <div class="loading-placeholder">${t("chat.anima_select_first")}</div>
             </div>
             <div id="chatHistoryDetail" style="display:none;">
-              <button class="memory-back-btn" id="chatHistoryBackBtn">&larr; 一覧に戻る</button>
+              <button class="memory-back-btn" id="chatHistoryBackBtn">&larr; ${t("chat.back_list")}</button>
               <h3 id="chatHistoryDetailTitle" style="margin:0.5rem 0;"></h3>
               <div id="chatHistoryConversation" style="max-height:400px; overflow-y:auto;"></div>
             </div>
@@ -136,9 +137,9 @@ export function render(container) {
         <!-- Memory Browser -->
         <div class="chat-memory-section">
           <nav class="memory-tabs" style="display:flex; border-bottom:1px solid var(--border-color, #eee);">
-            <button class="memory-tab active" data-tab="episodes">エピソード</button>
-            <button class="memory-tab" data-tab="knowledge">知識</button>
-            <button class="memory-tab" data-tab="procedures">手順書</button>
+            <button class="memory-tab active" data-tab="episodes">${t("chat.memory_episodes")}</button>
+            <button class="memory-tab" data-tab="knowledge">${t("chat.memory_knowledge")}</button>
+            <button class="memory-tab" data-tab="procedures">${t("chat.memory_procedures")}</button>
           </nav>
           <div id="chatMemoryFileList" class="memory-file-list" style="overflow-y:auto; padding:0.5rem;">
             <div class="loading-placeholder">Animaを選択してください</div>
@@ -356,7 +357,7 @@ async function _selectAnima(name) {
 
   const input = _$("chatPageInput");
   const sendBtn = _$("chatPageSendBtn");
-  if (input) { input.disabled = false; input.placeholder = `${name} にメッセージ...`; }
+  if (input) { input.disabled = false; input.placeholder = t("chat.message_to", { name }); }
   if (sendBtn) sendBtn.disabled = false;
 
   // Load conversation history (activity_log API) + anima detail in parallel
@@ -389,7 +390,7 @@ async function _selectAnima(name) {
   } else {
     _animaDetail = null;
     const stateEl = _$("chatAnimaState");
-    if (stateEl) stateEl.textContent = "詳細の読み込み失敗";
+    if (stateEl) stateEl.textContent = t("animas.detail_load_failed");
   }
 
   // Load secondary data in parallel
@@ -470,9 +471,9 @@ function _renderChat(scrollToBottom = true) {
 
   if (hs.sessions.length === 0 && history.length === 0) {
     if (hs.loading) {
-      messagesEl.innerHTML = '<div class="chat-empty"><span class="tool-spinner"></span> \u8AAD\u307F\u8FBC\u307F\u4E2D...</div>';
+      messagesEl.innerHTML = `<div class="chat-empty"><span class="tool-spinner"></span> ${t("common.loading")}</div>`;
     } else {
-      messagesEl.innerHTML = '<div class="chat-empty">\u30E1\u30C3\u30BB\u30FC\u30B8\u306F\u307E\u3060\u3042\u308A\u307E\u305B\u3093</div>';
+      messagesEl.innerHTML = `<div class="chat-empty">${t("chat.messages_empty")}</div>`;
     }
     return;
   }
@@ -481,7 +482,7 @@ function _renderChat(scrollToBottom = true) {
   // Sentinel for infinite scroll
   if (hs.hasMore) {
     if (hs.loading) {
-      topHtml += '<div class="history-loading-more"><span class="tool-spinner"></span> \u904E\u53BB\u306E\u4F1A\u8A71\u3092\u8AAD\u307F\u8FBC\u307F\u4E2D...</div>';
+      topHtml += `<div class="history-loading-more"><span class="tool-spinner"></span> ${t("chat.past_loading")}</div>`;
     }
     topHtml += '<div class="chat-load-sentinel"></div>';
   }
@@ -504,14 +505,14 @@ function _renderChat(scrollToBottom = true) {
   let liveHtml = "";
   if (history.length > 0) {
     if (hs.sessions.length > 0) {
-      liveHtml += '<div class="session-divider"><span class="session-divider-label">\u73FE\u5728\u306E\u30BB\u30C3\u30B7\u30E7\u30F3</span></div>';
+      liveHtml += `<div class="session-divider"><span class="session-divider-label">${t("chat.current_session")}</span></div>`;
     }
     liveHtml += history.map(m => {
       const ts = m.timestamp ? smartTimestamp(m.timestamp) : "";
       const tsHtml = ts ? `<span class="chat-ts">${escapeHtml(ts)}</span>` : "";
 
       if (m.role === "thinking") {
-        return '<div class="chat-bubble thinking"><span class="thinking-animation">\u8003\u3048\u4E2D</span></div>';
+        return `<div class="chat-bubble thinking"><span class="thinking-animation">${t("chat.thinking")}</span></div>`;
       }
       if (m.role === "assistant") {
         const streamClass = m.streaming ? " streaming" : "";
@@ -528,7 +529,7 @@ function _renderChat(scrollToBottom = true) {
           content = '<span class="cursor-blink"></span>';
         }
         const toolHtml = m.activeTool
-          ? `<div class="tool-indicator"><span class="tool-spinner"></span>${escapeHtml(m.activeTool)} \u3092\u5B9F\u884C\u4E2D...</div>`
+          ? `<div class="tool-indicator"><span class="tool-spinner"></span>${t("chat.tool_running", { tool: m.activeTool })}</div>`
           : "";
         return `<div class="chat-bubble assistant${streamClass}">${thinkingHtml}${content}${toolHtml}${tsHtml}</div>`;
       }
@@ -571,12 +572,12 @@ function _renderStreamingBubble(msg) {
   }
 
   if (msg.heartbeatRelay) {
-    html += '<div class="heartbeat-relay-indicator"><span class="tool-spinner"></span>ハートビート処理中...</div>';
+    html += `<div class="heartbeat-relay-indicator"><span class="tool-spinner"></span>${t("chat.heartbeat_relay")}</div>`;
     if (msg.heartbeatText) {
       html += `<div class="heartbeat-relay-text">${escapeHtml(msg.heartbeatText)}</div>`;
     }
   } else if (msg.afterHeartbeatRelay && !msg.text) {
-    html = '<div class="heartbeat-relay-indicator"><span class="tool-spinner"></span>応答を準備中...</div>';
+    html = `<div class="heartbeat-relay-indicator"><span class="tool-spinner"></span>${t("chat.heartbeat_relay_done")}</div>`;
   } else if (msg.text) {
     html = renderMarkdown(msg.text);
   } else {
@@ -584,7 +585,7 @@ function _renderStreamingBubble(msg) {
   }
 
   if (msg.activeTool) {
-    html += `<div class="tool-indicator"><span class="tool-spinner"></span>${escapeHtml(msg.activeTool)} を実行中...</div>`;
+    html += `<div class="tool-indicator"><span class="tool-spinner"></span>${t("chat.tool_running", { tool: msg.activeTool })}</div>`;
   }
 
   bubble.innerHTML = html;
@@ -847,7 +848,7 @@ async function _sendChat(message, overrideImages = null) {
     if (msgs) {
       const systemMsg = document.createElement("div");
       systemMsg.className = "chat-bubble assistant";
-      systemMsg.textContent = "このキャラクターは現在制作中です。完了までお待ちください。";
+      systemMsg.textContent = t("chat.bootstrapping");
       msgs.appendChild(systemMsg);
       msgs.scrollTop = msgs.scrollHeight;
     }
@@ -874,7 +875,7 @@ async function _sendChat(message, overrideImages = null) {
     _imageInputManager?.clearImages();
   }
 
-  _addLocalActivity("chat", name, `ユーザー: ${message}`);
+  _addLocalActivity("chat", name, `${t("chat.user_prefix")} ${message}`);
 
   try {
     const currentUser = localStorage.getItem("animaworks_user") || "human";
@@ -940,7 +941,7 @@ async function _sendChat(message, overrideImages = null) {
       },
       onError: ({ message: errorMsg }) => {
         logger.debug(`onError: ${errorMsg}`);
-        streamingMsg.text += `\n[エラー] ${errorMsg}`;
+        streamingMsg.text += `\n${t("chat.error_prefix")} ${errorMsg}`;
         streamingMsg.streaming = false;
         _renderChat();
       },
@@ -949,7 +950,7 @@ async function _sendChat(message, overrideImages = null) {
         const textLen = streamingMsg.text.length;
         logger.debug(`onDone: summary_len=${summaryLen} text_len=${textLen} afterRelay=${streamingMsg.afterHeartbeatRelay}`);
         const text = summary || streamingMsg.text;
-        streamingMsg.text = text || "(空の応答)";
+        streamingMsg.text = text || t("chat.empty_response");
         streamingMsg.streaming = false;
         streamingMsg.activeTool = null;
         streamingMsg.heartbeatRelay = false;
@@ -957,7 +958,7 @@ async function _sendChat(message, overrideImages = null) {
         streamingMsg.afterHeartbeatRelay = false;
         logger.debug(`onDone: final text_len=${streamingMsg.text.length}`);
         _renderChat();
-        _addLocalActivity("chat", name, `応答: ${streamingMsg.text.slice(0, 100)}`);
+        _addLocalActivity("chat", name, `${t("chat.response_prefix")} ${streamingMsg.text.slice(0, 100)}`);
       },
     });
 
@@ -967,8 +968,8 @@ async function _sendChat(message, overrideImages = null) {
       streamingMsg.streaming = false;
       if (!streamingMsg.text) {
         streamingMsg.text = streamingMsg.afterHeartbeatRelay
-          ? "(応答の受信に失敗しました。再送信してください)"
-          : "(空の応答)";
+          ? t("chat.receive_failed")
+          : t("chat.empty_response");
       }
       streamingMsg.afterHeartbeatRelay = false;
       _renderChat();
@@ -978,11 +979,11 @@ async function _sendChat(message, overrideImages = null) {
     if (err.name === "AbortError") {
       streamingMsg.streaming = false;
       streamingMsg.activeTool = null;
-      if (!streamingMsg.text) streamingMsg.text = "(中断されました)";
+      if (!streamingMsg.text) streamingMsg.text = t("chat.interrupted");
       _renderChat();
     } else {
       logger.error("Chat stream error", { anima: name, error: err.message, name: err.name });
-      streamingMsg.text += `\n[エラー] ${err.message}`;
+      streamingMsg.text += `\n${t("chat.error_prefix")} ${err.message}`;
       streamingMsg.streaming = false;
       streamingMsg.activeTool = null;
       _renderChat();
@@ -991,7 +992,7 @@ async function _sendChat(message, overrideImages = null) {
     _isChatStreaming = false;
     _chatAbortController = null;
     if (input) {
-      input.placeholder = `${name} にメッセージ...`;
+      input.placeholder = t("chat.message_to", { name });
       input.focus();
     }
     _updateSendButton();
@@ -1034,7 +1035,7 @@ function _showPendingIndicator() {
   const label = _$("chatPagePendingLabel");
   if (!bar || !list) return;
   if (_pendingQueue.length === 0) { bar.style.display = "none"; return; }
-  if (label) label.textContent = `キュー (${_pendingQueue.length})`;
+  if (label) label.textContent = `${t("chat.queue_label")} (${_pendingQueue.length})`;
   list.innerHTML = _pendingQueue.map((p, i) => {
     const txt = escapeHtml(p.text.length > 60 ? p.text.slice(0, 60) + "…" : p.text);
     const img = p.images?.length ? ` <span style="opacity:0.6">(+${p.images.length}画像)</span>` : "";
@@ -1172,7 +1173,7 @@ function _renderAnimaState() {
 
   const d = _animaDetail;
   if (!d || !d.state) {
-    el.textContent = "状態情報なし";
+    el.textContent = t("animas.no_state");
     return;
   }
   el.textContent = typeof d.state === "string" ? d.state : JSON.stringify(d.state, null, 2);
@@ -1250,7 +1251,7 @@ async function _loadSessionList() {
     return;
   }
 
-  list.innerHTML = '<div class="loading-placeholder">読み込み中...</div>';
+  list.innerHTML = `<div class="loading-placeholder">${t("common.loading")}</div>`;
 
   try {
     const data = await api(`/api/animas/${encodeURIComponent(_selectedAnima)}/sessions`);
@@ -1261,23 +1262,23 @@ async function _loadSessionList() {
       const ac = data.active_conversation;
       const lastTime = ac.last_timestamp ? timeStr(ac.last_timestamp) : "--:--";
       html += `
-        <div class="session-section-header">現在の会話</div>
+        <div class="session-section-header">${t("chat.history_current")}</div>
         <div class="session-item session-active" data-type="active">
-          <div class="session-item-title">進行中の会話</div>
+          <div class="session-item-title">${t("ws.conversation_active")}</div>
           <div class="session-item-meta">
-            ${ac.total_turn_count}ターン ${ac.has_summary ? "(要約あり)" : ""} | 最終: ${lastTime}
+            ${t("chat.session_turns", { count: ac.total_turn_count })} ${ac.has_summary ? t("chat.session_summary") : ""} | ${t("chat.last_label")}: ${lastTime}
           </div>
         </div>`;
     }
 
     // Archived Sessions
     if (data.archived_sessions && data.archived_sessions.length > 0) {
-      html += '<div class="session-section-header">セッションアーカイブ</div>';
+      html += `<div class="session-section-header">${t("chat.history_archive")}</div>`;
       for (const s of data.archived_sessions) {
         const ts = s.timestamp ? timeStr(s.timestamp) : s.id;
         html += `
           <div class="session-item" data-type="archive" data-id="${escapeHtml(s.id)}">
-            <div class="session-item-title">${escapeHtml(s.trigger || "セッション")} (${s.turn_count}ターン)</div>
+            <div class="session-item-title">${escapeHtml(s.trigger || t("chat.session"))} (${t("chat.session_turns", { count: s.turn_count })})</div>
             <div class="session-item-meta">${ts} | ctx: ${(s.context_usage_ratio * 100).toFixed(0)}%</div>
             ${s.original_prompt_preview ? `<div class="session-item-preview">${escapeHtml(s.original_prompt_preview)}</div>` : ""}
           </div>`;
@@ -1286,7 +1287,7 @@ async function _loadSessionList() {
 
     // Transcripts
     if (data.transcripts && data.transcripts.length > 0) {
-      html += '<div class="session-section-header">会話ログ</div>';
+      html += `<div class="session-section-header">${t("chat.history_transcript")}</div>`;
       for (const t of data.transcripts) {
         html += `
           <div class="session-item" data-type="transcript" data-date="${escapeHtml(t.date)}">
@@ -1298,7 +1299,7 @@ async function _loadSessionList() {
 
     // Episodes
     if (data.episodes && data.episodes.length > 0) {
-      html += '<div class="session-section-header">エピソードログ</div>';
+      html += `<div class="session-section-header">${t("chat.episode_log")}</div>`;
       for (const e of data.episodes) {
         html += `
           <div class="session-item" data-type="episode" data-date="${escapeHtml(e.date)}">
@@ -1308,7 +1309,7 @@ async function _loadSessionList() {
       }
     }
 
-    if (!html) html = '<div class="loading-placeholder">履歴がありません</div>';
+    if (!html) html = `<div class="loading-placeholder">${t("chat.history_empty")}</div>`;
     list.innerHTML = html;
 
     // Bind click handlers
@@ -1322,7 +1323,7 @@ async function _loadSessionList() {
       });
     });
   } catch (err) {
-    list.innerHTML = `<div class="loading-placeholder">読み込み失敗: ${escapeHtml(err.message)}</div>`;
+    list.innerHTML = `<div class="loading-placeholder">${t("common.load_failed")}: ${escapeHtml(err.message)}</div>`;
   }
 }
 
@@ -1337,7 +1338,7 @@ function _showHistoryDetail(title) {
 
 async function _loadActiveConversation() {
   if (!_selectedAnima) return;
-  _showHistoryDetail("\u4F1A\u8A71\u5C65\u6B74");
+  _showHistoryDetail(t("chat.history_detail_title"));
   const conv = _$("chatHistoryConversation");
   if (conv) conv.innerHTML = '<div class="loading-placeholder">\u8AAD\u307F\u8FBC\u307F\u4E2D...</div>';
 
@@ -1380,9 +1381,9 @@ function _renderConversationHistoryDetail(data) {
 
 async function _loadArchivedSession(sessionId) {
   if (!_selectedAnima) return;
-  _showHistoryDetail(`セッション: ${sessionId}`);
+  _showHistoryDetail(t("chat.session_detail", { id: sessionId }));
   const conv = _$("chatHistoryConversation");
-  if (conv) conv.innerHTML = '<div class="loading-placeholder">読み込み中...</div>';
+  if (conv) conv.innerHTML = `<div class="loading-placeholder">${t("common.loading")}</div>`;
 
   try {
     const data = await api(`/api/animas/${encodeURIComponent(_selectedAnima)}/sessions/${encodeURIComponent(sessionId)}`);
@@ -1391,36 +1392,36 @@ async function _loadArchivedSession(sessionId) {
     } else if (data.data) {
       const d = data.data;
       let html = `<div class="history-session-meta">
-        <div><strong>トリガー:</strong> ${escapeHtml(d.trigger || "不明")}</div>
-        <div><strong>ターン数:</strong> ${d.turn_count || 0}</div>
-        <div><strong>コンテキスト使用率:</strong> ${((d.context_usage_ratio || 0) * 100).toFixed(0)}%</div>
+        <div><strong>${t("chat.state_label")}</strong> ${escapeHtml(d.trigger || t("chat.state_unknown"))}</div>
+        <div><strong>${t("chat.turn_count")}</strong> ${d.turn_count || 0}</div>
+        <div><strong>${t("chat.context_usage")}</strong> ${((d.context_usage_ratio || 0) * 100).toFixed(0)}%</div>
       </div>`;
       if (d.original_prompt) {
-        html += `<div class="history-section"><div class="history-section-label">依頼内容</div><pre class="history-pre">${escapeHtml(d.original_prompt)}</pre></div>`;
+        html += `<div class="history-section"><div class="history-section-label">${t("chat.request_label")}</div><pre class="history-pre">${escapeHtml(d.original_prompt)}</pre></div>`;
       }
       if (d.accumulated_response) {
-        html += `<div class="history-section"><div class="history-section-label">応答</div><div>${renderMarkdown(d.accumulated_response)}</div></div>`;
+        html += `<div class="history-section"><div class="history-section-label">${t("chat.response_label")}</div><div>${renderMarkdown(d.accumulated_response)}</div></div>`;
       }
       if (conv) conv.innerHTML = html;
     } else {
-      if (conv) conv.innerHTML = '<div class="loading-placeholder">データがありません</div>';
+      if (conv) conv.innerHTML = `<div class="loading-placeholder">${t("chat.no_data")}</div>`;
     }
   } catch {
-    if (conv) conv.innerHTML = '<div class="loading-placeholder">読み込み失敗</div>';
+    if (conv) conv.innerHTML = `<div class="loading-placeholder">${t("common.load_failed")}</div>`;
   }
 }
 
 async function _loadTranscript(date) {
   if (!_selectedAnima) return;
-  _showHistoryDetail(`会話ログ: ${date}`);
+  _showHistoryDetail(t("chat.transcript_detail", { date }));
   const conv = _$("chatHistoryConversation");
-  if (conv) conv.innerHTML = '<div class="loading-placeholder">読み込み中...</div>';
+  if (conv) conv.innerHTML = `<div class="loading-placeholder">${t("common.loading")}</div>`;
 
   try {
     const data = await api(`/api/animas/${encodeURIComponent(_selectedAnima)}/transcripts/${encodeURIComponent(date)}`);
     _renderTranscriptDetail(data);
   } catch {
-    if (conv) conv.innerHTML = '<div class="loading-placeholder">読み込み失敗</div>';
+    if (conv) conv.innerHTML = `<div class="loading-placeholder">${t("common.load_failed")}</div>`;
   }
 }
 
@@ -1430,11 +1431,11 @@ function _renderTranscriptDetail(data) {
 
   let html = "";
   if (data.turns && data.turns.length > 0) {
-    for (const t of data.turns) {
-      const ts = t.timestamp ? timeStr(t.timestamp) : "";
-      const bubbleClass = t.role === "assistant" ? "assistant" : "user";
-      const roleLabel = t.role === "human" ? "ユーザー" : t.role;
-      const content = t.role === "assistant" ? renderMarkdown(t.content || "") : escapeHtml(t.content || "");
+    for (const turn of data.turns) {
+      const ts = turn.timestamp ? timeStr(turn.timestamp) : "";
+      const bubbleClass = turn.role === "assistant" ? "assistant" : "user";
+      const roleLabel = turn.role === "human" ? t("chat.role_human") : turn.role;
+      const content = turn.role === "assistant" ? renderMarkdown(turn.content || "") : escapeHtml(turn.content || "");
       html += `
         <div class="history-turn">
           <div class="history-turn-meta">${ts} - ${escapeHtml(roleLabel)}</div>
@@ -1443,22 +1444,22 @@ function _renderTranscriptDetail(data) {
     }
   }
 
-  if (!html) html = '<div class="loading-placeholder">会話データがありません</div>';
+  if (!html) html = `<div class="loading-placeholder">${t("chat.history_no_data")}</div>`;
   conv.innerHTML = html;
   conv.scrollTop = conv.scrollHeight;
 }
 
 async function _loadEpisode(date) {
   if (!_selectedAnima) return;
-  _showHistoryDetail(`エピソード: ${date}`);
+  _showHistoryDetail(t("chat.episode_detail", { date }));
   const conv = _$("chatHistoryConversation");
-  if (conv) conv.innerHTML = '<div class="loading-placeholder">読み込み中...</div>';
+  if (conv) conv.innerHTML = `<div class="loading-placeholder">${t("common.loading")}</div>`;
 
   try {
     const data = await api(`/api/animas/${encodeURIComponent(_selectedAnima)}/episodes/${encodeURIComponent(date)}`);
-    if (conv) conv.innerHTML = `<div class="history-markdown">${renderMarkdown(data.content || "(内容なし)")}</div>`;
+    if (conv) conv.innerHTML = `<div class="history-markdown">${renderMarkdown(data.content || t("chat.no_content"))}</div>`;
   } catch {
-    if (conv) conv.innerHTML = '<div class="loading-placeholder">読み込み失敗</div>';
+    if (conv) conv.innerHTML = `<div class="loading-placeholder">${t("common.load_failed")}</div>`;
   }
 }
 
@@ -1473,7 +1474,7 @@ async function _loadMemoryTab() {
     return;
   }
 
-  fileList.innerHTML = '<div class="loading-placeholder">読み込み中...</div>';
+  fileList.innerHTML = `<div class="loading-placeholder">${t("common.loading")}</div>`;
 
   const endpoint = `/api/animas/${encodeURIComponent(_selectedAnima)}/${_activeMemoryTab}`;
 
@@ -1495,7 +1496,7 @@ async function _loadMemoryTab() {
       });
     });
   } catch (err) {
-    fileList.innerHTML = `<div class="loading-placeholder">読み込み失敗: ${escapeHtml(err.message)}</div>`;
+    fileList.innerHTML = `<div class="loading-placeholder">${t("common.load_failed")}: ${escapeHtml(err.message)}</div>`;
   }
 }
 
@@ -1568,14 +1569,14 @@ async function _loadMemoryContent(tab, file) {
   if (fileList) fileList.style.display = "none";
   if (contentArea) contentArea.style.display = "";
   if (titleEl) titleEl.textContent = file;
-  if (bodyEl) bodyEl.textContent = "読み込み中...";
+    if (bodyEl) bodyEl.textContent = t("common.loading");
 
   const endpoint = `/api/animas/${encodeURIComponent(_selectedAnima)}/${tab}/${encodeURIComponent(file)}`;
 
   try {
     const data = await api(endpoint);
-    if (bodyEl) bodyEl.textContent = data.content || "(内容なし)";
+    if (bodyEl) bodyEl.textContent = data.content || t("chat.no_content");
   } catch (err) {
-    if (bodyEl) bodyEl.textContent = `[エラー] ${err.message}`;
+    if (bodyEl) bodyEl.textContent = `${t("chat.error_prefix")} ${err.message}`;
   }
 }
