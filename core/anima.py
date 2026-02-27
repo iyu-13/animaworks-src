@@ -8,7 +8,6 @@ from __future__ import annotations
 
 
 import asyncio
-import json
 import logging
 import re
 import threading
@@ -30,6 +29,7 @@ from core.memory import MemoryManager
 from core.messenger import InboxItem, Messenger
 from core.i18n import t
 from core.paths import load_prompt
+from core.image_artifacts import extract_image_artifacts_from_tool_records
 from core.exceptions import (  # noqa: F401
     AnimaWorksError,
     ExecutionError,
@@ -56,7 +56,6 @@ _RE_REFLECTION = re.compile(
 )
 
 _MIN_REFLECTION_LENGTH = 50
-
 
 def _extract_reflection(text: str) -> str:
     """Extract [REFLECTION]...[/REFLECTION] block from heartbeat output.
@@ -466,7 +465,8 @@ class DigitalAnima:
         attachment_paths: list[str] | None = None,
         intent: str = "",
         thread_id: str = "default",
-    ) -> str:
+        include_cycle_result: bool = False,
+    ) -> str | dict[str, Any]:
         self._validate_thread_id(thread_id)
         self._interrupt_event.clear()
         logger.info(
@@ -536,13 +536,23 @@ class DigitalAnima:
                     conv_memory.save()
 
                     # Activity log: response sent (with thinking text if present)
-                    resp_meta = {"thinking_text": result.thinking_text, "thread_id": thread_id} if result.thinking_text else {"thread_id": thread_id}
+                    response_artifacts = extract_image_artifacts_from_tool_records(
+                        result.tool_call_records
+                    )
+                    resp_meta: dict[str, Any] = {"thread_id": thread_id}
+                    if result.thinking_text:
+                        resp_meta["thinking_text"] = result.thinking_text
+                    if response_artifacts:
+                        resp_meta["images"] = response_artifacts
                     self._activity.log("response_sent", content=result.summary, to_person=from_person, channel="chat", meta=resp_meta)
 
                     logger.info(
                         "[%s] process_message END duration_ms=%d",
                         self.name, result.duration_ms,
                     )
+                    result.images = response_artifacts
+                    if include_cycle_result:
+                        return result.model_dump(mode="json")
                     return result.summary
                 except Exception as exc:
                     logger.exception("[%s] process_message FAILED", self.name)
@@ -679,6 +689,11 @@ class DigitalAnima:
                             # Record assistant response with tool records
                             cycle_result = chunk.get("cycle_result", {})
                             summary = cycle_result.get("summary", "")
+                            response_artifacts = extract_image_artifacts_from_tool_records(
+                                cycle_result.get("tool_call_records", [])
+                            )
+                            if response_artifacts:
+                                cycle_result["images"] = response_artifacts
                             tool_records = [
                                 ToolRecord.from_dict(r)
                                 for r in cycle_result.get("tool_call_records", [])
@@ -691,7 +706,11 @@ class DigitalAnima:
 
                             # Activity log: response sent (with thinking text if present)
                             thinking_text = cycle_result.get("thinking_text", "")
-                            resp_meta = {"thinking_text": thinking_text, "thread_id": thread_id} if thinking_text else {"thread_id": thread_id}
+                            resp_meta: dict[str, Any] = {"thread_id": thread_id}
+                            if thinking_text:
+                                resp_meta["thinking_text"] = thinking_text
+                            if response_artifacts:
+                                resp_meta["images"] = response_artifacts
                             self._activity.log("response_sent", content=summary, to_person=from_person, channel="chat", meta=resp_meta)
 
                             # Finalize streaming journal (deletes the file)

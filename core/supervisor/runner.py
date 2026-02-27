@@ -395,10 +395,19 @@ class AnimaRunner:
             intent=intent,
             images=images, attachment_paths=attachment_paths,
             thread_id=thread_id,
+            include_cycle_result=True,
         )
+        cycle_result: dict[str, Any] = {}
+        response_text = result
+        if isinstance(result, dict):
+            cycle_result = result
+            response_text = cycle_result.get("summary", "")
+        images_out = cycle_result.get("images") if isinstance(cycle_result, dict) else []
 
         return {
-            "response": result,
+            "response": response_text,
+            "cycle_result": cycle_result,
+            "images": images_out or [],
             "replied_to": [],
             "notifications": self.anima.drain_notifications(),
         }

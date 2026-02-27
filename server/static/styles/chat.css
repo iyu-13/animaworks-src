@@ -908,6 +908,19 @@
   opacity: 0.9;
 }
 
+.chat-attached-image-error {
+  min-width: 160px;
+  min-height: 96px;
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0.08),
+    rgba(255, 255, 255, 0.08) 8px,
+    rgba(255, 255, 255, 0.02) 8px,
+    rgba(255, 255, 255, 0.02) 16px
+  );
+  border: 1px dashed var(--aw-color-border, #666);
+}
+
 .chat-bubble.user .chat-text:empty {
   display: none;
 }

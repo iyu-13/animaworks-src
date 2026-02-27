@@ -199,18 +199,46 @@ export function initLightbox() {
 
 // ── Helper: Render images HTML for a chat bubble ────
 
+function _resolveArtifactSrc(img, animaName) {
+  if (!img) return "";
+  if (img.dataUrl) return img.dataUrl;
+  if (img.data && img.media_type) {
+    return `data:${img.media_type};base64,${img.data}`;
+  }
+  if (img.path && animaName) {
+    if (img.path.startsWith("assets/")) {
+      const filename = img.path.slice("assets/".length);
+      return `/api/animas/${encodeURIComponent(animaName)}/assets/${encodeURIComponent(filename)}`;
+    }
+    if (img.path.startsWith("attachments/")) {
+      const filename = img.path.slice("attachments/".length);
+      return `/api/animas/${encodeURIComponent(animaName)}/attachments/${encodeURIComponent(filename)}`;
+    }
+  }
+  if (img.url) {
+    return `/api/media/proxy?url=${encodeURIComponent(img.url)}`;
+  }
+  return "";
+}
+
 /**
  * Build HTML string for images inside a chat bubble.
- * @param {Array} images - Array of { data, media_type, dataUrl }
+ * @param {Array} images - Array of image-like objects
+ * @param {Object} [options]
+ * @param {string} [options.animaName] - Required for assets/attachments paths
  * @returns {string} HTML string (empty if no images)
  */
-export function renderChatImages(images) {
+export function renderChatImages(images, options = {}) {
   if (!images || images.length === 0) return "";
+  const animaName = options.animaName || "";
   let html = '<div class="chat-images">';
+  let count = 0;
   for (const img of images) {
-    const src = img.dataUrl || `data:${img.media_type};base64,${img.data}`;
-    html += `<img src="${src}" class="chat-attached-image" />`;
+    const src = _resolveArtifactSrc(img, animaName);
+    if (!src) continue;
+    count += 1;
+    html += `<img src="${src}" class="chat-attached-image" loading="lazy" alt="Attached image" onerror="this.onerror=null;this.classList.add('chat-attached-image-error');this.alt='Image unavailable';" />`;
   }
   html += '</div>';
-  return html;
+  return count > 0 ? html : "";
 }

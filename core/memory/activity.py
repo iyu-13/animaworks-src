@@ -1184,6 +1184,9 @@ class ActivityLogger:
                 }
                 if e.meta.get("thinking_text"):
                     msg["thinking_text"] = e.meta["thinking_text"]
+                images = e.meta.get("images") or e.meta.get("artifacts") or []
+                if isinstance(images, list) and images:
+                    msg["images"] = images
                 messages.append(msg)
                 # Attach any pending tool calls to this assistant message
                 if pending_tool_calls:

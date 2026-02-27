@@ -294,7 +294,8 @@ function _renderHistoryMessage(msg) {
     }
     const content = msg.content ? renderMarkdown(msg.content) : "";
     const toolHtml = _renderToolCalls(msg.tool_calls);
-    return `<div class="chat-bubble assistant">${thinkingHtml}${content}${toolHtml}${tsHtml}</div>`;
+    const imagesHtml = renderChatImages(msg.images, { animaName: state.selectedAnima });
+    return `<div class="chat-bubble assistant">${thinkingHtml}${content}${imagesHtml}${toolHtml}${tsHtml}</div>`;
   }
 
   // human / user
@@ -330,9 +331,10 @@ function _renderLiveChatMessage(m) {
     const toolHtml = m.activeTool
       ? `<div class="tool-indicator"><span class="tool-spinner"></span>${escapeHtml(m.activeTool)} \u3092\u5B9F\u884C\u4E2D...</div>`
       : "";
-    return `<div class="chat-bubble assistant${streamClass}${notifClass}">${thinkingHtml}${content}${bootstrapHtml}${toolHtml}</div>`;
+    const imagesHtml = renderChatImages(m.images, { animaName: state.selectedAnima });
+    return `<div class="chat-bubble assistant${streamClass}${notifClass}">${thinkingHtml}${content}${imagesHtml}${bootstrapHtml}${toolHtml}</div>`;
   }
-  const imagesHtml = renderChatImages(m.images);
+  const imagesHtml = renderChatImages(m.images, { animaName: state.selectedAnima });
   const textHtml = m.text ? `<div class="chat-text">${escapeHtml(m.text)}</div>` : "";
   return `<div class="chat-bubble user">${imagesHtml}${textHtml}</div>`;
 }
@@ -564,12 +566,13 @@ export async function sendChat(message) {
         streamingMsg.streaming = false;
         renderChat();
       },
-      onDone: ({ summary }) => {
+      onDone: ({ summary, images }) => {
         const summaryLen = (summary || "").length;
         const textLen = streamingMsg.text.length;
         logger.debug(`onDone: summary_len=${summaryLen} text_len=${textLen} afterRelay=${streamingMsg.afterHeartbeatRelay}`);
         const text = summary || streamingMsg.text;
         streamingMsg.text = text || "(\u7A7A\u306E\u5FDC\u7B54)";
+        streamingMsg.images = images || [];
         streamingMsg.streaming = false;
         streamingMsg.activeTool = null;
         streamingMsg.heartbeatRelay = false;
@@ -744,9 +747,10 @@ export async function resumeActiveStream(animaName) {
         streamingMsg.streaming = false;
         renderChat();
       },
-      onDone: ({ summary }) => {
+      onDone: ({ summary, images }) => {
         const text = summary || streamingMsg.text;
         streamingMsg.text = text || "(\u7A7A\u306E\u5FDC\u7B54)";
+        streamingMsg.images = images || [];
         streamingMsg.streaming = false;
         streamingMsg.activeTool = null;
         streamingMsg.afterHeartbeatRelay = false;

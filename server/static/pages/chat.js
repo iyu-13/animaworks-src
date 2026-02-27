@@ -872,9 +872,10 @@ async function _resumeActiveStream(animaName) {
         streamingMsg.streaming = false;
         _renderChat();
       },
-      onDone: ({ summary }) => {
+      onDone: ({ summary, images }) => {
         const text = summary || streamingMsg.text;
         streamingMsg.text = text || t("chat.empty_response");
+        streamingMsg.images = images || [];
         streamingMsg.streaming = false;
         streamingMsg.activeTool = null;
         _renderChat();
@@ -1188,7 +1189,8 @@ function _renderChat(scrollToBottom = true) {
         const toolHtml = m.activeTool
           ? `<div class="tool-indicator"><span class="tool-spinner"></span>${t("chat.tool_running", { tool: m.activeTool })}</div>`
           : "";
-        return `<div class="chat-bubble assistant${streamClass}">${thinkingHtml}${content}${toolHtml}${tsHtml}</div>`;
+        const imagesHtml = renderChatImages(m.images, { animaName: _selectedAnima });
+        return `<div class="chat-bubble assistant${streamClass}">${thinkingHtml}${content}${imagesHtml}${toolHtml}${tsHtml}</div>`;
       }
       const imagesHtml = renderChatImages(m.images);
       const textHtml = m.text ? `<div class="chat-text">${escapeHtml(m.text)}</div>` : "";
@@ -1338,7 +1340,8 @@ function _renderHistoryMessage(msg) {
   if (msg.role === "assistant") {
     const content = msg.content ? renderMarkdown(msg.content) : "";
     const toolHtml = _renderToolCalls(msg.tool_calls);
-    return `<div class="chat-bubble assistant">${content}${toolHtml}${tsHtml}</div>`;
+    const imagesHtml = renderChatImages(msg.images, { animaName: _selectedAnima });
+    return `<div class="chat-bubble assistant">${content}${imagesHtml}${toolHtml}${tsHtml}</div>`;
   }
 
   // human / user
@@ -1632,12 +1635,13 @@ async function _sendChat(message, overrideImages = null) {
         streamingMsg.streaming = false;
         _renderChat();
       },
-      onDone: ({ summary }) => {
+      onDone: ({ summary, images }) => {
         const summaryLen = (summary || "").length;
         const textLen = streamingMsg.text.length;
         logger.debug(`onDone: summary_len=${summaryLen} text_len=${textLen} afterRelay=${streamingMsg.afterHeartbeatRelay}`);
         const text = summary || streamingMsg.text;
         streamingMsg.text = text || t("chat.empty_response");
+        streamingMsg.images = images || [];
         streamingMsg.streaming = false;
         streamingMsg.activeTool = null;
         streamingMsg.heartbeatRelay = false;
