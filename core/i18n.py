@@ -185,6 +185,7 @@ _STRINGS: dict[str, dict[str, str]] = {
     "shortterm.turn_count": {"ja": "- ターン数: {value}", "en": "- Turn count: {value}"},
     "shortterm.original_request": {"ja": "## 元の依頼", "en": "## Original request"},
     "shortterm.work_so_far": {"ja": "## これまでの作業内容", "en": "## Work so far"},
+    "shortterm.already_sent_note": {"ja": "**注意: 以下の内容は既にユーザーに送信済みです。繰り返さないでください。**", "en": "**Note: The following content has already been sent to the user. Do NOT repeat it.**"},
     "shortterm.tools_used_recent": {"ja": "## 使用したツール（直近）", "en": "## Tools used (recent)"},
     "shortterm.notes_header": {"ja": "## 補足", "en": "## Notes"},
     "shortterm.none": {"ja": "(なし)", "en": "(none)"},

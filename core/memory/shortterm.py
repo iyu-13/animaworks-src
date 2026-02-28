@@ -293,6 +293,7 @@ class ShortTermMemory:
 {state.original_prompt}
 
 {t("shortterm.work_so_far")}
+{t("shortterm.already_sent_note")}
 {response}
 
 {t("shortterm.tools_used_recent")}
