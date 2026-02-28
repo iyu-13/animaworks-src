@@ -23,8 +23,13 @@ class TestFireAndForgetRemoved:
 
     def test_no_fire_and_forget_in_process_message(self):
         """process_message() should not contain asyncio.create_task(finalize_session)."""
-        anima_path = Path(__file__).resolve().parents[2] / "core" / "anima.py"
-        content = anima_path.read_text(encoding="utf-8")
+        # Check both facade and messaging mixin where process_message lives
+        core_dir = Path(__file__).resolve().parents[2] / "core"
+        content = ""
+        for fname in ("anima.py", "_anima_messaging.py"):
+            p = core_dir / fname
+            if p.exists():
+                content += p.read_text(encoding="utf-8")
 
         # Find the process_message method
         in_process_message = False
@@ -53,8 +58,13 @@ class TestFireAndForgetRemoved:
 
     def test_heartbeat_calls_finalize_if_session_ended(self):
         """run_heartbeat() should call finalize_if_session_ended()."""
-        anima_path = Path(__file__).resolve().parents[2] / "core" / "anima.py"
-        content = anima_path.read_text(encoding="utf-8")
+        # Check both facade and lifecycle mixin where run_heartbeat lives
+        core_dir = Path(__file__).resolve().parents[2] / "core"
+        content = ""
+        for fname in ("anima.py", "_anima_lifecycle.py", "_anima_heartbeat.py"):
+            p = core_dir / fname
+            if p.exists():
+                content += p.read_text(encoding="utf-8")
 
         assert "finalize_if_session_ended" in content, (
             "finalize_if_session_ended() not found in anima.py"
