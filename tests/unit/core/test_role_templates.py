@@ -467,7 +467,7 @@ class TestLoadStatusJson:
         assert result == {}
 
     def test_none_values_are_skipped(self, tmp_path: Path) -> None:
-        """Fields with None values are not included in the result."""
+        """Non-nullable fields with None are skipped; nullable fields are kept."""
         anima_dir = tmp_path / "anima"
         anima_dir.mkdir()
         _write_status_json(anima_dir, {
@@ -478,7 +478,10 @@ class TestLoadStatusJson:
 
         result = _load_status_json(anima_dir)
         assert "model" in result
-        assert "supervisor" not in result
+        # supervisor is a nullable field — explicit None is preserved
+        assert "supervisor" in result
+        assert result["supervisor"] is None
+        # credential is not nullable — None is skipped
         assert "credential" not in result
 
     def test_empty_string_values_are_skipped(self, tmp_path: Path) -> None:

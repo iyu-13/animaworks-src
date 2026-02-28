@@ -8,9 +8,9 @@ from __future__ import annotations
 
 """Periodic organizational structure synchronization.
 
-Scans anima directories, extracts supervisor relationships from identity.md
-tables and status.json, and reconciles them with config.json entries.
-Manual config overrides are never clobbered; mismatches are logged as warnings.
+Scans anima directories, extracts supervisor relationships from status.json
+(or identity.md), and syncs them into config.json entries.
+status.json is the single source of truth; config.json is kept in sync.
 """
 
 import json
@@ -81,15 +81,17 @@ def sync_org_structure(
 ) -> dict[str, str | None]:
     """Sync organizational structure from anima files to config.json.
 
+    ``status.json`` (or ``identity.md``) is the single source of truth for
+    supervisor relationships.  This function syncs those values *into*
+    ``config.json`` so that code reading ``config.animas`` directly stays
+    up-to-date.
+
     For each anima directory:
 
-    1. Extract supervisor from identity.md / status.json via
+    1. Extract supervisor from status.json / identity.md via
        :func:`~core.config.models.read_anima_supervisor`.
     2. If config.json has no entry for this anima, create one.
-    3. If config.json has ``supervisor=None`` but a value was found, update it.
-    4. If config.json already has a supervisor set, don't overwrite
-       (respect manual config).
-    5. Log warnings for mismatches.
+    3. If the supervisor value differs, update config.json to match disk.
 
     Args:
         animas_dir: Path to the animas directory
@@ -163,28 +165,16 @@ def sync_org_structure(
 
         existing = config.animas[name]
 
-        if existing.supervisor is None and disk_supervisor is not None:
-            # Config has no supervisor but disk has one — fill it in
-            existing.supervisor = disk_supervisor
-            changed = True
+        if existing.supervisor != disk_supervisor:
+            # status.json / identity.md is the SSoT — sync to config.json
             logger.info(
-                "Org sync: set supervisor for '%s' to '%s' (was None)",
-                name,
-                disk_supervisor,
-            )
-        elif (
-            existing.supervisor is not None
-            and disk_supervisor is not None
-            and existing.supervisor != disk_supervisor
-        ):
-            # Config already has a different supervisor — warn but don't overwrite
-            logger.warning(
-                "Org sync: supervisor mismatch for '%s': "
-                "config='%s', identity.md='%s' (keeping config value)",
+                "Org sync: updating supervisor for '%s': '%s' -> '%s'",
                 name,
                 existing.supervisor,
                 disk_supervisor,
             )
+            existing.supervisor = disk_supervisor
+            changed = True
 
     # ── Phase 4: prune config entries with no directory on disk ──
 

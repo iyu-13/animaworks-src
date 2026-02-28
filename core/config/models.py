@@ -517,9 +517,16 @@ def _load_status_json(anima_dir: Path) -> dict[str, Any]:
         "llm_timeout": "llm_timeout",
         "mode_s_auth": "mode_s_auth",
     }
+    # Fields where None is a valid explicit value (e.g. supervisor=null
+    # means "top-level / no supervisor").  Empty string is still "not set".
+    _nullable_fields = frozenset({"supervisor", "speciality"})
     for status_key, config_key in field_mapping.items():
-        if status_key in data and data[status_key] not in (None, ""):
-            result[config_key] = data[status_key]
+        if status_key in data:
+            value = data[status_key]
+            if value is None and status_key in _nullable_fields:
+                result[config_key] = value
+            elif value not in (None, ""):
+                result[config_key] = value
     return result
 
 
@@ -528,16 +535,17 @@ def resolve_anima_config(
     anima_name: str,
     anima_dir: Path | None = None,
 ) -> tuple[AnimaDefaults, CredentialConfig]:
-    """Merge status.json with *anima_defaults* (2-layer merge).
+    """Merge status.json with *anima_defaults* (3-layer merge).
 
-    Resolution uses a 2-layer priority (strongest first):
+    Resolution uses a 3-layer priority (strongest first):
 
-      1. ``status.json`` in *anima_dir* (role-template values, model config SSoT)
-      2. ``config.json`` anima_defaults (global defaults)
+      1. ``status.json`` in *anima_dir* (SSoT for all fields including org)
+      2. ``config.json`` per-anima (``config.animas``) — fallback for
+         ``supervisor`` and ``speciality`` only
+      3. ``config.json`` anima_defaults (global defaults)
 
-    ``config.json`` per-anima (``config.animas``) no longer contributes
-    model-related fields. Only ``supervisor`` and ``speciality`` are read
-    from config.animas for organization structure; these override status.json.
+    For ``supervisor`` and ``speciality``, explicit ``null`` in status.json
+    is respected (means "top-level / no supervisor").
 
     When *anima_dir* is ``None``, layer 1 is skipped (no status.json).
 
@@ -553,23 +561,23 @@ def resolve_anima_config(
 
     status_values = _load_status_json(anima_dir) if anima_dir else {}
 
-    # Merge: status_values >> anima_defaults for model fields.
-    # supervisor, speciality: config.animas >> status >> defaults (org structure)
+    # Merge priority (strongest first):
+    #   1. status.json (including explicit null for supervisor/speciality)
+    #   2. config.animas (fallback for supervisor/speciality only)
+    #   3. anima_defaults (global defaults)
     resolved: dict[str, Any] = {}
     for field_name in AnimaDefaults.model_fields:
-        if field_name in ("supervisor", "speciality"):
+        if field_name in status_values:
+            resolved[field_name] = status_values[field_name]
+        elif field_name in ("supervisor", "speciality"):
+            # Fallback to config.animas for org structure fields
             anima_value = getattr(anima_entry, field_name)
             if anima_value is not None:
                 resolved[field_name] = anima_value
-            elif field_name in status_values and status_values[field_name] is not None:
-                resolved[field_name] = status_values[field_name]
             else:
                 resolved[field_name] = getattr(defaults, field_name)
         else:
-            if field_name in status_values and status_values[field_name] is not None:
-                resolved[field_name] = status_values[field_name]
-            else:
-                resolved[field_name] = getattr(defaults, field_name)
+            resolved[field_name] = getattr(defaults, field_name)
 
     resolved_defaults = AnimaDefaults.model_validate(resolved)
 

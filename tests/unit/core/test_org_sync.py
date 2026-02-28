@@ -176,10 +176,10 @@ class TestSyncOrgStructure:
         cfg = load_config(config_path)
         assert cfg.animas["alice"].supervisor == "bob"
 
-    def test_does_not_overwrite_existing_supervisor(
+    def test_updates_existing_supervisor_from_disk(
         self, animas_dir: Path, config_path: Path,
     ) -> None:
-        """Config entry with existing supervisor is NOT overwritten."""
+        """Config entry is updated when disk supervisor differs."""
         _make_anima(animas_dir, "alice", "| 上司 | bob |\n")
 
         # Pre-populate config with a different supervisor
@@ -192,7 +192,7 @@ class TestSyncOrgStructure:
 
         invalidate_cache()
         cfg = load_config(config_path)
-        assert cfg.animas["alice"].supervisor == "charlie"  # Unchanged
+        assert cfg.animas["alice"].supervisor == "bob"  # Updated from disk
 
     def test_no_change_when_already_matched(
         self, animas_dir: Path, config_path: Path,
@@ -383,7 +383,7 @@ class TestSyncOrgStructure:
     def test_mismatch_logs_warning(
         self, animas_dir: Path, config_path: Path, caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """Mismatched supervisors log a warning but keep config value."""
+        """Mismatched supervisors are synced from disk and logged."""
         _make_anima(animas_dir, "alice", "| 上司 | bob |\n")
 
         cfg = load_config(config_path)
@@ -391,11 +391,16 @@ class TestSyncOrgStructure:
         save_config(cfg, config_path)
         invalidate_cache()
 
-        with caplog.at_level("WARNING"):
+        with caplog.at_level("INFO"):
             sync_org_structure(animas_dir, config_path)
 
-        assert "supervisor mismatch" in caplog.text.lower()
+        assert "updating supervisor" in caplog.text.lower()
         assert "alice" in caplog.text
+
+        # Config should now match disk
+        invalidate_cache()
+        cfg = load_config(config_path)
+        assert cfg.animas["alice"].supervisor == "bob"
 
     def test_circular_reference_logs_warning(
         self, animas_dir: Path, config_path: Path, caplog: pytest.LogCaptureFixture,

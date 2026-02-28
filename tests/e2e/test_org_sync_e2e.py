@@ -348,11 +348,11 @@ class TestSyncOrgStructureRealisticScenario:
         # kotoha: still supervisor="sakura" (unchanged, already correct)
         assert cfg.animas["kotoha"].supervisor == "sakura"
 
-    def test_sync_does_not_overwrite_manual_config_override(
+    def test_sync_updates_config_when_disk_supervisor_differs(
         self, tmp_path: Path,
     ) -> None:
-        """When config has a different supervisor than identity.md,
-        sync should keep the config value (manual override).
+        """When disk supervisor differs from config, sync updates config
+        because status.json / identity.md is the single source of truth.
         """
         data_dir = tmp_path / "animaworks"
         data_dir.mkdir()
@@ -363,21 +363,21 @@ class TestSyncOrgStructureRealisticScenario:
         _create_config(
             config_path,
             animas={
-                "alice": AnimaModelConfig(supervisor="manual_boss"),
+                "alice": AnimaModelConfig(supervisor="old_boss"),
             },
         )
 
         _make_anima(
             animas_dir, "alice",
-            "| 上司 | disk_boss |\n",
+            "| 上司 | new_boss |\n",
         )
 
         sync_org_structure(animas_dir, config_path)
 
         invalidate_cache()
         cfg = load_config(config_path)
-        # Manual config override should be preserved
-        assert cfg.animas["alice"].supervisor == "manual_boss"
+        # Disk value (SSoT) should be synced to config
+        assert cfg.animas["alice"].supervisor == "new_boss"
 
 
 # ── Test 3: Server startup triggers org sync ─────────────────────

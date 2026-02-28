@@ -10,7 +10,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from core.config.models import AnimaModelConfig, load_config, resolve_anima_config
+from core.config.models import load_config, resolve_anima_config
 from core.exceptions import AnimaWorksError
 from server.dependencies import get_anima
 
@@ -50,21 +50,22 @@ def create_animas_router() -> APIRouter:
             # Read static files
             appearance = _read_appearance(anima_dir)
 
-            # Read supervisor from config
-            anima_cfg = config.animas.get(name, AnimaModelConfig())
-
-            # Resolve model name and role from status.json
+            # Resolve all config including supervisor from status.json
             model = None
             role = None
+            anima_supervisor = None
+            anima_speciality = None
             try:
                 resolved, _ = resolve_anima_config(config, name, anima_dir=anima_dir)
                 model = resolved.model
+                anima_supervisor = resolved.supervisor
+                anima_speciality = resolved.speciality
                 status_path = anima_dir / "status.json"
                 if status_path.exists():
                     status_data = json.loads(status_path.read_text(encoding="utf-8"))
                     role = status_data.get("role")
             except Exception:
-                logger.debug("Failed to resolve model for anima '%s'", name, exc_info=True)
+                logger.debug("Failed to resolve config for anima '%s'", name, exc_info=True)
 
             # Combine data
             data = {
@@ -74,8 +75,8 @@ def create_animas_router() -> APIRouter:
                 "pid": proc_status.get("pid"),
                 "uptime_sec": proc_status.get("uptime_sec"),
                 "appearance": appearance,
-                "supervisor": anima_cfg.supervisor,
-                "speciality": anima_cfg.speciality,
+                "supervisor": anima_supervisor,
+                "speciality": anima_speciality,
                 "role": role,
                 "model": model,
             }

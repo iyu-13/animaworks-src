@@ -245,22 +245,30 @@ def _scan_all_animas(animas_dir: Path) -> dict[str, Any]:
         speciality: str | None = None
         role: str | None = None
 
+        # status.json is the SSoT; config.animas is fallback only.
+        status_has_supervisor = False
+        status_has_speciality = False
         status_path = d / "status.json"
         if status_path.exists():
             try:
                 import json
                 data = json.loads(status_path.read_text(encoding="utf-8"))
-                supervisor = data.get("supervisor") or None
-                speciality = data.get("speciality") or None
+                if "supervisor" in data:
+                    supervisor = data["supervisor"] or None
+                    status_has_supervisor = True
+                if "speciality" in data:
+                    speciality = data["speciality"] or None
+                    status_has_speciality = True
                 role = data.get("role") or None
             except Exception:
                 pass
 
+        # Fallback to config.animas when status.json omits the field
         if name in config_animas:
             cfg = config_animas[name]
-            if cfg.supervisor is not None:
+            if not status_has_supervisor and cfg.supervisor is not None:
                 supervisor = cfg.supervisor
-            if cfg.speciality is not None:
+            if not status_has_speciality and cfg.speciality is not None:
                 speciality = cfg.speciality
 
         if not speciality and role:
