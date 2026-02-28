@@ -745,3 +745,59 @@ type: llm
 
         lm.register_anima(dp)
         dp.set_on_schedule_changed.assert_called_once_with(lm.reload_anima_schedule)
+
+
+class TestScheduleFreshness:
+    """Tests for mtime-based schedule freshness detection."""
+
+    def test_no_change_returns_false(self, tmp_path):
+        lm = LifecycleManager()
+        dp = MagicMock()
+        dp.name = "alice"
+        dp.memory.anima_dir = tmp_path
+        dp.memory.read_heartbeat_config.return_value = ""
+        dp.memory.read_cron_config.return_value = ""
+        dp.set_on_lock_released = MagicMock()
+        dp.set_on_schedule_changed = MagicMock()
+        lm.register_anima(dp)
+
+        assert lm._check_schedule_freshness("alice") is False
+
+    def test_cron_change_triggers_reload(self, tmp_path):
+        import time as _time
+
+        lm = LifecycleManager()
+        dp = MagicMock()
+        dp.name = "alice"
+        dp.memory.anima_dir = tmp_path
+        dp.memory.read_heartbeat_config.return_value = ""
+        dp.memory.read_cron_config.return_value = ""
+        dp.set_on_lock_released = MagicMock()
+        dp.set_on_schedule_changed = MagicMock()
+        lm.register_anima(dp)
+
+        # Create cron.md after registration (simulates Mode S Write)
+        _time.sleep(0.05)
+        (tmp_path / "cron.md").write_text("## task\nschedule: 0 9 * * *\ntype: llm\ndo stuff")
+
+        result = lm._check_schedule_freshness("alice")
+        assert result is True
+
+    def test_unknown_anima_returns_false(self):
+        lm = LifecycleManager()
+        assert lm._check_schedule_freshness("nobody") is False
+
+    def test_unregister_clears_mtimes(self, tmp_path):
+        lm = LifecycleManager()
+        dp = MagicMock()
+        dp.name = "alice"
+        dp.memory.anima_dir = tmp_path
+        dp.memory.read_heartbeat_config.return_value = ""
+        dp.memory.read_cron_config.return_value = ""
+        dp.set_on_lock_released = MagicMock()
+        dp.set_on_schedule_changed = MagicMock()
+        lm.register_anima(dp)
+        assert "alice" in lm._schedule_mtimes
+
+        lm.unregister_anima("alice")
+        assert "alice" not in lm._schedule_mtimes
