@@ -666,10 +666,10 @@ class TestResolveAnimaConfig2Layer:
         resolved, _ = resolve_anima_config(config, "testbot", anima_dir=anima_dir)
         assert resolved.supervisor == "kotoha"
 
-    def test_config_override_supervisor_beats_status_json(
+    def test_status_json_supervisor_beats_config_override(
         self, tmp_path: Path,
     ) -> None:
-        """config.json per-anima supervisor override beats status.json."""
+        """status.json supervisor beats config.json per-anima override."""
         anima_dir = tmp_path / "testbot"
         anima_dir.mkdir()
         _write_status_json(anima_dir, {
@@ -681,7 +681,7 @@ class TestResolveAnimaConfig2Layer:
         )
 
         resolved, _ = resolve_anima_config(config, "testbot", anima_dir=anima_dir)
-        assert resolved.supervisor == "from-config"
+        assert resolved.supervisor == "from-status"
 
     def test_credential_resolution(self, tmp_path: Path) -> None:
         """Credential is correctly resolved through 3-layer merge."""
