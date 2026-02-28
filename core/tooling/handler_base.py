@@ -38,7 +38,7 @@ active_session_type: contextvars.ContextVar[str] = contextvars.ContextVar(
 OnMessageSentFn = Callable[[str, str, str], None]
 
 # ── Command security: blocklist + shell operator detection ────
-_INJECTION_RE = re.compile(r"[;`]|\$\(|\$\{|\$[A-Za-z_]")
+_INJECTION_RE = re.compile(r"[;\n`]|\$\(|\$\{|\$[A-Za-z_]")
 
 _BLOCKED_CMD_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\brm\s+(-[^\s]*)*\s*-r", re.IGNORECASE),
@@ -53,6 +53,10 @@ _BLOCKED_CMD_PATTERNS: list[tuple[re.Pattern[str], str]] = [
      "Redirect to device/system files is blocked"),
     (re.compile(r"(curl|wget)\b.*\|\s*(ba)?sh\b"),
      "Remote code execution (curl/wget|sh) is blocked"),
+    (re.compile(r"\|\s*(ba)?sh\b"),
+     "Piping to sh/bash is blocked for security"),
+    (re.compile(r"\|\s*(python[23]?|perl|ruby|node)\b"),
+     "Piping to interpreter (python/perl/ruby/node) is blocked for security"),
     (re.compile(r"\bchmod\s+[0-7]*7[0-7]*\b"),
      "World-writable chmod is blocked"),
     (re.compile(r"\bshutdown\b|\breboot\b|\binit\s+[06]\b"),

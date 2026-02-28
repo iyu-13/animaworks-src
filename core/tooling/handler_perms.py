@@ -291,8 +291,8 @@ class PermissionsMixin:
             )
             return _error_result(
                 "PermissionDenied",
-                "Command contains injection patterns (;  `  $()  $VAR)",
-                suggestion="Use pipes (|) or logical operators (&&) instead of semicolons. Avoid variable expansion.",
+                "Command contains injection patterns (;  \\n  `  $()  $VAR)",
+                suggestion="Use pipes (|) or logical operators (&&) instead of semicolons. Avoid variable expansion and newlines.",
             )
 
         # Layer 2: Dangerous command patterns
