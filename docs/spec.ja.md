@@ -216,6 +216,111 @@ animaworks/
 
 **セキュリティ:** config.jsonのパーミッションは `0o600`（owner read/write only）で保存される。APIキーは環境変数での管理も引き続きサポート。
 
+### 3.3 モデル・認証設定（credentials）
+
+#### プロバイダ別 credentials 設定
+
+`config.json` の `credentials` セクションに、プロバイダごとの認証情報を名前付きマップで定義する。Animaの `status.json` からキー名で参照する。
+
+```json
+{
+  "credentials": {
+    "anthropic": {
+      "type": "api_key",
+      "api_key": "sk-ant-api03-xxxxx",
+      "keys": {},
+      "base_url": null
+    },
+    "bedrock": {
+      "type": "api_key",
+      "api_key": "",
+      "keys": {
+        "aws_access_key_id": "AKIA...",
+        "aws_secret_access_key": "...",
+        "aws_region_name": "ap-northeast-1"
+      },
+      "base_url": null
+    },
+    "azure": {
+      "type": "api_key",
+      "api_key": "BKQ5t...",
+      "keys": { "api_version": "2025-01-01-preview" },
+      "base_url": "https://your-resource.openai.azure.com"
+    },
+    "vertex": {
+      "type": "api_key",
+      "api_key": "",
+      "keys": {
+        "vertex_project": "my-gcp-project",
+        "vertex_location": "asia-northeast1",
+        "vertex_credentials": "/path/to/service-account.json"
+      },
+      "base_url": null
+    }
+  }
+}
+```
+
+#### モデル名の命名規則
+
+モデル名にはプロバイダプレフィックスを含める（LiteLLMの命名規則に準拠）:
+
+| プロバイダ | 形式 | 例 |
+|-----------|------|-----|
+| Anthropic直接 | `claude-{tier}-{version}` | `claude-opus-4-6`, `claude-sonnet-4-6` |
+| AWS Bedrock | `bedrock/{region}.anthropic.claude-{tier}-{version}` | `bedrock/jp.anthropic.claude-sonnet-4-6` |
+| Azure OpenAI | `azure/{deployment-name}` | `azure/gpt-4.1-mini` |
+| Google Vertex AI | `vertex_ai/{model-name}` | `vertex_ai/gemini-2.5-flash` |
+| OpenAI直接 | `openai/{model-name}` | `openai/gpt-4.1` |
+| Codex | `codex/{model-name}` | `codex/gpt-5.3-codex` |
+| Ollama | `ollama/{model-name}` | `ollama/qwen3:8b` |
+
+#### status.json のモデル関連フィールド
+
+| フィールド | 必須 | 説明 |
+|-----------|------|------|
+| `model` | Yes | モデル名（上記プレフィックス付き） |
+| `credential` | Yes | config.jsonの`credentials`キー名 |
+| `execution_mode` | No | 実行モード。未設定時は`DEFAULT_MODEL_MODE_PATTERNS`で自動解決 |
+| `mode_s_auth` | No | Mode S（Agent SDK）使用時の認証方式（`"api"` / `"bedrock"` / `"vertex"`） |
+
+#### 実行モード（execution_mode）の自動解決
+
+`status.json` に `execution_mode` を設定しない場合、`core/config/models.py` の `DEFAULT_MODEL_MODE_PATTERNS` によりモデル名から自動判定される:
+
+| パターン | モード | 説明 |
+|---------|-------|------|
+| `claude-*` | S | Claude直接 → Agent SDK |
+| `bedrock/*` | A | Bedrock経由 → LiteLLM |
+| `azure/*` | A | Azure → LiteLLM |
+| `vertex_ai/*` | A | Vertex AI → LiteLLM |
+| `codex/*` | C | Codex → CLI wrapper |
+| `ollama/*` | B | ローカルLLM → Basic |
+
+**注意:** `bedrock/*` はデフォルトMode A。Mode Sで使いたい場合は `"execution_mode": "S"` と `"mode_s_auth": "bedrock"` の両方を明示設定すること。
+
+#### 構成パターン例
+
+**Claude Opus（Anthropic Max Plan）:**
+```json
+{ "model": "claude-opus-4-6", "credential": "anthropic" }
+```
+
+**Claude Sonnet（AWS Bedrock経由 + Mode S）:**
+```json
+{
+  "model": "bedrock/jp.anthropic.claude-sonnet-4-6",
+  "credential": "bedrock",
+  "execution_mode": "S",
+  "mode_s_auth": "bedrock"
+}
+```
+
+**Azure OpenAI:**
+```json
+{ "model": "azure/gpt-4.1-mini", "credential": "azure" }
+```
+
 **RAGConfig フィールド:**
 
 |フィールド                      |型        |デフォルト                         |説明                          |

@@ -130,9 +130,20 @@ class AgentSDKExecutor(BaseExecutor):
 
     def _resolve_agent_sdk_model(self) -> str:
         """Return the model name suitable for Agent SDK (strip provider prefix)."""
+        import re
+
         m = self._model_config.model
-        if m.startswith("anthropic/"):
-            return m[len("anthropic/"):]
+        # Strip provider prefixes:
+        #   anthropic/claude-sonnet-4-6
+        #   bedrock/jp.anthropic.claude-sonnet-4-6
+        #   bedrock/claude-sonnet-4-6
+        #   vertex_ai/claude-sonnet-4-6
+        m = re.sub(
+            r"^(anthropic|bedrock|vertex_ai)/"
+            r"([a-z]{2}\.anthropic\.)?",
+            "",
+            m,
+        )
         return m
 
     def _build_env(self) -> dict[str, str]:

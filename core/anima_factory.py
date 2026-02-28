@@ -491,6 +491,8 @@ def _create_status_json(
     # Only write execution_mode when explicitly specified in the character sheet.
     # When omitted, resolve_execution_mode() falls through to
     # DEFAULT_MODEL_MODE_PATTERNS (e.g. "claude-*" → "S").
+    # This means most Claude models auto-resolve to Mode S without needing
+    # an explicit setting.  See core/config/models.py for the full table.
     explicit_mode = info.get("exec_mode")
     if explicit_mode:
         status["execution_mode"] = explicit_mode

@@ -593,7 +593,13 @@ def resolve_anima_config(
 # but the resolver sorts by specificity automatically.
 #
 # Mode values: S = SDK (Agent SDK / Claude Code), A = Autonomous (tool_use),
-#              B = Basic (no tool_use, framework-assisted)
+#              C = Codex (Codex CLI wrapper), B = Basic (no tool_use)
+#
+# IMPORTANT: When status.json omits "execution_mode", resolve_execution_mode()
+# falls through to these patterns to determine the mode from the model name.
+# For example, "claude-sonnet-4-6" matches "claude-*" → Mode S.
+# An anima can override this by setting execution_mode explicitly in status.json
+# (e.g. bedrock/* defaults to A, but mei uses execution_mode="S" to force Mode S).
 DEFAULT_MODEL_MODE_PATTERNS: dict[str, str] = {
     # ── S: Claude Agent SDK ──────────────────────────────
     "claude-*": "S",
@@ -926,12 +932,24 @@ def resolve_execution_mode(
 ) -> str:
     """Resolve execution mode from model name with wildcard pattern support.
 
+    When ``status.json`` omits ``execution_mode``, this function determines
+    the mode automatically from the model name.  For example,
+    ``claude-sonnet-4-6`` matches the ``"claude-*": "S"`` pattern and runs
+    in Mode S without an explicit setting.
+
     Priority:
-      1. Per-anima explicit override (with legacy value mapping)
+      1. Per-anima explicit override (``status.json`` ``execution_mode``)
       2. models.json user table (``~/.animaworks/models.json``)
       3. config.json model_modes (deprecated fallback, with legacy mapping)
-      4. DEFAULT_MODEL_MODE_PATTERNS (code defaults)
+      4. DEFAULT_MODEL_MODE_PATTERNS (code defaults, e.g. ``"claude-*"`` → S)
       5. Default ``"B"`` (safe side)
+
+    Args:
+        config: Global AnimaWorks configuration.
+        model_name: Model identifier (e.g. ``"claude-sonnet-4-6"``,
+            ``"bedrock/jp.anthropic.claude-sonnet-4-6"``).
+        explicit_override: Per-anima ``execution_mode`` from ``status.json``.
+            When set, takes highest priority.
 
     Returns:
         One of ``"S"`` (SDK), ``"C"`` (Codex), ``"A"`` (Autonomous),
