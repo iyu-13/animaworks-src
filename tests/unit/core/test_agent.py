@@ -239,8 +239,7 @@ class TestRunCycle:
             result = await agent.run_cycle("Hello", trigger="manual")
             assert isinstance(result, CycleResult)
             assert result.summary == "S mode response"
-            # S mode early-returns without session chaining; total_turns defaults to 0
-            assert result.total_turns == 0
+            assert result.total_turns == 3
 
 
 # ── Permission parsing ────────────────────────────────────

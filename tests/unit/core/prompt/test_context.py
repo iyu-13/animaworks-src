@@ -48,11 +48,11 @@ class TestResolveContextWindow:
 
     def test_bedrock_cross_region_prefix_stripped(self):
         """Bedrock cross-region models (jp.anthropic., us.anthropic.) should resolve correctly."""
-        assert _resolve_context_window("bedrock/jp.anthropic.claude-sonnet-4-6") == 1_000_000
-        assert _resolve_context_window("bedrock/us.anthropic.claude-sonnet-4-6") == 1_000_000
-        assert _resolve_context_window("bedrock/eu.anthropic.claude-opus-4-6") == 1_000_000
+        assert _resolve_context_window("bedrock/jp.anthropic.claude-sonnet-4-6") == 128_000
+        assert _resolve_context_window("bedrock/us.anthropic.claude-sonnet-4-6") == 128_000
+        assert _resolve_context_window("bedrock/eu.anthropic.claude-opus-4-6") == 128_000
         # Standard bedrock (no region prefix) should still work
-        assert _resolve_context_window("bedrock/claude-sonnet-4-6") == 1_000_000
+        assert _resolve_context_window("bedrock/claude-sonnet-4-6") == 128_000
 
     def test_all_known_models(self):
         for prefix, expected in MODEL_CONTEXT_WINDOWS.items():
@@ -121,20 +121,21 @@ class TestResolveContextThreshold:
     """Auto-scaling of compaction threshold based on context window size."""
 
     def test_large_model_unchanged(self):
-        """1M+ models keep the configured threshold as-is."""
+        """200K+ models keep the configured threshold as-is."""
+        assert resolve_context_threshold(0.50, 200_000) == 0.50
         assert resolve_context_threshold(0.50, 1_000_000) == 0.50
         assert resolve_context_threshold(0.50, 2_000_000) == 0.50
 
     def test_small_model_scales_up(self):
         """Smaller windows get a higher threshold."""
-        result = resolve_context_threshold(0.50, 200_000)
+        result = resolve_context_threshold(0.50, 128_000)
         assert result > 0.50
         assert result < _THRESHOLD_CEILING
 
     def test_very_small_model_near_ceiling(self):
         """Very small windows approach the ceiling (0.98)."""
         result = resolve_context_threshold(0.50, 30_000)
-        assert result >= 0.95
+        assert result >= 0.85
 
     def test_ceiling_not_exceeded(self):
         """Threshold should never exceed the ceiling."""
@@ -151,9 +152,9 @@ class TestResolveContextThreshold:
     def test_expected_values(self):
         """Smoke-test specific expected values (configured=0.50)."""
         assert resolve_context_threshold(0.50, 1_000_000) == 0.50
-        assert resolve_context_threshold(0.50, 200_000) == pytest.approx(0.884, abs=0.01)
-        assert resolve_context_threshold(0.50, 128_000) == pytest.approx(0.919, abs=0.01)
-        assert resolve_context_threshold(0.50, 30_000) == pytest.approx(0.966, abs=0.01)
+        assert resolve_context_threshold(0.50, 200_000) == 0.50
+        assert resolve_context_threshold(0.50, 128_000) == pytest.approx(0.673, abs=0.01)
+        assert resolve_context_threshold(0.50, 30_000) == pytest.approx(0.908, abs=0.01)
 
 
 # ── ContextTracker init ───────────────────────────────────
@@ -163,14 +164,15 @@ class TestContextTrackerInit:
     def test_defaults(self):
         ct = ContextTracker()
         assert ct.model == "claude-sonnet-4-6"
-        assert ct.threshold == 0.50
+        # 128K model: threshold auto-scaled from 0.50
+        assert ct.threshold > 0.50
         assert ct.context_window_overrides == {}
 
     def test_custom(self):
-        # Use a 1M model so auto-scaling does not change the threshold.
+        # 128K model: threshold gets auto-scaled upward.
         ct = ContextTracker(model="claude-sonnet-4-6", threshold=0.70)
         assert ct.model == "claude-sonnet-4-6"
-        assert ct.threshold == 0.70
+        assert ct.threshold > 0.70
 
     def test_custom_with_overrides(self):
         overrides = {"glm-4*": 16_384}
@@ -190,10 +192,11 @@ class TestContextTrackerInit:
         )
         assert ct.threshold > 0.90  # should be ~0.94
 
-    def test_threshold_unchanged_for_large_model(self):
-        """Large model (1M) should keep configured threshold."""
+    def test_threshold_auto_scaled_for_128k_model(self):
+        """128K model should get threshold auto-scaled above 0.50."""
         ct = ContextTracker(model="claude-sonnet-4-6", threshold=0.50)
-        assert ct.threshold == 0.50
+        assert ct.threshold > 0.50
+        assert ct.threshold < 0.80
 
 
 class TestContextTrackerProperties:
@@ -248,22 +251,22 @@ class TestEstimateFromTranscript:
         assert abs(ratio - expected) < 0.01
 
     def test_threshold_detection(self, tmp_path):
-        # Use a 1M model so auto-scaling keeps threshold at 0.50
+        # 128K model — threshold auto-scaled to ~0.67
         f = tmp_path / "big.json"
-        # 1M window * 0.50 threshold = 500k tokens needed
-        # 500k tokens * 4 chars = 2M chars
-        f.write_text("x" * 2_500_000)
+        # 128K window * 0.67 threshold ≈ 86K tokens
+        # 90K tokens * 4 chars = 360K chars (safely over threshold)
+        f.write_text("x" * 400_000)
 
         ct = ContextTracker(model="claude-sonnet-4-6", threshold=0.50)
         ratio = ct.estimate_from_transcript(str(f))
-        assert ratio >= 0.50
+        assert ratio >= ct.threshold
         assert ct.threshold_exceeded is True
 
     def test_threshold_only_triggers_once(self, tmp_path):
         f = tmp_path / "big.json"
         ct = ContextTracker(threshold=0.50)
-        # Write enough to exceed 50% of the context window
-        needed_tokens = int(ct.context_window * 0.60)
+        # Write enough to exceed the (possibly auto-scaled) threshold
+        needed_tokens = int(ct.context_window * (ct.threshold + 0.05))
         f.write_text("x" * (needed_tokens * CHARS_PER_TOKEN))
 
         ct.estimate_from_transcript(str(f))
@@ -283,15 +286,15 @@ class TestUpdateFromUsage:
         assert result is False  # didn't cross threshold
 
     def test_threshold_crossed(self):
-        # Use a 1M model so auto-scaling keeps threshold at 0.50
+        # 128K model — threshold auto-scaled to ~0.67 → ~86K tokens triggers
         ct = ContextTracker(model="claude-sonnet-4-6", threshold=0.50)
-        result = ct.update_from_usage({"input_tokens": 510_000, "output_tokens": 10_000})
+        result = ct.update_from_usage({"input_tokens": 90_000, "output_tokens": 10_000})
         assert result is True
         assert ct.threshold_exceeded is True
 
     def test_threshold_not_crossed_twice(self):
         ct = ContextTracker(threshold=0.50)
-        over_threshold = int(ct.context_window * 0.55)
+        over_threshold = int(ct.context_window * (ct.threshold + 0.05))
         ct.update_from_usage({"input_tokens": over_threshold, "output_tokens": 10_000})
         assert ct.threshold_exceeded is True
         result = ct.update_from_usage({"input_tokens": over_threshold + 10_000, "output_tokens": 10_000})
@@ -315,7 +318,7 @@ class TestUpdateFromResultMessage:
 
     def test_threshold_detection(self):
         ct = ContextTracker(threshold=0.40)
-        over_threshold = int(ct.context_window * 0.45)
+        over_threshold = int(ct.context_window * (ct.threshold + 0.05))
         ct.update_from_result_message({"input_tokens": over_threshold, "output_tokens": 10_000})
         assert ct.threshold_exceeded is True
 
@@ -336,7 +339,7 @@ class TestUpdateFromResultMessage:
 class TestReset:
     def test_resets_all(self):
         ct = ContextTracker()
-        over_threshold = int(ct.context_window * 0.55)
+        over_threshold = int(ct.context_window * (ct.threshold + 0.05))
         ct.update_from_usage({"input_tokens": over_threshold, "output_tokens": 10_000})
         assert ct.threshold_exceeded is True
         ct.reset()

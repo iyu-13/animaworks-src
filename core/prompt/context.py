@@ -34,9 +34,9 @@ CHARS_PER_TOKEN = 4
 # Context window sizes per model family (input tokens).
 # Keys are matched as prefixes against the model name (after stripping provider/).
 MODEL_CONTEXT_WINDOWS: dict[str, int] = {
-    # Anthropic (current generation)
-    "claude-opus-4-6": 1_000_000,
-    "claude-sonnet-4-6": 1_000_000,
+    # Anthropic (current generation — conservative default; override via config)
+    "claude-opus-4-6": 128_000,
+    "claude-sonnet-4-6": 128_000,
     # Anthropic (previous generation)
     "claude-opus-4-5": 200_000,
     "claude-sonnet-4-5": 200_000,
@@ -71,8 +71,9 @@ MODEL_CONTEXT_WINDOWS: dict[str, int] = {
 _DEFAULT_CONTEXT_WINDOW = 128_000
 
 # ── Context threshold auto-scaling ─────────────────────────
-# Reference window size at which the configured threshold is used as-is.
-_THRESHOLD_REFERENCE_WINDOW = 1_000_000
+# Models with context windows >= this size use the configured threshold as-is.
+# Smaller models get a progressively higher threshold (up to 0.98).
+_THRESHOLD_REFERENCE_WINDOW = 200_000
 # Upper bound for the auto-scaled threshold (smallest models).
 _THRESHOLD_CEILING = 0.98
 
@@ -83,16 +84,16 @@ def resolve_context_threshold(
 ) -> float:
     """Auto-scale the compaction threshold based on context window size.
 
-    Large context windows (>= 1M tokens) keep the configured threshold
+    Models with >= 200K context windows keep the configured threshold
     (typically 0.50).  Smaller windows get a linearly higher threshold,
     sliding up to 0.98, so that the fixed-size system prompt does not
     immediately trigger compaction on small models.
 
     Examples (configured=0.50):
         1 000 000 tokens → 0.50
-          200 000 tokens → 0.884
-          128 000 tokens → 0.919
-           30 000 tokens → 0.966
+          200 000 tokens → 0.50
+          128 000 tokens → 0.6728
+           30 000 tokens → 0.908
     """
     if context_window >= _THRESHOLD_REFERENCE_WINDOW:
         return configured
