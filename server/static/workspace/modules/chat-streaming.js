@@ -131,10 +131,15 @@ async function _sendConversation(text, overrideImages = null) {
   const mgr = _mgr();
   let talkingStarted = false;
 
-  const { streamingMsg, success, error } = await mgr.sendChat(anima, thread, text, {
+  // Use let + onStreamCreated to avoid TDZ: const destructuring from
+  // await would not be initialized when SSE callbacks fire during streaming.
+  let streamingMsg = null;
+
+  const { success, error } = await mgr.sendChat(anima, thread, text, {
     images,
     displayImages,
     callbacks: {
+      onStreamCreated: (msg) => { streamingMsg = msg; renderConvMessages(); },
       onTextDelta: (d) => {
         if (!streamingMsg?.streaming) return;
         streamingMsg.afterHeartbeatRelay = false;
@@ -209,8 +214,11 @@ export async function resumeConversationStream(animaName) {
 
   wsUpdateSendButton(true);
 
-  const { streamingMsg, success, error } = await mgr.resumeStream(animaName, threadId, {
+  let streamingMsg = null;
+
+  const { success } = await mgr.resumeStream(animaName, threadId, {
     callbacks: {
+      onStreamCreated: (msg) => { streamingMsg = msg; renderConvMessages(); },
       onTextDelta: (d) => { if (streamingMsg?.streaming) { streamingMsg.text += d; scheduleStreamingUpdate(streamingMsg); } },
       onCompressionStart: () => { if (streamingMsg?.streaming) { streamingMsg.compressing = true; updateStreamingBubble(streamingMsg); } },
       onCompressionEnd: () => { if (streamingMsg?.streaming) { streamingMsg.compressing = false; updateStreamingBubble(streamingMsg); } },

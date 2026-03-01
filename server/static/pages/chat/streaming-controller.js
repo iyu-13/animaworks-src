@@ -245,43 +245,48 @@ export function createStreamingController(ctx) {
 
     logger.debug(`_sendChat: starting stream for ${name} msg_len=${message.length}`);
 
-    const { streamingMsg, success, error } = await mgr.sendChat(name, tid, message, {
+    // Use let + onStreamCreated to avoid TDZ: the const destructuring from
+    // await would not be initialized when SSE callbacks fire during streaming.
+    let streamingMsg = null;
+
+    const { success, error } = await mgr.sendChat(name, tid, message, {
       images,
       displayImages,
       callbacks: {
+        onStreamCreated: msg => { streamingMsg = msg; renderFull(); },
         onTextDelta: text => {
-          if (!streamingMsg.streaming) return;
+          if (!streamingMsg?.streaming) return;
           streamingMsg.afterHeartbeatRelay = false;
           streamingMsg.text += text;
           renderBubble(streamingMsg);
         },
-        onToolStart: toolName => { if (!streamingMsg.streaming) return; streamingMsg.activeTool = toolName; renderBubble(streamingMsg); },
-        onToolEnd: () => { if (!streamingMsg.streaming) return; streamingMsg.activeTool = null; renderBubble(streamingMsg); },
+        onToolStart: toolName => { if (!streamingMsg?.streaming) return; streamingMsg.activeTool = toolName; renderBubble(streamingMsg); },
+        onToolEnd: () => { if (!streamingMsg?.streaming) return; streamingMsg.activeTool = null; renderBubble(streamingMsg); },
         onChainStart: () => {},
-        onCompressionStart: () => { if (!streamingMsg.streaming) return; streamingMsg.compressing = true; renderBubble(streamingMsg); },
-        onCompressionEnd: () => { if (!streamingMsg.streaming) return; streamingMsg.compressing = false; renderBubble(streamingMsg); },
+        onCompressionStart: () => { if (!streamingMsg?.streaming) return; streamingMsg.compressing = true; renderBubble(streamingMsg); },
+        onCompressionEnd: () => { if (!streamingMsg?.streaming) return; streamingMsg.compressing = false; renderBubble(streamingMsg); },
         onHeartbeatRelayStart: ({ message: msg }) => {
-          if (!streamingMsg.streaming) return;
+          if (!streamingMsg?.streaming) return;
           streamingMsg.heartbeatRelay = true; streamingMsg.heartbeatText = "";
           renderBubble(streamingMsg);
           ctx.controllers.activity.addLocalActivity("system", name, `${t("chat.heartbeat_relay")}: ${msg}`);
         },
         onHeartbeatRelay: ({ text }) => {
-          if (!streamingMsg.streaming) return;
+          if (!streamingMsg?.streaming) return;
           streamingMsg.heartbeatText = (streamingMsg.heartbeatText || "") + text;
           renderBubble(streamingMsg);
         },
         onHeartbeatRelayDone: () => {
-          if (!streamingMsg.streaming) return;
+          if (!streamingMsg?.streaming) return;
           streamingMsg.heartbeatRelay = false; streamingMsg.heartbeatText = ""; streamingMsg.afterHeartbeatRelay = true;
           renderBubble(streamingMsg);
         },
-        onThinkingStart: () => { if (!streamingMsg.streaming) return; streamingMsg.thinkingText = ""; streamingMsg.thinking = true; renderBubble(streamingMsg); },
-        onThinkingDelta: text => { if (!streamingMsg.streaming) return; streamingMsg.thinkingText = (streamingMsg.thinkingText || "") + text; renderBubble(streamingMsg); },
-        onThinkingEnd: () => { if (!streamingMsg.streaming) return; streamingMsg.thinking = false; renderBubble(streamingMsg); },
+        onThinkingStart: () => { if (!streamingMsg?.streaming) return; streamingMsg.thinkingText = ""; streamingMsg.thinking = true; renderBubble(streamingMsg); },
+        onThinkingDelta: text => { if (!streamingMsg?.streaming) return; streamingMsg.thinkingText = (streamingMsg.thinkingText || "") + text; renderBubble(streamingMsg); },
+        onThinkingEnd: () => { if (!streamingMsg?.streaming) return; streamingMsg.thinking = false; renderBubble(streamingMsg); },
         onError: ({ message: errorMsg }) => {
           logger.debug(`onError: ${errorMsg}`);
-          if (!streamingMsg.text) {
+          if (!streamingMsg?.text) {
             void (async () => {
               let recoveredText = "";
               try {
@@ -293,13 +298,14 @@ export function createStreamingController(ctx) {
               } catch (progressErr) {
                 logger.debug("Failed to load stream progress on error", { anima: name, error: progressErr?.message || String(progressErr) });
               }
-              finalizeStreamError(streamingMsg, errorMsg, recoveredText);
+              if (streamingMsg) finalizeStreamError(streamingMsg, errorMsg, recoveredText);
             })();
             return;
           }
           finalizeStreamError(streamingMsg, errorMsg);
         },
         onDone: ({ summary, images: doneImages }) => {
+          if (!streamingMsg) return;
           const text = summary || streamingMsg.text;
           streamingMsg.text = text || t("chat.empty_response");
           streamingMsg.images = doneImages || [];
@@ -311,6 +317,7 @@ export function createStreamingController(ctx) {
           ctx.controllers.renderer.markResponseComplete(name, tid);
         },
         onAbort: () => {
+          if (!streamingMsg) return;
           streamingMsg.streaming = false; streamingMsg.activeTool = null;
           if (!streamingMsg.text) streamingMsg.text = t("chat.interrupted");
           if (isVisible()) ctx.controllers.renderer.renderChat();
@@ -361,8 +368,11 @@ export function createStreamingController(ctx) {
       if (state.selectedAnima === animaName) ctx.controllers.renderer.renderStreamingBubble(msg);
     };
 
-    const { streamingMsg } = await mgr.resumeStream(animaName, tid, {
+    let streamingMsg = null;
+
+    await mgr.resumeStream(animaName, tid, {
       callbacks: {
+        onStreamCreated: msg => { streamingMsg = msg; ctx.controllers.renderer.renderChat(); },
         onTextDelta: text => { if (streamingMsg?.streaming) { streamingMsg.text += text; renderIfVisible(streamingMsg); } },
         onToolStart: toolName => { if (streamingMsg?.streaming) { streamingMsg.activeTool = toolName; renderIfVisible(streamingMsg); } },
         onToolEnd: () => { if (streamingMsg?.streaming) { streamingMsg.activeTool = null; renderIfVisible(streamingMsg); } },

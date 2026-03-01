@@ -265,6 +265,10 @@ export class ChatSessionManager extends EventTarget {
     session._streamingMsg = streamingMsg;
     session._abortController = new AbortController();
 
+    // Deliver streamingMsg synchronously before async streaming starts
+    // so callbacks can reference it without TDZ errors.
+    callbacks.onStreamCreated?.(streamingMsg);
+
     this.#dispatch("messages-changed", { anima, thread, streamingMsg });
     this.#dispatch("stream-state-changed", { anima, thread, isStreaming: true });
 
@@ -328,6 +332,9 @@ export class ChatSessionManager extends EventTarget {
       session.messages.push(streamingMsg);
       session._streamingMsg = streamingMsg;
       session._abortController = new AbortController();
+
+      // Deliver streamingMsg synchronously before async streaming starts
+      callbacks.onStreamCreated?.(streamingMsg);
 
       this.#dispatch("messages-changed", { anima, thread, streamingMsg });
       this.#dispatch("stream-state-changed", { anima, thread, isStreaming: true });
