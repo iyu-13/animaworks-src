@@ -2094,9 +2094,13 @@
   display: flex;
   flex: 1 0 0%;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
   position: relative;
   transition: box-shadow 0.15s;
+}
+
+.chat-pane:not(:only-child) {
+  overflow: hidden;
 }
 
 .chat-pane .chat-page-main {
