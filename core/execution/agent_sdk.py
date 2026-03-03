@@ -26,7 +26,7 @@ import logging
 import os
 import sys
 import tempfile
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from dataclasses import asdict
 from typing import Any, TYPE_CHECKING
 
@@ -84,7 +84,12 @@ from core.execution._sdk_hooks import (  # noqa: F401
     _build_pre_tool_hook,
     _cache_subordinate_paths,
     _collect_all_subordinates,
+    _count_active_tasks,
+    _intercept_task_to_delegation,
     _intercept_task_to_pending,
+    _read_status_json,
+    _role_matches,
+    _select_subordinate,
 )
 from core.execution._sdk_stream import (  # noqa: F401
     _finalize_pending_records,
@@ -236,6 +241,24 @@ class AgentSDKExecutor(BaseExecutor):
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
         }
 
+    def _make_pending_executor_wake_callback(self) -> Callable[[], None] | None:
+        """Create a callback that writes a .wake file for PendingTaskExecutor.
+
+        The wake file signals the pending executor (running in the runner
+        subprocess) to check for new tasks immediately rather than waiting
+        for the next poll interval.
+        """
+        wake_path = self._anima_dir / "state" / "pending" / ".wake"
+
+        def _wake() -> None:
+            try:
+                wake_path.parent.mkdir(parents=True, exist_ok=True)
+                wake_path.write_text("1", encoding="utf-8")
+            except Exception:
+                pass
+
+        return _wake
+
     # ── SDK helpers (shared by execute / execute_streaming) ──
 
     def _build_sdk_options(
@@ -300,13 +323,19 @@ class AgentSDKExecutor(BaseExecutor):
             self._model_config.thinking,
         )
 
+        _has_subs = self._has_subordinates()
+
+        _allowed_tools = [
+            "Read", "Write", "Edit", "Bash", "Grep", "Glob",
+            "WebFetch", "WebSearch",
+            "mcp__aw__*",
+        ]
+        if not _has_subs:
+            _allowed_tools.append("Task")
+
         kwargs: dict[str, Any] = dict(
             system_prompt=prompt_kwarg,
-            allowed_tools=[
-                "Read", "Write", "Edit", "Bash", "Grep", "Glob",
-                "WebFetch", "WebSearch",
-                "mcp__aw__*",
-            ],
+            allowed_tools=_allowed_tools,
             permission_mode="acceptEdits",
             cwd=str(self._anima_dir),
             max_turns=max_turns,
@@ -332,6 +361,8 @@ class AgentSDKExecutor(BaseExecutor):
                         context_window=_cw,
                         session_stats=session_stats,
                         superuser=_is_debug_superuser(self._anima_dir),
+                        on_task_intercepted=self._make_pending_executor_wake_callback(),
+                        has_subordinates=_has_subs,
                     )],
                 )],
                 "PreCompact": [HookMatcher(
