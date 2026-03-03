@@ -3,6 +3,7 @@ import {
   saveDraft, clearDraft, chatInputMaxHeight,
   scheduleSaveChatUiState, CONSTANTS,
 } from "./ctx.js";
+import { getDescendants } from "../../shared/chat/org-utils.js";
 
 const SEND_BTN_ICONS = {
   send: `<svg class="chat-send-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 19V5M5 12l7-7 7 7" /></svg>`,
@@ -280,9 +281,11 @@ export function createStreamingController(ctx) {
       "tool_start", "tool_detail", "tool_end",
       "inbox_processing_start", "inbox_processing_end",
     ]);
+    const _descendants = getDescendants(name, state.animas || []);
     const _onSubordinateActivity = (e) => {
       const { name: subName, event: evtType, tool_name: toolName, detail: toolDetail } = e.detail || {};
       if (!streamingMsg?.streaming || subName === name) return;
+      if (!_descendants.has(subName)) return;
       if (!_SUB_ACTIVITY_TYPES.has(evtType)) return;
       if (!streamingMsg.subordinateActivity) streamingMsg.subordinateActivity = {};
       if (evtType === "tool_start") {

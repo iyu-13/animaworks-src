@@ -5,6 +5,7 @@
 import { getState, setState } from "./state.js";
 import { getCurrentUser } from "./login.js";
 import { escapeHtml } from "./utils.js";
+import { getDescendants } from "../../shared/chat/org-utils.js";
 import { setExpression, setTalking } from "./live2d.js";
 import { createLogger } from "../../shared/logger.js";
 import { renderConvMessages, renderOpts } from "./chat-history.js";
@@ -201,9 +202,11 @@ async function _sendConversation(text, overrideImages = null) {
     updateStreamingBubble(streamingMsg, "tools");
     _wsToolDetailTimers.set(toolId, setTimeout(() => { _wsToolDetailTimers.delete(toolId); updateStreamingBubble(streamingMsg, "tools"); }, 200));
   };
+  const _descendants = getDescendants(anima, getState().animas || []);
   const _onSubordinateActivity = (e) => {
     const { name: subName, event: evtType, tool_name: toolName, detail: toolDetail } = e.detail || {};
     if (!streamingMsg?.streaming || subName === anima) return;
+    if (!_descendants.has(subName)) return;
     if (!_SUB_ACTIVITY_TYPES.has(evtType)) return;
     if (!streamingMsg.subordinateActivity) streamingMsg.subordinateActivity = {};
     if (evtType === "tool_start") {
