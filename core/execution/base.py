@@ -72,6 +72,72 @@ def resolve_thinking_effort(model: str, effort: str | None) -> str:
     return resolved
 
 
+# ── Think-tag strip filter ────────────────────────────────────
+
+_THINK_TAG_RE = re.compile(r"^(.*?)</think>\s*", re.DOTALL)
+_MAX_THINK_BUFFER = 50_000
+
+
+def strip_thinking_tags(text: str) -> tuple[str, str]:
+    """Strip ``<think>...</think>`` block from *text* (non-streaming).
+
+    Some models (e.g. Qwen3.5) emit reasoning inside ``content`` wrapped
+    in ``<think>`` tags rather than using a dedicated ``reasoning_content``
+    field.  This helper splits the text into ``(thinking, response)``.
+
+    Returns ``("", text)`` when no ``</think>`` closing tag is found.
+    """
+    m = _THINK_TAG_RE.match(text)
+    if m:
+        return m.group(1), text[m.end():]
+    return "", text
+
+
+class StreamingThinkFilter:
+    """Streaming filter that routes ``<think>`` content to thinking deltas.
+
+    Feed each streamed chunk via :meth:`feed`; it returns a
+    ``(thinking_delta, text_delta)`` tuple.  Until ``</think>`` is seen,
+    all content is buffered and emitted as *thinking*.  After the closing
+    tag, everything passes through as *text*.
+
+    A safety valve flushes the buffer as plain text if it exceeds
+    ``_MAX_THINK_BUFFER`` characters without encountering ``</think>``.
+    """
+
+    __slots__ = ("_buffer", "_done")
+
+    def __init__(self) -> None:
+        self._buffer = ""
+        self._done = False
+
+    def feed(self, delta: str) -> tuple[str, str]:
+        """Process *delta* and return ``(thinking_text, response_text)``."""
+        if self._done:
+            return ("", delta)
+        self._buffer += delta
+        if "</think>" in self._buffer:
+            self._done = True
+            parts = self._buffer.split("</think>", 1)
+            response = parts[1].lstrip("\n")
+            self._buffer = ""
+            return (parts[0], response)
+        if len(self._buffer) > _MAX_THINK_BUFFER:
+            text = self._buffer
+            self._buffer = ""
+            self._done = True
+            return ("", text)
+        return ("", "")
+
+    def flush(self) -> str:
+        """Return any remaining buffered text at end-of-stream."""
+        if self._buffer:
+            text = self._buffer
+            self._buffer = ""
+            return text
+        return ""
+
+
 # ── Dynamic tool-record budget ───────────────────────────────
 
 # Per-tool base budgets (character count) calibrated for a 128K context model.

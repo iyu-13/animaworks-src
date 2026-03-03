@@ -35,7 +35,7 @@ from typing import Any
 from core.exceptions import LLMAPIError, ToolExecutionError, ConfigError  # noqa: F401
 from core.i18n import t
 from core.execution._sanitize import wrap_tool_result
-from core.execution.base import BaseExecutor, ExecutionResult, StreamDisconnectedError, TokenUsage, ToolCallRecord, _truncate_for_record, tool_input_save_budget, tool_result_save_budget
+from core.execution.base import BaseExecutor, ExecutionResult, StreamDisconnectedError, TokenUsage, ToolCallRecord, _truncate_for_record, strip_thinking_tags, tool_input_save_budget, tool_result_save_budget
 from core.execution.reminder import MSG_OUTPUT_TRUNCATED, SystemReminderQueue
 from core.execution._streaming import stream_error_boundary
 from core.memory import MemoryManager
@@ -593,6 +593,7 @@ class AssistedExecutor(BaseExecutor):
         if final_reminder:
             all_response_text.append(final_reminder)
         final_text = "\n".join(filter(None, all_response_text))
+        _, final_text = strip_thinking_tags(final_text)
         logger.info("Mode B text-loop END total_len=%d", len(final_text))
         return ExecutionResult(
             text=final_text or "(max iterations reached)",
@@ -673,6 +674,7 @@ class AssistedExecutor(BaseExecutor):
                 )
                 choice = response.choices[0]
                 content = choice.message.content or ""
+                _, content = strip_thinking_tags(content)
                 if hasattr(response, "usage") and response.usage:
                     _usage_acc_bs.input_tokens += response.usage.prompt_tokens or 0
                     _usage_acc_bs.output_tokens += response.usage.completion_tokens or 0
