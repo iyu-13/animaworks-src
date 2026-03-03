@@ -53,6 +53,7 @@ _EXPOSED_TOOL_NAMES: frozenset[str] = frozenset({
     "send_message",
     "post_channel",
     "read_channel",
+    "manage_channel",
     "read_dm_history",
     "add_task",
     "update_task",

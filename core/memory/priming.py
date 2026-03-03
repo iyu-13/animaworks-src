@@ -401,8 +401,15 @@ class PrimingEngine:
         result: list[ActivityEntry] = []
 
         try:
+            from core.messenger import is_channel_member
+
             for channel_file in sorted(channels_dir.glob("*.jsonl")):
                 channel_name = channel_file.stem
+
+                # ── ACL check: skip channels this Anima cannot access ──
+                if not is_channel_member(self.shared_dir, channel_name, anima_name):
+                    continue
+
                 try:
                     content = channel_file.read_text(encoding="utf-8")
                 except OSError:

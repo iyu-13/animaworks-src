@@ -189,6 +189,7 @@ class ToolHandler(
             "send_message": self._handle_send_message,
             "post_channel": self._handle_post_channel,
             "read_channel": self._handle_read_channel,
+            "manage_channel": self._handle_manage_channel,
             "read_dm_history": self._handle_read_dm_history,
             "read_file": self._handle_read_file,
             "write_file": self._handle_write_file,

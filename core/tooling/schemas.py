@@ -239,6 +239,43 @@ CHANNEL_TOOLS: list[dict[str, Any]] = [
             "required": ["peer"],
         },
     },
+    {
+        "name": "manage_channel",
+        "description": (
+            "Boardチャネルのアクセス制御(ACL)を管理する。"
+            "チャネルの作成、メンバーの追加・削除、チャネル情報の確認ができる。"
+            "メンバーリストが空のチャネル（general, ops等）は全員アクセス可能。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["create", "add_member", "remove_member", "info"],
+                    "description": (
+                        "操作種別。create=チャネル作成, "
+                        "add_member=メンバー追加, "
+                        "remove_member=メンバー削除, "
+                        "info=チャネル情報表示"
+                    ),
+                },
+                "channel": {
+                    "type": "string",
+                    "description": "チャネル名（小文字英数字・ハイフン・アンダースコア）",
+                },
+                "members": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "対象メンバー名リスト（create時は初期メンバー、add/remove時は操作対象）",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "チャネルの説明（create時のみ）",
+                },
+            },
+            "required": ["action", "channel"],
+        },
+    },
 ]
 
 FILE_TOOLS: list[dict[str, Any]] = [
