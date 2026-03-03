@@ -321,6 +321,14 @@ export function createStreamingController(ctx) {
           renderFull();
           ctx.controllers.activity.addLocalActivity("chat", name, `${t("chat.response_prefix")} ${streamingMsg.text.slice(0, 100)}`);
           ctx.controllers.renderer.markResponseComplete(name, tid);
+
+          const paneEl = ctx.container?.closest(".chat-pane");
+          if (paneEl && !paneEl.classList.contains("focused")) {
+            paneEl.classList.remove("stream-done-flash");
+            void paneEl.offsetWidth;
+            paneEl.classList.add("stream-done-flash");
+            paneEl.addEventListener("animationend", () => paneEl.classList.remove("stream-done-flash"), { once: true });
+          }
         },
         onAbort: () => {
           if (!streamingMsg) return;
@@ -344,7 +352,10 @@ export function createStreamingController(ctx) {
           if (inputEl && state.selectedAnima === name) {
             inputEl.placeholder = t("chat.message_to", { name });
             saveDraft(name, inputEl.value || "", tid);
-            inputEl.focus();
+            const paneEl = ctx.container?.closest(".chat-pane");
+            if (!paneEl || paneEl.classList.contains("focused")) {
+              inputEl.focus();
+            }
           }
           updateSendButton();
           ctx.controllers.anima.renderAnimaTabs();

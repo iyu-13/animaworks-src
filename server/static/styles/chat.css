@@ -2284,6 +2284,18 @@
   box-shadow: none;
 }
 
+/* ── Stream-done flash (non-focused pane) ── */
+
+@keyframes pane-done-flash {
+  0%   { background: transparent; }
+  30%  { background: color-mix(in srgb, var(--aw-color-accent) 12%, transparent); }
+  100% { background: transparent; }
+}
+
+.chat-pane.stream-done-flash {
+  animation: pane-done-flash 1.2s ease-out;
+}
+
 /* ── Splitter ─────────────────────────── */
 
 .chat-pane-splitter {
