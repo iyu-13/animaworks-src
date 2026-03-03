@@ -227,3 +227,38 @@ class TestBackwardCompatibility:
         result = messenger.read_channel("general")
         assert len(result) == 1
         assert result[0]["text"] == "Legacy works!"
+
+
+# ── read_channel_mentions with source param ─────────────
+
+
+class TestReadChannelMentionsACL:
+    def test_non_member_gets_no_mentions(self, shared_dir: Path):
+        save_channel_meta(shared_dir, "private", ChannelMeta(members=["bob"]))
+        (shared_dir / "channels" / "private.jsonl").write_text(
+            json.dumps({"ts": "2026-03-03T00:00:00", "from": "bob", "text": "hello @alice", "source": "anima"}) + "\n",
+            encoding="utf-8",
+        )
+        alice = Messenger(shared_dir, "alice")
+        result = alice.read_channel_mentions("private", name="alice")
+        assert result == []
+
+    def test_human_source_reads_mentions(self, shared_dir: Path):
+        save_channel_meta(shared_dir, "private", ChannelMeta(members=["bob"]))
+        (shared_dir / "channels" / "private.jsonl").write_text(
+            json.dumps({"ts": "2026-03-03T00:00:00", "from": "bob", "text": "hello @alice", "source": "anima"}) + "\n",
+            encoding="utf-8",
+        )
+        human_messenger = Messenger(shared_dir, "human")
+        result = human_messenger.read_channel_mentions("private", name="alice", source="human")
+        assert len(result) == 1
+
+    def test_member_reads_own_mentions(self, shared_dir: Path):
+        save_channel_meta(shared_dir, "team", ChannelMeta(members=["alice", "bob"]))
+        (shared_dir / "channels" / "team.jsonl").write_text(
+            json.dumps({"ts": "2026-03-03T00:00:00", "from": "bob", "text": "hi @alice", "source": "anima"}) + "\n",
+            encoding="utf-8",
+        )
+        alice = Messenger(shared_dir, "alice")
+        result = alice.read_channel_mentions("team", name="alice")
+        assert len(result) == 1

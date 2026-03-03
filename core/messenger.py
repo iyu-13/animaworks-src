@@ -343,12 +343,13 @@ class Messenger:
 
     def read_channel_mentions(
         self, channel: str, name: str | None = None, limit: int = 10,
+        *, source: str = "anima",
     ) -> list[dict]:
         """Read messages mentioning @name from a shared channel."""
         _validate_name(channel, "channel name")
         target = name or self.anima_name
         mention_tag = f"@{target}"
-        all_msgs = self.read_channel(channel, limit=1000)
+        all_msgs = self.read_channel(channel, limit=1000, source=source)
         mentions = [m for m in all_msgs if mention_tag in m.get("text", "")]
         return mentions[-limit:]
 

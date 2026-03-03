@@ -200,7 +200,7 @@ def create_channels_router() -> APIRouter:
             return err
         shared_dir: Path = request.app.state.shared_dir
         messenger = _get_messenger(shared_dir)
-        mentions = messenger.read_channel_mentions(name, name=anima, limit=limit)
+        mentions = messenger.read_channel_mentions(name, name=anima, limit=limit, source="human")
         return {
             "channel": name,
             "anima": anima,

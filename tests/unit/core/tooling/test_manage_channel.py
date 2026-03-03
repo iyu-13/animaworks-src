@@ -157,18 +157,36 @@ class TestManageChannelAddMember:
         assert meta is not None
         assert meta.members.count("bob") == 1
 
-    def test_add_member_to_open_channel_creates_meta(self, tmp_path: Path):
+    def test_add_member_to_open_channel_rejected(self, tmp_path: Path):
+        """add_member on open/legacy channel should be rejected to prevent accidental restriction."""
         handler = _make_handler(tmp_path)
         shared_dir = tmp_path / "shared"
         (shared_dir / "channels" / "general.jsonl").write_text("", encoding="utf-8")
-        handler._handle_manage_channel({
+        result = handler._handle_manage_channel({
             "action": "add_member",
             "channel": "general",
             "members": ["bob"],
         })
+        assert "Error" in result or "オープン" in result
+        # Meta should NOT have been created
         meta = load_channel_meta(shared_dir, "general")
+        assert meta is None
+
+    def test_add_member_non_member_denied(self, tmp_path: Path):
+        """Non-member cannot add members to a restricted channel."""
+        handler = _make_handler(tmp_path, anima_name="eve")
+        shared_dir = tmp_path / "shared"
+        (shared_dir / "channels" / "secret.jsonl").write_text("", encoding="utf-8")
+        save_channel_meta(shared_dir, "secret", ChannelMeta(members=["alice", "bob"]))
+        result = handler._handle_manage_channel({
+            "action": "add_member",
+            "channel": "secret",
+            "members": ["charlie"],
+        })
+        assert "Error" in result or "メンバーではない" in result
+        meta = load_channel_meta(shared_dir, "secret")
         assert meta is not None
-        assert "bob" in meta.members
+        assert "charlie" not in meta.members
 
     def test_add_member_nonexistent_channel(self, tmp_path: Path):
         handler = _make_handler(tmp_path)
@@ -220,6 +238,22 @@ class TestManageChannelRemoveMember:
             "members": ["bob"],
         })
         assert "オープン" in result or "open" in result.lower()
+
+    def test_remove_member_non_member_denied(self, tmp_path: Path):
+        """Non-member cannot remove members from a restricted channel."""
+        handler = _make_handler(tmp_path, anima_name="eve")
+        shared_dir = tmp_path / "shared"
+        (shared_dir / "channels" / "secret.jsonl").write_text("", encoding="utf-8")
+        save_channel_meta(shared_dir, "secret", ChannelMeta(members=["alice", "bob"]))
+        result = handler._handle_manage_channel({
+            "action": "remove_member",
+            "channel": "secret",
+            "members": ["bob"],
+        })
+        assert "Error" in result or "メンバーではない" in result
+        meta = load_channel_meta(shared_dir, "secret")
+        assert meta is not None
+        assert "bob" in meta.members  # bob should NOT have been removed
 
 
 # ── info action ──────────────────────────────────────────

@@ -261,6 +261,13 @@ class CommsToolsMixin:
             named = {m for m in mentions if m != "all"}
             targets = (named & running) - {self._anima_name}
 
+        # ── ACL filter: only notify channel members ──
+        from core.messenger import is_channel_member
+        targets = {
+            t for t in targets
+            if is_channel_member(self._messenger.shared_dir, channel, t)
+        }
+
         if not targets:
             return
 
@@ -378,8 +385,12 @@ class CommsToolsMixin:
             new_members = args.get("members", [])
             if not new_members:
                 return _error_result("InvalidArguments", "members list is required for add_member")
+            # Reject add_member on open/legacy channels to prevent accidental restriction
             if meta is None:
-                meta = ChannelMeta(members=[], created_by="", created_at="")
+                return t("handler.channel_add_member_open_denied", channel=channel)
+            # Caller must be a member of the channel
+            if not is_channel_member(shared_dir, channel, self._anima_name):
+                return t("handler.channel_acl_not_member", channel=channel)
             for m in new_members:
                 if m not in meta.members:
                     meta.members.append(m)
@@ -394,6 +405,9 @@ class CommsToolsMixin:
                 return t("handler.channel_not_found", channel=channel)
             if meta is None:
                 return t("handler.channel_open", channel=channel)
+            # Caller must be a member of the channel
+            if not is_channel_member(shared_dir, channel, self._anima_name):
+                return t("handler.channel_acl_not_member", channel=channel)
             remove_members = args.get("members", [])
             if not remove_members:
                 return _error_result("InvalidArguments", "members list is required for remove_member")

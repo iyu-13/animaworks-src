@@ -48,6 +48,8 @@ _STRINGS: dict[str, dict[str, str]] = {
     "handler.channel_members_removed": {"ja": "#{channel} からメンバーを削除しました: {members}", "en": "Removed members from #{channel}: {members}"},
     "handler.channel_not_found": {"ja": "Error: チャネル #{channel} が見つかりません", "en": "Error: Channel #{channel} not found"},
     "handler.channel_open": {"ja": "#{channel} はオープンチャネルです（全Animaがアクセス可能）", "en": "#{channel} is an open channel (all Animas can access)"},
+    "handler.channel_acl_not_member": {"ja": "Error: #{channel} のメンバーではないため、メンバー管理操作はできません。", "en": "Error: You are not a member of #{channel} and cannot manage its membership."},
+    "handler.channel_add_member_open_denied": {"ja": "Error: #{channel} はオープンチャネルです。add_memberするには、まず manage_channel(action=\"create\") で制限チャネルとして再作成してください。", "en": "Error: #{channel} is an open channel. To add members, first recreate it as a restricted channel with manage_channel(action=\"create\")."},
     "handler.self_operation_denied": {"ja": "自分自身を操作することはできません", "en": "You cannot operate on yourself"},
     "handler.config_load_failed": {"ja": "設定読み込みに失敗: {e}", "en": "Failed to load config: {e}"},
     "handler.anima_not_found": {"ja": "Anima '{target_name}' は存在しません", "en": "Anima '{target_name}' does not exist"},
