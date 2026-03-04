@@ -808,7 +808,7 @@ class OrgToolsMixin:
                 if isinstance(ps, dict):
                     process_status = ps.get("status", process_status)
             except Exception:
-                pass
+                logger.debug("Failed to get process status for %s", target_name, exc_info=True)
 
         lines.append(t("handler.audit_process_status", status=process_status))
         lines.append(t("handler.audit_model", model=model_name))
