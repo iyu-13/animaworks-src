@@ -23,7 +23,7 @@ class TTSConfig(BaseModel):
 
 
 class TTSSynthesisError(Exception):
-    """TTS synthesis failed."""
+    """Raised when TTS audio synthesis fails."""
 
 
 class BaseTTSProvider(ABC):

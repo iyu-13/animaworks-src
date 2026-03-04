@@ -40,8 +40,7 @@ class VoicevoxTTS(BaseTTSProvider):
     ) -> AsyncIterator[bytes]:
         """Stream TTS audio chunks. VOICEVOX does not support streaming; yields full WAV."""
         audio = await self.synthesize_full(text, config)
-        if audio:
-            yield audio
+        yield audio
 
     async def synthesize_full(self, text: str, config: TTSConfig) -> bytes:
         """Generate complete WAV audio for given text."""
@@ -66,7 +65,8 @@ class VoicevoxTTS(BaseTTSProvider):
                 r2.raise_for_status()
                 return r2.content
             except httpx.HTTPError as e:
-                raise TTSSynthesisError(f"VOICEVOX synthesis HTTP error: {e}") from e
+                logger.warning("VOICEVOX synthesis failed: %s", e)
+                raise TTSSynthesisError(f"VOICEVOX synthesis failed: {e}") from e
 
     async def list_voices(self) -> list[dict]:
         """List available VOICEVOX speakers."""

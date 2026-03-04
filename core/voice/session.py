@@ -320,14 +320,17 @@ class VoiceSession:
             logger.exception("Voice session IPC error: %s", e)
             await self._send_error(str(e))
         finally:
+            if not response_done_sent:
+                try:
+                    await self._ws.send_json({
+                        "type": "response_done",
+                        "emotion": "neutral",
+                    })
+                except Exception:
+                    pass
             self._tts_playing = False
             self._interrupted = False
             self._splitter.flush()
-            if not response_done_sent:
-                try:
-                    await self._ws.send_json({"type": "response_done", "emotion": "neutral"})
-                except Exception:
-                    pass
 
     async def _synthesize_and_send(self, text: str) -> None:
         """TTS synthesize a sentence and send audio to client."""
@@ -340,24 +343,15 @@ class VoiceSession:
                 if self._interrupted:
                     break
                 await self._ws.send_bytes(audio_chunk)
-            self._consecutive_tts_failures = 0
             await self._ws.send_json({"type": "tts_done"})
-        except TTSSynthesisError as e:
-            logger.warning("TTS synthesis error: %s", e)
-            self._consecutive_tts_failures += 1
-            if self._consecutive_tts_failures >= 3:
-                self._tts_available = None
-                try:
-                    await self._ws.send_json({"type": "tts_error", "message": str(e)})
-                except Exception:
-                    pass
-            try:
-                await self._ws.send_json({"type": "tts_done"})
-            except Exception:
-                pass
+            self._consecutive_tts_failures = 0
         except Exception as e:
-            logger.warning("TTS failed: %s", e)
+            self._consecutive_tts_failures += 1
+            logger.warning("TTS failed (%d consecutive): %s", self._consecutive_tts_failures, e)
+            if self._consecutive_tts_failures >= 3:
+                self.invalidate_tts_health()
             try:
+                await self._ws.send_json({"type": "tts_error", "message": str(e)})
                 await self._ws.send_json({"type": "tts_done"})
             except Exception:
                 pass
