@@ -59,7 +59,7 @@ from core.tooling.handler_base import (  # noqa: F401
     active_session_type,
     suppress_board_fanout,
 )
-from core.exceptions import AnimaWorksError
+from core.exceptions import AnimaWorksError, ConfigError
 from core.tooling.handler_base import (
     MemoryWriteError,
     ToolExecutionError,
@@ -178,7 +178,7 @@ class ToolHandler(
                 self._descendant_state_files.append(_desc_dir / "injection.md")
                 self._descendant_state_files.append(_desc_dir / "state" / "task_queue.jsonl")
                 self._descendant_state_dirs.append(_desc_dir / "state" / "pending")
-        except (OSError, PermissionError, KeyError, AttributeError):
+        except (ConfigError, OSError, PermissionError, KeyError, AttributeError):
             logger.debug("Failed to cache subordinate paths for %s", self._anima_name, exc_info=True)
 
         # ── Dispatch table: tool name → handler method ──
