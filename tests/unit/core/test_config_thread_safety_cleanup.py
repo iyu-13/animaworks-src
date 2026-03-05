@@ -119,7 +119,8 @@ class TestReminderSyncThreadSafety:
 
         q = SystemReminderQueue()
         assert hasattr(q, "_sync_lock")
-        assert isinstance(q._sync_lock, threading.Lock)
+        import _thread
+        assert isinstance(q._sync_lock, _thread.LockType)
 
 
 @pytest.mark.unit
