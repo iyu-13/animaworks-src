@@ -518,14 +518,14 @@ class LifecycleManager:
         # ── Intent-based trigger filtering ──
         # Only trigger immediate heartbeat for actionable messages or human messages.
         # Non-actionable messages (ack, thanks, FYI) wait for the scheduled heartbeat.
-        # External platform replies (slack, chatwork) to call_human are treated as
-        # human messages since the originator is a human responding via that platform.
-        _human_sources = {"human", "slack", "chatwork"}
-        has_human = any(m.source in _human_sources for m in inbox_messages)
+        from core.schemas import EXTERNAL_PLATFORM_SOURCES
+
+        has_human = any(m.source == "human" for m in inbox_messages)
+        has_external = any(m.source in EXTERNAL_PLATFORM_SOURCES for m in inbox_messages)
         has_actionable = any(
             m.intent in self._actionable_intents for m in inbox_messages
         )
-        if not has_human and not has_actionable:
+        if not has_human and not has_external and not has_actionable:
             logger.info(
                 "Intent filter: %s — no actionable messages, deferring to scheduled heartbeat",
                 name,

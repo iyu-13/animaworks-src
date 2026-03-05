@@ -173,12 +173,15 @@ class InboxRateLimiter:
         # ── Intent-based trigger filtering ──
         # Only trigger immediate heartbeat for actionable messages or human messages.
         # Non-actionable messages (ack, thanks, FYI) wait for the scheduled heartbeat.
+        from core.schemas import EXTERNAL_PLATFORM_SOURCES
+
         cfg = load_config()
         has_human = any(m.source == "human" for m in inbox_messages)
+        has_external = any(m.source in EXTERNAL_PLATFORM_SOURCES for m in inbox_messages)
         has_actionable = any(
             m.intent in cfg.heartbeat.actionable_intents for m in inbox_messages
         )
-        if not has_human and not has_actionable:
+        if not has_human and not has_external and not has_actionable:
             logger.info(
                 "Intent filter: %s — no actionable messages, deferring to scheduled heartbeat",
                 self._anima_name,

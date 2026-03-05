@@ -101,6 +101,10 @@ class AnimaConfig(BaseModel):
     model_config_data: ModelConfig = Field(default_factory=ModelConfig)
 
 
+EXTERNAL_PLATFORM_SOURCES: frozenset[str] = frozenset({"slack", "chatwork"})
+"""Message ``source`` values representing external platforms (Slack, Chatwork, etc.)."""
+
+
 class Message(BaseModel):
     id: str = Field(
         default_factory=lambda: now_jst().strftime("%Y%m%d_%H%M%S_%f")

@@ -28,15 +28,6 @@ logger = logging.getLogger("animaworks.webhooks")
 _slack_bot_user_ids: dict[str, str] = {}
 
 
-def _detect_slack_intent(text: str, channel_id: str, bot_user_id: str) -> str:
-    """Return ``"question"`` if the message is a DM or mentions the bot."""
-    if channel_id.startswith("D"):
-        return "question"
-    if bot_user_id and f"<@{bot_user_id}>" in (text or ""):
-        return "question"
-    return ""
-
-
 def create_webhooks_router() -> APIRouter:
     """Create the webhooks API router."""
     router = APIRouter(prefix="/webhooks", tags=["webhooks"])
@@ -167,6 +158,8 @@ def create_webhooks_router() -> APIRouter:
                         _slack_bot_user_ids[cache_key] = bot_user_id
                 except Exception:
                     logger.debug("Failed to resolve bot user ID for webhook", exc_info=True)
+
+            from server.slack_socket import _detect_slack_intent
 
             intent = _detect_slack_intent(text, channel_id, bot_user_id)
 
