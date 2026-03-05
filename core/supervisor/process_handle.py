@@ -52,7 +52,7 @@ class ProcessStats:
     restart_count: int = 0
     last_ping_at: datetime | None = None
     missed_pings: int = 0
-    busy_pings: int = 0
+    last_busy_since: datetime | None = None
     exit_code: int | None = None
 
 
@@ -383,7 +383,11 @@ class ProcessHandle:
             self.stats.missed_pings = 0
             is_busy = bool(result.get("is_busy", False))
             if return_details:
-                return {"success": True, "is_busy": is_busy}
+                return {
+                    "success": True,
+                    "is_busy": is_busy,
+                    "last_progress_at": result.get("last_progress_at"),
+                }
             return True
 
         except TimeoutError:

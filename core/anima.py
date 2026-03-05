@@ -38,6 +38,7 @@ from core.memory import MemoryManager
 from core.memory.activity import ActivityLogger
 from core.messenger import Messenger
 from core.schemas import AnimaStatus, ModelConfig
+from core.time_utils import now_jst
 
 logger = logging.getLogger("animaworks.anima")
 
@@ -91,6 +92,18 @@ class DigitalAnima(
         self.messenger = Messenger(shared_dir, self.name)
         self._interrupt_events: dict[str, asyncio.Event] = {}
         self.agent = AgentCore(anima_dir, self.memory, self.model_config, self.messenger)
+        self._progress_min_interval = 0.5  # seconds
+        self._progress_last_mono: float = 0.0
+
+        def _throttled_progress() -> None:
+            import time
+
+            mono = time.monotonic()
+            if mono - self._progress_last_mono >= self._progress_min_interval:
+                self._last_progress_at = now_jst()
+                self._progress_last_mono = mono
+
+        self.agent._progress_callback = _throttled_progress
 
         # 3-lock structure: conversation (human chat) / inbox (Anima-to-Anima MSG) / background (HB/cron/TaskExec)
         self._conversation_locks: dict[str, asyncio.Lock] = {}
@@ -110,6 +123,7 @@ class DigitalAnima(
         self._task_slots: dict[str, str] = {"inbox": "", "background": ""}
         self._last_heartbeat: datetime | None = None
         self._last_activity: datetime | None = None
+        self._last_progress_at: datetime | None = None
         self._on_lock_released: Callable[[], None] | None = None
         self._pending_executor: Any | None = None  # set by runner after PendingTaskExecutor init
 
