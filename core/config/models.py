@@ -1296,3 +1296,54 @@ def unregister_anima_from_config(
     save_config(config, config_path)
     logger.debug("Unregistered anima '%s' from config", anima_name)
     return True
+
+
+def rename_anima_in_config(
+    data_dir: Path,
+    old_name: str,
+    new_name: str,
+) -> int:
+    """Rename an anima in config.json: key, supervisor refs, anima_mapping.
+
+    Args:
+        data_dir: The AnimaWorks data directory (e.g. ``~/.animaworks``).
+        old_name: Current anima name.
+        new_name: New anima name.
+
+    Returns:
+        Number of supervisor references updated.
+
+    Raises:
+        KeyError: If *old_name* is not found in ``config.animas``.
+    """
+    config_path = data_dir / "config.json"
+    if not config_path.exists():
+        raise KeyError(f"config.json not found in {data_dir}")
+    config = load_config(config_path)
+    if old_name not in config.animas:
+        raise KeyError(f"Anima '{old_name}' not found in config.animas")
+
+    # 1. Move animas entry
+    entry = config.animas.pop(old_name)
+    config.animas[new_name] = entry
+
+    # 2. Update supervisor references across all animas
+    supervisor_count = 0
+    for _name, anima_cfg in config.animas.items():
+        if anima_cfg.supervisor == old_name:
+            anima_cfg.supervisor = new_name
+            supervisor_count += 1
+
+    # 3. Update external_messaging anima_mapping values
+    for channel_cfg in (config.external_messaging.slack,
+                        config.external_messaging.chatwork):
+        for channel_id, mapped_name in list(channel_cfg.anima_mapping.items()):
+            if mapped_name == old_name:
+                channel_cfg.anima_mapping[channel_id] = new_name
+
+    save_config(config, config_path)
+    logger.debug(
+        "Renamed anima '%s' → '%s' in config (%d supervisor refs)",
+        old_name, new_name, supervisor_count,
+    )
+    return supervisor_count

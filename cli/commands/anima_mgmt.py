@@ -855,6 +855,210 @@ def cmd_anima_audit(args: argparse.Namespace) -> None:
         print("No communication.")
 
 
+def cmd_anima_rename(args: argparse.Namespace) -> None:
+    """Rename an anima (directory, config, references)."""
+    import requests
+
+    from core.anima_factory import validate_anima_name
+    from core.config.models import rename_anima_in_config
+    from core.paths import get_animas_dir, get_data_dir
+
+    old_name: str = args.old_name
+    new_name: str = args.new_name
+    data_dir = get_data_dir()
+    animas_dir = get_animas_dir()
+    old_dir = animas_dir / old_name
+    new_dir = animas_dir / new_name
+    shared_dir = data_dir / "shared"
+    gateway_url = getattr(args, "gateway_url", None) or "http://localhost:18500"
+
+    # ── Validation ──
+    if old_name == new_name:
+        print("Error: Old and new names are the same")
+        sys.exit(1)
+
+    if not old_dir.exists() or not (old_dir / "identity.md").exists():
+        print(f"Error: Anima '{old_name}' not found (missing identity.md)")
+        sys.exit(1)
+
+    if new_dir.exists():
+        print(f"Error: Anima '{new_name}' already exists")
+        sys.exit(1)
+
+    name_err = validate_anima_name(new_name)
+    if name_err:
+        print(f"Error: {name_err}")
+        sys.exit(1)
+
+    # ── Confirmation ──
+    if not args.force:
+        answer = input(
+            f"Rename anima '{old_name}' → '{new_name}'? [y/N] "
+        )
+        if answer.strip().lower() != "y":
+            print("Aborted.")
+            return
+
+    print(f"Renaming anima '{old_name}' → '{new_name}'...")
+
+    # ── Server check: disable old anima if running ──
+    pid_file = data_dir / "server.pid"
+    server_running = pid_file.exists()
+    if server_running:
+        try:
+            requests.post(
+                f"{gateway_url}/api/animas/{old_name}/disable",
+                timeout=10,
+            )
+            print(f"  Stopped anima process '{old_name}'")
+        except Exception as e:
+            logger.warning("Failed to disable anima via API: %s", e)
+
+    rollback_needed = False
+    try:
+        # ── Filesystem: rename anima directory ──
+        old_dir.rename(new_dir)
+        rollback_needed = True
+        print(f"  Renamed directory: animas/{old_name} → animas/{new_name}")
+
+        # ── Filesystem: rename inbox ──
+        old_inbox = shared_dir / "inbox" / old_name
+        if old_inbox.exists():
+            new_inbox = shared_dir / "inbox" / new_name
+            old_inbox.rename(new_inbox)
+            print(f"  Renamed inbox: shared/inbox/{old_name} → shared/inbox/{new_name}")
+
+        # ── Filesystem: rename DM logs ──
+        dm_count = _rename_dm_logs(shared_dir, old_name, new_name)
+        if dm_count:
+            print(f"  Renamed {dm_count} DM log file(s)")
+
+        # ── Filesystem: clean up stale socket/pid ──
+        run_dir = data_dir / "run"
+        for stale in (
+            run_dir / "sockets" / f"{old_name}.sock",
+            run_dir / "animas" / f"{old_name}.pid",
+        ):
+            if stale.exists():
+                stale.unlink(missing_ok=True)
+
+        # ── Config: update config.json ──
+        try:
+            sup_count = rename_anima_in_config(data_dir, old_name, new_name)
+            parts = ["key"]
+            if sup_count:
+                parts.append(f"{sup_count} supervisor reference(s)")
+            print(f"  Updated config.json ({' + '.join(parts)})")
+        except Exception as e:
+            print(f"  Warning: Failed to update config.json: {e}")
+
+        # ── Config: update status.json supervisor refs ──
+        status_updated = 0
+        for other_dir in animas_dir.iterdir():
+            if not other_dir.is_dir():
+                continue
+            status_file = other_dir / "status.json"
+            if not status_file.exists():
+                continue
+            try:
+                status_data = json.loads(status_file.read_text(encoding="utf-8"))
+                if status_data.get("supervisor") == old_name:
+                    status_data["supervisor"] = new_name
+                    tmp = status_file.with_suffix(".tmp")
+                    tmp.write_text(
+                        json.dumps(status_data, indent=2, ensure_ascii=False) + "\n",
+                        encoding="utf-8",
+                    )
+                    tmp.replace(status_file)
+                    status_updated += 1
+            except Exception:
+                pass
+        if status_updated:
+            print(f"  Updated status.json for {status_updated} anima(s) with supervisor reference")
+
+        # ── RAG: cleanup old collections ──
+        _cleanup_rag_collections(new_dir, old_name)
+        print("  Cleared RAG index (will re-index on next startup)")
+
+        # ── Server: reload + restart ──
+        if server_running:
+            try:
+                requests.post(f"{gateway_url}/api/system/reload", timeout=10)
+            except Exception:
+                pass
+            try:
+                requests.post(
+                    f"{gateway_url}/api/animas/{new_name}/enable",
+                    timeout=10,
+                )
+                requests.post(
+                    f"{gateway_url}/api/animas/{new_name}/restart",
+                    timeout=30,
+                )
+                print(f"  Restarted anima '{new_name}'")
+            except Exception as e:
+                logger.warning("Failed to restart renamed anima: %s", e)
+
+    except OSError as e:
+        if rollback_needed and new_dir.exists() and not old_dir.exists():
+            try:
+                new_dir.rename(old_dir)
+                print(f"  Rolled back directory rename")
+            except OSError:
+                pass
+        print(f"Error: Failed to rename: {e}")
+        sys.exit(1)
+
+    print(f"Anima renamed successfully: {old_name} → {new_name}")
+
+
+def _rename_dm_logs(shared_dir: Path, old_name: str, new_name: str) -> int:
+    """Rename DM log files referencing *old_name*. Returns count of renamed files."""
+    dm_dir = shared_dir / "dm_logs"
+    if not dm_dir.exists():
+        return 0
+    count = 0
+    for f in sorted(dm_dir.glob("*.jsonl")):
+        stem = f.stem
+        parts = stem.split("-", 1)
+        if len(parts) != 2:
+            continue
+        if old_name not in parts:
+            continue
+        new_parts = [new_name if p == old_name else p for p in parts]
+        new_parts.sort()
+        new_path = dm_dir / f"{new_parts[0]}-{new_parts[1]}.jsonl"
+        if new_path.exists():
+            with new_path.open("a", encoding="utf-8") as dst:
+                dst.write(f.read_text(encoding="utf-8"))
+            f.unlink()
+        else:
+            f.rename(new_path)
+        count += 1
+    return count
+
+
+def _cleanup_rag_collections(anima_dir: Path, old_name: str) -> None:
+    """Delete old RAG collections and reset index_meta for re-indexing."""
+    index_meta = anima_dir / "index_meta.json"
+    if index_meta.exists():
+        index_meta.write_text("{}\n", encoding="utf-8")
+
+    try:
+        from core.memory.rag.store import VectorStore
+
+        store = VectorStore(old_name)
+        for suffix in ("knowledge", "episodes", "procedures", "skills",
+                        "common_knowledge", "conversation_summary"):
+            collection_name = f"{old_name}_{suffix}"
+            try:
+                store.delete_collection(collection_name)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
 def cmd_anima_list(args: argparse.Namespace) -> None:
     """List all animas."""
     import requests

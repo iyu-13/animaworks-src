@@ -423,6 +423,16 @@ def cli_main() -> None:
     )
     p_anima_set_role.set_defaults(func=_lazy_anima_set_role)
 
+    # anima rename
+    p_anima_rename = anima_sub.add_parser("rename", help="Rename an anima")
+    p_anima_rename.add_argument("old_name", help="Current anima name")
+    p_anima_rename.add_argument("new_name", help="New anima name")
+    p_anima_rename.add_argument(
+        "--force", action="store_true",
+        help="Skip confirmation prompt",
+    )
+    p_anima_rename.set_defaults(func=_lazy_anima_rename)
+
     # anima audit
     p_anima_audit = anima_sub.add_parser(
         "audit", help="Audit a subordinate anima's recent activity",
@@ -700,6 +710,12 @@ def _lazy_anima_reload(args: argparse.Namespace) -> None:
     from cli.commands.anima_mgmt import cmd_anima_reload
 
     cmd_anima_reload(args)
+
+
+def _lazy_anima_rename(args: argparse.Namespace) -> None:
+    from cli.commands.anima_mgmt import cmd_anima_rename
+
+    cmd_anima_rename(args)
 
 
 def _lazy_anima_audit(args: argparse.Namespace) -> None:
