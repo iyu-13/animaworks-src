@@ -122,19 +122,19 @@ class CronLogger:
             return ""
 
         parts: list[str] = []
+        today = now_jst().date()
         for i in range(days):
-            target = now_jst().date() - timedelta(days=i)
+            target = today - timedelta(days=i)
             path = log_dir / f"{target.isoformat()}.jsonl"
             if not path.exists():
                 continue
             for line in path.read_text(encoding="utf-8").strip().splitlines():
                 try:
                     e = json.loads(line)
-                    summary = e.get("summary", "")
-                    if summary:
+                    if "summary" in e:
                         line_text = (
-                            f"- {e['timestamp']}: [{e['task']}] {summary[:200]} "
-                            f"({e['duration_ms']}ms)"
+                            f"- {e['timestamp']}: [{e['task']}] "
+                            f"{e['summary'][:200]} ({e['duration_ms']}ms)"
                         )
                     else:
                         exit_code = e.get("exit_code", "?")
