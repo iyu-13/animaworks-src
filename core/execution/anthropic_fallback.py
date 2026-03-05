@@ -34,7 +34,6 @@ from core.prompt.builder import build_system_prompt
 from core.schemas import ModelConfig
 from core.memory.shortterm import ShortTermMemory
 from core.tooling.handler import ToolHandler
-from core.tooling.guide import load_tool_schemas
 from core.tooling.schemas import (
     build_tool_list,
     to_anthropic_format,
@@ -105,9 +104,9 @@ class AnthropicFallbackExecutor(BaseExecutor):
 
     def _build_tools(self) -> list[dict[str, Any]]:
         """Build the Anthropic-format tool list."""
-        external = load_tool_schemas(self._tool_registry, self._personal_tools)
         canonical = build_tool_list(
             include_file_tools=False,
+            include_use_tool=False,
             include_notification_tools=self._tool_handler._human_notifier is not None,
             include_admin_tools=(self._anima_dir / "skills" / "newstaff.md").exists(),
             include_supervisor_tools=self._has_subordinates(),
@@ -119,7 +118,6 @@ class AnthropicFallbackExecutor(BaseExecutor):
             skill_metas=self._memory.list_skill_metas(),
             common_skill_metas=self._memory.list_common_skill_metas(),
             procedure_metas=self._memory.list_procedure_metas(),
-            external_schemas=external,
         )
         return to_anthropic_format(canonical)
 

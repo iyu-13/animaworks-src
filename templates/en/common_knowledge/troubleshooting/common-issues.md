@@ -263,30 +263,20 @@ send_message(
 
 - "Tool not found" or similar error when calling a tool
 - External tools (Slack, Gmail, etc.) unavailable
-- `discover_tools` does not show the tool you need
 
 ### Causes
 
-1. External tool category not enabled
-2. Tool not allowed in `permissions.md`
+1. Tool not allowed in `permissions.md`
+2. Skill file not found
 3. External service credentials not configured
 
 ### Steps
 
-1. **Check available tool categories**
-   ```
-   discover_tools()
-   ```
-   - Call with no args to get a list of available categories
+1. **Look up tool usage via skill**
+   - Use the `skill` tool with the tool name (chatwork-tool, slack-tool, etc.) to get CLI usage
+   - In B-mode, `use_tool` provides structured invocation
 
-2. **Enable the desired category**
-   ```
-   discover_tools(category="slack")
-   ```
-   - Enabling adds that category's tools dynamically (A-mode)
-   - Only categories allowed in permissions.md can be enabled
-
-3. **Check permissions**
+2. **Check permissions**
    ```
    check_permissions()
    ```
@@ -299,9 +289,9 @@ send_message(
 
 5. **S-mode (Claude Agent SDK)**
    - MCP tools (`mcp__aw__*`) are available automatically. Restart process if not found
-   - External tools are available via MCP if allowed in permissions.md (e.g. `mcp__aw__slack_post`)
+   - External tools: look up via `skill` tool and execute with CLI (`animaworks-tool <tool> <subcommand>`)
    - Long-running tools (image gen, local LLM, etc.) run asynchronously via `animaworks-tool submit`
-   - Use `mcp__aw__discover_tools` to check categories → after enabling, call as MCP tool
+   - In B-mode, `use_tool` provides structured invocation
 
 6. **If tool returns an error**
    - Record the error message accurately

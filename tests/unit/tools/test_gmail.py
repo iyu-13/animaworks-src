@@ -492,40 +492,12 @@ class TestGmailClient:
 
 
 class TestGetToolSchemas:
-    def test_returns_schemas(self):
+    def test_returns_empty_list(self):
+        """External tool modules' get_tool_schemas() returns empty list."""
         gmail = _get_gmail()
         schemas = gmail.get_tool_schemas()
         assert isinstance(schemas, list)
-        assert len(schemas) == 6
-        names = {s["name"] for s in schemas}
-        assert names == {
-            "gmail_unread", "gmail_inbox", "gmail_sent",
-            "gmail_search", "gmail_read_body", "gmail_draft",
-        }
-
-    def test_gmail_draft_requires_to_subject_body(self):
-        gmail = _get_gmail()
-        schemas = gmail.get_tool_schemas()
-        draft = [s for s in schemas if s["name"] == "gmail_draft"][0]
-        assert set(draft["input_schema"]["required"]) == {"to", "subject", "body"}
-
-    def test_gmail_search_requires_query(self):
-        gmail = _get_gmail()
-        schemas = gmail.get_tool_schemas()
-        search = [s for s in schemas if s["name"] == "gmail_search"][0]
-        assert "query" in search["input_schema"]["required"]
-
-    def test_gmail_inbox_no_required_params(self):
-        gmail = _get_gmail()
-        schemas = gmail.get_tool_schemas()
-        inbox = [s for s in schemas if s["name"] == "gmail_inbox"][0]
-        assert inbox["input_schema"]["required"] == []
-
-    def test_gmail_sent_no_required_params(self):
-        gmail = _get_gmail()
-        schemas = gmail.get_tool_schemas()
-        sent = [s for s in schemas if s["name"] == "gmail_sent"][0]
-        assert sent["input_schema"]["required"] == []
+        assert schemas == []
 
 
 # ── Email.to_dict ─────────────────────────────────────────────────

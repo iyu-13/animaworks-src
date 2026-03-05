@@ -486,7 +486,9 @@ class TestGetToolHandler:
              patch("core.tooling.handler.ToolHandler", return_value=mock_tool_handler) as mock_th_cls, \
              patch("core.config.models.load_config"), \
              patch("core.notification.notifier.HumanNotifier") as mock_hn_cls, \
-             patch("core.tools.TOOL_MODULES", side_effect=ImportError("no tools")):
+             patch("core.tools.TOOL_MODULES", side_effect=ImportError("no tools")), \
+             patch("core.tools.discover_common_tools", return_value={}), \
+             patch("core.tools.discover_personal_tools", return_value={}):
             mock_hn_inst = MagicMock()
             mock_hn_inst.channel_count = 0
             mock_hn_cls.from_config.return_value = mock_hn_inst
@@ -569,10 +571,10 @@ class TestLoadPermittedCategories:
 class TestExternalToolsInMcpTools:
     """Tests for external tool schema loading in _build_mcp_tools()."""
 
-    def test_external_tools_loaded_when_permitted(
+    def test_use_tool_not_exposed_in_mcp(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """External tool schemas appear in MCP tools when permissions allow."""
+        """MCP server does NOT expose use_tool (Mode B only)."""
         from core.mcp.server import _build_mcp_tools
 
         anima_dir = tmp_path / "test-anima"
@@ -581,23 +583,11 @@ class TestExternalToolsInMcpTools:
         perms.write_text("## 外部ツール\n- chatwork: 全権限\n", encoding="utf-8")
         monkeypatch.setenv("ANIMAWORKS_ANIMA_DIR", str(anima_dir))
 
-        fake_schemas = [
-            {
-                "name": "chatwork_send",
-                "description": "Send chatwork message",
-                "parameters": {"type": "object", "properties": {}},
-            },
-        ]
-
-        with patch(
-            "core.tooling.schemas.load_external_schemas_by_category",
-            return_value=fake_schemas,
-        ):
-            tools, exposed = _build_mcp_tools()
+        tools, exposed = _build_mcp_tools()
 
         tool_names = {t.name for t in tools}
-        assert "chatwork_send" in tool_names
-        assert "chatwork_send" in exposed
+        assert "use_tool" not in tool_names
+        assert "use_tool" not in exposed
 
     def test_unpermitted_tools_excluded(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,

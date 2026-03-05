@@ -263,30 +263,20 @@ send_message(
 
 - ツールを呼び出したが「ツールが見つかりません」等のエラーが返された
 - 外部ツール（Slack, Gmail 等）が利用できない
-- `discover_tools` で目的のツールが見つからない
 
 ### 原因
 
-1. 外部ツールのカテゴリが有効化されていない
-2. そのツール自体が `permissions.md` で許可されていない
+1. そのツール自体が `permissions.md` で許可されていない
+2. スキルファイルが見つからない
 3. 外部サービスの認証情報が設定されていない
 
 ### 対処手順
 
-1. **利用可能なツールカテゴリを確認する**
-   ```
-   discover_tools()
-   ```
-   - 引数なしで呼ぶと、利用可能なカテゴリの一覧が返される
+1. **スキルでツールの使い方を確認する**
+   - `skill` ツールでツール名（chatwork-tool, slack-tool 等）を指定し、CLI使用法を取得する
+   - B-mode では `use_tool` で構造化呼び出しも可能
 
-2. **目的のカテゴリを有効化する**
-   ```
-   discover_tools(category="slack")
-   ```
-   - 有効化すると、そのカテゴリのツールが動的に追加される（A-mode）
-   - permissions.md で許可されたカテゴリのみ有効化可能
-
-3. **権限を確認する**
+2. **権限を確認する**
    ```
    check_permissions()
    ```
@@ -299,9 +289,9 @@ send_message(
 
 5. **S-mode（Claude Agent SDK）の場合**
    - MCP ツール（`mcp__aw__*`）は自動的に利用可能。見つからない場合はプロセス再起動が必要
-   - 外部ツールは permissions.md で許可されていれば MCP 経由で直接利用可能（例: `mcp__aw__slack_post`）
+   - 外部ツールは `skill` ツールで使い方を確認し、CLI（`animaworks-tool <ツール> <サブコマンド>`）で実行
    - 長時間ツール（画像生成、ローカルLLM等）は `animaworks-tool submit` で非同期実行
-   - `mcp__aw__discover_tools` でカテゴリ確認 → 有効化後は MCP ツールとして呼び出し
+   - B-mode では `use_tool` で構造化呼び出しも可能
 
 6. **ツールがエラーを返す場合**
    - エラーメッセージを正確に記録する

@@ -57,7 +57,7 @@ class StreamingMixin:
         litellm.modify_params = True
 
         tools = self._build_base_tools()
-        active_categories: set[str] = set()
+        _active_categories: set[str] = set()
         context_window = resolve_context_window(self._model_config.model)
 
         messages = self._build_initial_messages(system_prompt, prompt, images, prior_messages=prior_messages)
@@ -347,7 +347,7 @@ class StreamingMixin:
                 messages.append(assistant_msg)
 
                 async for event in self._process_streaming_tool_calls(
-                    parsed_calls, messages, tools, active_categories,
+                    parsed_calls, messages, tools, _active_categories,
                     context_window=context_window,
                 ):
                     if "record" in event:
@@ -395,7 +395,7 @@ class StreamingMixin:
         import litellm
 
         tools = self._build_base_tools()
-        active_categories: set[str] = set()
+        _active_categories: set[str] = set()
         context_window = resolve_context_window(self._model_config.model)
 
         messages = self._build_initial_messages(system_prompt, prompt, images, prior_messages=prior_messages)
@@ -540,7 +540,7 @@ class StreamingMixin:
                 parsed_calls = _convert_litellm_tool_calls(tool_calls)
 
                 async for event in self._process_streaming_tool_calls(
-                    parsed_calls, messages, tools, active_categories,
+                    parsed_calls, messages, tools, _active_categories,
                     context_window=context_window,
                 ):
                     if "record" in event:

@@ -28,8 +28,8 @@ Three tool families:
 
 Two tool families:
 
-1. **Internal tools**: `send_message`, `search_memory`, `read_file`, `execute_command`, `add_task`, `discover_tools`, etc. Call by name using function calling
-2. **External tools**: When you enable a category with `discover_tools(category="...")`, those tools are dynamically added
+1. **Internal tools**: `send_message`, `search_memory`, `read_file`, `execute_command`, `add_task`, etc. Call by name using function calling
+2. **External tools**: Look up usage via the `skill` tool and execute with CLI (`animaworks-tool <tool> <subcommand>`)
 
 ### B-mode (Basic)
 
@@ -43,7 +43,7 @@ Tools are invoked in JSON text format. Available tools:
 - **Notification**: call_human (when notification channels are configured)
 - **External tools**: Tools in categories permitted in permissions.md (when permitted)
 
-Task management, supervisor tools, discover_tools, refresh_tools, share_tool, and create_anima are not available.
+Task management, supervisor tools, refresh_tools, share_tool, and create_anima are not available. External tools can be called via `use_tool` for structured invocation.
 
 ---
 
@@ -98,7 +98,7 @@ In S-mode, use Claude Code's Read / Write / Edit / Grep / Glob / Bash for equiva
 
 | Tool | Description |
 |------|-------------|
-| `discover_tools` | List and enable external tool categories |
+| `skill` | Get full text of skills, common skills, and procedures (use for tool usage lookup) |
 | `refresh_tools` | Rescan personal and common tools |
 | `share_tool` | Share personal tool to common_tools/ |
 
@@ -147,10 +147,9 @@ Long-running tools (image generation, local LLM, speech transcription, etc.) mus
 
 ### A-mode
 
-1. **Check categories**: Call `discover_tools()` with no arguments
-2. **Enable**: `discover_tools(category="slack")` to enable a category
-3. **Execute**: Enabled tools become callable via normal function calling
-4. **Long-running tools**: Automatically run in background (equivalent to `submit`)
+1. **Look up skill**: `skill("slack-tool")` to get CLI usage
+2. **Execute**: `execute_command("animaworks-tool slack post ...")` to run via CLI
+3. **Long-running tools**: Automatically run in background (equivalent to `submit`)
 
 ### B-mode
 
@@ -171,7 +170,7 @@ If you are in S-mode, add the `mcp__aw__` prefix when reading (e.g. `mcp__aw__se
 
 - **A/B-mode**: Use `check_permissions` to see your permissions
 - **S-mode**: Tools exposed via MCP have the `mcp__aw__` prefix. Read `permissions.md` for permission details
-- **A-mode**: `discover_tools()` for external tool categories
+- **A-mode**: Use `skill` tool to look up external tool CLI usage
 - **All modes**: `read_memory_file(path="permissions.md")` to check permitted content (S-mode: read directly with Claude Code's Read)
 
 ### Tool returns an error

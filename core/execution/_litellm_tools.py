@@ -26,7 +26,6 @@ from core.execution.base import ToolCallRecord, _truncate_for_record, tool_input
 from core.exceptions import ToolExecutionError
 from core.tooling.schemas import (
     build_tool_list,
-    load_external_schemas,
     to_litellm_format,
 )
 
@@ -128,11 +127,11 @@ class ToolProcessingMixin:
     })
 
     def _build_base_tools(self) -> list[dict[str, Any]]:
-        """Build the base LiteLLM-format tool list (no external tools)."""
+        """Build the base LiteLLM-format tool list."""
         canonical = build_tool_list(
             include_file_tools=True,
             include_search_tools=True,
-            include_discovery_tools=True,
+            include_use_tool=False,
             include_notification_tools=self._tool_handler._human_notifier is not None,
             include_admin_tools=(self._anima_dir / "skills" / "newstaff.md").exists(),
             include_supervisor_tools=self._has_subordinates(),
@@ -146,27 +145,6 @@ class ToolProcessingMixin:
             procedure_metas=self._memory.list_procedure_metas(),
         )
         return to_litellm_format(canonical)
-
-    def _list_tool_categories(self) -> str:
-        """Return a summary of available external tool categories."""
-        if not self._tool_registry:
-            return "No external tool categories available."
-        from core.tools import TOOL_MODULES
-        lines = ["Available tool categories:"]
-        for cat in sorted(self._tool_registry):
-            if cat in TOOL_MODULES:
-                lines.append(f"- {cat}")
-        if self._personal_tools:
-            for cat in sorted(self._personal_tools):
-                lines.append(f"- {cat} (personal)")
-        return "\n".join(lines)
-
-    def _activate_category(self, category: str) -> list[dict[str, Any]]:
-        """Load and return canonical schemas for a tool category."""
-        if category in self._personal_tools:
-            from core.tooling.schemas import load_personal_tool_schemas
-            return load_personal_tool_schemas({category: self._personal_tools[category]})
-        return load_external_schemas([category])
 
     def _refresh_tools_inline(self, tools: list[dict[str, Any]]) -> str:
         """Re-discover personal/common tools and update the tools list in-place."""
@@ -272,36 +250,6 @@ class ToolProcessingMixin:
                         tool_name=fn_name, tool_id=tc_id,
                         input_summary="(invalid arguments)",
                         result_summary=_truncate_for_record(error_content, tool_result_save_budget(fn_name, context_window)),
-                    ),
-                }
-                continue
-
-            # Handle discover_tools inline
-            if fn_name == "discover_tools":
-                category = fn_args.get("category")
-                if category is None:
-                    result = self._list_tool_categories()
-                elif category not in active_categories:
-                    new_schemas = self._activate_category(category)
-                    if new_schemas:
-                        tools.extend(to_litellm_format(new_schemas))
-                        active_categories.add(category)
-                        result = f"Activated {len(new_schemas)} tools for '{category}'"
-                    else:
-                        result = f"No tools found for category '{category}'"
-                else:
-                    result = f"Category '{category}' is already active"
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc_id,
-                    "content": wrap_tool_result(fn_name, result),
-                })
-                yield {
-                    "type": "tool_end", "tool_id": tc_id, "tool_name": fn_name,
-                    "record": ToolCallRecord(
-                        tool_name=fn_name, tool_id=tc_id,
-                        input_summary=_truncate_for_record(str(fn_args), tool_input_save_budget(context_window)),
-                        result_summary=_truncate_for_record(result, tool_result_save_budget(fn_name, context_window)),
                     ),
                 }
                 continue

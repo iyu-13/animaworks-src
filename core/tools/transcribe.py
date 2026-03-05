@@ -318,42 +318,7 @@ def process_audio(
 
 def get_tool_schemas() -> list[dict]:
     """Return JSON schemas for transcription tools."""
-    return [
-        {
-            "name": "transcribe_audio",
-            "description": (
-                "Transcribe an audio file to text using faster-whisper, "
-                "optionally refining the output with a local LLM."
-            ),
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "audio_path": {
-                        "type": "string",
-                        "description": "Path to the audio file.",
-                    },
-                    "language": {
-                        "type": "string",
-                        "description": "Language code (e.g. 'ja', 'en'). Auto-detected if omitted.",
-                    },
-                    "model": {
-                        "type": "string",
-                        "description": "Ollama model for LLM refinement (optional).",
-                    },
-                    "raw_only": {
-                        "type": "boolean",
-                        "description": "If true, return raw transcription without LLM refinement.",
-                        "default": False,
-                    },
-                    "custom_prompt": {
-                        "type": "string",
-                        "description": "Additional instruction for LLM refinement (optional).",
-                    },
-                },
-                "required": ["audio_path"],
-            },
-        },
-    ]
+    return []
 
 
 # ---------------------------------------------------------------------------

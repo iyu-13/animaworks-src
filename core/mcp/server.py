@@ -23,7 +23,7 @@ import asyncio
 import json
 import logging
 import os
-import re
+
 import sys
 from pathlib import Path
 from typing import Any
@@ -116,30 +116,13 @@ def _coerce_integers(
     return arguments
 
 
-# Regex matching permission lines like "- chatwork: 全権限" or "- slack: 読み取りのみ"
-_PERMISSION_ALLOW_RE = re.compile(
-    r"[-*]?\s*(\w+)\s*:\s*(OK|yes|enabled|true|全権限|読み取り.*)\s*$",
-    re.IGNORECASE,
-)
-_PERMISSION_ALL_RE = re.compile(
-    r"[-*]?\s*all\s*:\s*(OK|yes|enabled|true)\s*$",
-    re.IGNORECASE,
-)
-_PERMISSION_DENY_RE = re.compile(
-    r"[-*]?\s*(\w+)\s*:\s*(no|deny|disabled|false)\s*$",
-    re.IGNORECASE,
-)
-
-
 def _load_permitted_categories(anima_dir: Path) -> set[str]:
     """Parse permissions.md to extract permitted external tool categories.
 
-    Mirrors the logic of ``AgentCore._init_tool_registry()`` but operates
-    on the raw file without requiring MemoryManager.
-
-    Returns a set of permitted category names (module names from TOOL_MODULES).
+    Delegates to :func:`core.tooling.permissions.parse_permitted_tools`.
     """
     from core.tools import TOOL_MODULES
+    from core.tooling.permissions import parse_permitted_tools
 
     all_tools = set(TOOL_MODULES.keys())
     permissions_path = anima_dir / "permissions.md"
@@ -152,47 +135,19 @@ def _load_permitted_categories(anima_dir: Path) -> set[str]:
         logger.debug("Cannot read permissions.md from %s", anima_dir)
         return all_tools
 
-    if "外部ツール" not in text:
-        return all_tools
-
-    has_all_yes = False
-    allowed: list[str] = []
-    denied: list[str] = []
-
-    for line in text.splitlines():
-        stripped = line.strip()
-        if _PERMISSION_ALL_RE.match(stripped):
-            has_all_yes = True
-            continue
-        m_deny = _PERMISSION_DENY_RE.match(stripped)
-        if m_deny:
-            name = m_deny.group(1)
-            if name in all_tools:
-                denied.append(name)
-            continue
-        m_allow = _PERMISSION_ALLOW_RE.match(stripped)
-        if m_allow:
-            name = m_allow.group(1)
-            if name in all_tools:
-                allowed.append(name)
-
-    if has_all_yes:
-        return all_tools - set(denied)
-    if allowed:
-        return set(allowed)
-    return all_tools
+    return parse_permitted_tools(text)
 
 
 def _build_mcp_tools() -> tuple[list[Tool], frozenset[str]]:
     """Convert canonical AnimaWorks schemas to MCP Tool objects.
 
     Reads all relevant schema lists from ``core.tooling.schemas`` and
-    filters to the exposed tools.  Additionally loads permitted external
-    tool schemas (chatwork, slack, etc.) from permissions.md.
+    filters to the exposed tools.  Mode S uses skill+CLI for external
+    tools; ``use_tool`` is Mode B only.
 
     Returns:
         Tuple of (tool_list, exposed_name_set) where exposed_name_set
-        is the union of internal and external tool names.
+        is the set of internal tool names.
     """
     from core.tooling.schemas import (
         BACKGROUND_TASK_TOOLS,
@@ -220,30 +175,7 @@ def _build_mcp_tools() -> tuple[list[Tool], frozenset[str]]:
         *BACKGROUND_TASK_TOOLS,
     ]
 
-    # Load permitted external tool schemas from permissions.md
-    external_schemas: list[dict[str, Any]] = []
-    anima_dir_env = os.environ.get("ANIMAWORKS_ANIMA_DIR", "")
-    if anima_dir_env:
-        anima_dir = Path(anima_dir_env).resolve()
-        if anima_dir.is_dir():
-            try:
-                from core.tooling.schemas import load_external_schemas_by_category
-
-                permitted = _load_permitted_categories(anima_dir)
-                if permitted:
-                    external_schemas = load_external_schemas_by_category(permitted)
-                    all_schemas.extend(external_schemas)
-                    logger.info(
-                        "Loaded %d external tool schemas for categories: %s",
-                        len(external_schemas),
-                        ", ".join(sorted(permitted)),
-                    )
-            except Exception:
-                logger.debug("External tool schema loading failed", exc_info=True)
-
-    # Build the dynamic exposed set: internal + external tool names
-    external_names = frozenset(s["name"] for s in external_schemas)
-    exposed = _EXPOSED_TOOL_NAMES | external_names
+    exposed = _EXPOSED_TOOL_NAMES
 
     # Apply DB description overrides
     from core.tooling.schemas import apply_db_descriptions
@@ -484,7 +416,8 @@ def _get_tool_handler() -> Any:
                 discover_personal_tools,
             )
 
-            tool_registry = sorted(TOOL_MODULES.keys())
+            permitted = _load_permitted_categories(anima_dir)
+            tool_registry = sorted(permitted)
             common = discover_common_tools()
             personal = discover_personal_tools(anima_dir)
             personal_tools = {**common, **personal}

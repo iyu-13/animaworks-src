@@ -365,7 +365,7 @@ class TestBuildSystemPrompt:
             assert "未完了タスク" in result
             assert "task 1" in result
 
-    def test_a_mode_injects_discover_tools_guide(self, tmp_path, data_dir):
+    def test_a_mode_injects_external_tools_hint(self, tmp_path, data_dir):
         anima_dir = tmp_path / "animas" / "alice"
         anima_dir.mkdir(parents=True)
         (anima_dir / "identity.md").write_text("I am Alice", encoding="utf-8")
@@ -398,10 +398,13 @@ class TestBuildSystemPrompt:
                 tool_registry=["chatwork", "slack"],
                 execution_mode="a",
             )
-            assert "discover_tools" in result
-            assert "chatwork" in result
+            assert "animaworks-tool" in result
+            assert "animaworks-tool" in result
 
-    def test_s_mode_uses_cli_guide(self, tmp_path, data_dir):
+    def test_s_mode_injects_external_tools_hint_when_tool_registry_provided(
+        self, tmp_path, data_dir
+    ):
+        """S mode injects External Tools hint when tool_registry is provided."""
         anima_dir = tmp_path / "animas" / "alice"
         anima_dir.mkdir(parents=True)
         (anima_dir / "identity.md").write_text("I am Alice", encoding="utf-8")
@@ -428,15 +431,15 @@ class TestBuildSystemPrompt:
         memory.list_shared_users.return_value = []
         memory.collect_distilled_knowledge_separated.return_value = ([], [])
 
-        with patch("core.prompt.builder.load_prompt", return_value="section"), \
-             patch("core.tooling.guide.build_tools_guide", return_value="CLI guide") as mock_guide:
+        with patch("core.prompt.builder.load_prompt", return_value="section"):
             result = build_system_prompt(
                 memory,
                 tool_registry=["chatwork"],
                 execution_mode="s",
             )
-            # S mode should call the CLI guide builder
-            mock_guide.assert_called_once()
+            assert "External Tools" in result
+            assert "animaworks-tool" in result
+            assert "animaworks-tool" in result
 
 
 # ── _format_anima_entry ──────────────────────────────────

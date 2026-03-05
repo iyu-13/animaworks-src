@@ -115,7 +115,7 @@ class LiteLLMExecutor(
         import litellm
 
         tools = self._build_base_tools()
-        active_categories: set[str] = set()
+        _active_categories: set[str] = set()
         context_window = resolve_context_window(self._model_config.model)
 
         messages = self._build_initial_messages(
@@ -266,7 +266,7 @@ class LiteLLMExecutor(
 
             parsed_calls = _convert_litellm_tool_calls(tool_calls)
             async for _event in self._process_streaming_tool_calls(
-                parsed_calls, messages, tools, active_categories,
+                parsed_calls, messages, tools, _active_categories,
                 context_window=context_window,
             ):
                 if "record" in _event:

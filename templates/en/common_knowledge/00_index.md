@@ -135,7 +135,7 @@ Find the right document from relevant keywords.
 | problem, error, stuck, not working | `troubleshooting/common-issues.md` |
 | Gmail, gmail_unread, token.json, OAuth, credential | `troubleshooting/gmail-credential-setup.md` |
 | permission, permission denied, access denied | `troubleshooting/common-issues.md` |
-| tool, discover_tools, not found | `troubleshooting/common-issues.md` |
+| tool, use_tool, skill, not found | `troubleshooting/common-issues.md` |
 | memory, search_memory, search, not found | `troubleshooting/common-issues.md` |
 | flowchart, decision, unsure, what to do | `troubleshooting/escalation-flowchart.md` |
 | urgent, critical, security | `troubleshooting/escalation-flowchart.md` |

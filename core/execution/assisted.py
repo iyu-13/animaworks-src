@@ -213,19 +213,15 @@ class AssistedExecutor(BaseExecutor):
 
     def _build_tool_schemas(self) -> list[dict[str, Any]]:
         """Build canonical tool schemas for text format generation."""
-        from core.tooling.schemas import (
-            load_external_schemas,
-            load_personal_tool_schemas,
-        )
-
         canonical = build_tool_list(
             include_file_tools=True,
             include_search_tools=True,
-            include_discovery_tools=False,  # Not needed in text mode
+            include_discovery_tools=False,
+            include_use_tool=bool(self._tool_registry),
             include_notification_tools=self._tool_handler._human_notifier is not None,
             include_admin_tools=(self._anima_dir / "skills" / "newstaff.md").exists(),
             include_supervisor_tools=self._has_subordinates(),
-            include_tool_management=False,  # Not needed in text mode
+            include_tool_management=False,
             include_task_tools=True,
             include_plan_tasks=True,
             include_background_task_tools=getattr(self._tool_handler, "_background_manager", None) is not None,
@@ -234,17 +230,6 @@ class AssistedExecutor(BaseExecutor):
             common_skill_metas=self._memory.list_common_skill_metas(),
             procedure_metas=self._memory.list_procedure_metas(),
         )
-
-        # Load external tool schemas
-        external = load_external_schemas(self._tool_registry)
-        if external:
-            canonical.extend(external)
-
-        # Load personal tool schemas
-        if self._personal_tools:
-            personal = load_personal_tool_schemas(self._personal_tools)
-            canonical.extend(personal)
-
         return canonical
 
     def _build_tool_spec_text(self) -> str:

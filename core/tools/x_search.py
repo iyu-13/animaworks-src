@@ -227,61 +227,7 @@ def _format_tweet_text(tweet: dict, verbose: bool = False) -> str:
 
 def get_tool_schemas() -> list[dict]:
     """Return Anthropic tool_use schemas for X search tools."""
-    return [
-        {
-            "name": "x_search",
-            "description": (
-                "Search recent tweets on X (Twitter). "
-                "Returns tweets with text, author info, and engagement metrics."
-            ),
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Search query (X search syntax supported).",
-                    },
-                    "max_results": {
-                        "type": "integer",
-                        "description": "Number of tweets to return (10-100, default 10).",
-                        "default": 10,
-                    },
-                    "days": {
-                        "type": "integer",
-                        "description": "Search tweets from last N days (default 7).",
-                        "default": 7,
-                    },
-                },
-                "required": ["query"],
-            },
-        },
-        {
-            "name": "x_user_tweets",
-            "description": (
-                "Get recent tweets from a specific X (Twitter) user. "
-                "Returns tweets with text and engagement metrics."
-            ),
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "username": {
-                        "type": "string",
-                        "description": "X username (without @).",
-                    },
-                    "max_results": {
-                        "type": "integer",
-                        "description": "Number of tweets to return (default 10).",
-                        "default": 10,
-                    },
-                    "days": {
-                        "type": "integer",
-                        "description": "Limit to tweets from last N days (omit for no limit).",
-                    },
-                },
-                "required": ["username"],
-            },
-        },
-    ]
+    return []
 
 
 # ── Dispatch ──────────────────────────────────────────

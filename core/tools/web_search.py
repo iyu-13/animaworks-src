@@ -142,43 +142,7 @@ def format_results(results: list[dict[str, str]]) -> str:
 
 def get_tool_schemas() -> list[dict]:
     """Return Anthropic tool_use schemas for the web_search tool."""
-    return [
-        {
-            "name": "web_search",
-            "description": (
-                "Search the web using the Brave Search API. "
-                "Returns a list of results with title, URL, and description."
-            ),
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "The search query.",
-                    },
-                    "count": {
-                        "type": "integer",
-                        "description": "Number of results (1-20, default 10).",
-                        "default": 10,
-                    },
-                    "lang": {
-                        "type": "string",
-                        "description": "Search language code (e.g. 'ja', 'en').",
-                        "default": "ja",
-                    },
-                    "freshness": {
-                        "type": "string",
-                        "description": (
-                            "Freshness filter: 'pd' (past day), 'pw' (past week), "
-                            "'pm' (past month), 'py' (past year)."
-                        ),
-                        "enum": ["pd", "pw", "pm", "py"],
-                    },
-                },
-                "required": ["query"],
-            },
-        }
-    ]
+    return []
 
 
 # ── Dispatch ──────────────────────────────────────────
