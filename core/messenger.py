@@ -17,7 +17,13 @@ from typing import Any
 from core.i18n import t
 from core.time_utils import now_iso
 
-from core.exceptions import MessagingError, DeliveryError, RecipientNotFoundError  # noqa: F401
+from core.exceptions import (
+    ConfigError,
+    ConfigNotFoundError,
+    DeliveryError,
+    MessagingError,
+    RecipientNotFoundError,
+)  # noqa: F401
 from core.schemas import Message
 
 logger = logging.getLogger("animaworks.messenger")
@@ -262,7 +268,7 @@ class Messenger:
                         poster, channel,
                     )
                     return
-            except Exception:
+            except (KeyError, AttributeError, TypeError):
                 pass
         channels_dir = self.shared_dir / "channels"
         channels_dir.mkdir(parents=True, exist_ok=True)
@@ -385,7 +391,7 @@ class Messenger:
                         "text": e.content,
                         "source": "activity_log",
                     })
-        except Exception:
+        except (OSError, json.JSONDecodeError, KeyError):
             logger.debug("Failed to read DM history from activity log", exc_info=True)
 
         # Fallback: legacy dm_logs/
@@ -458,7 +464,7 @@ class Messenger:
                     )
                     continue
                 messages.append(msg)
-            except Exception as e:
+            except (json.JSONDecodeError, OSError, KeyError) as e:
                 logger.error("Failed to parse message %s: %s", f, e)
         return messages
 
@@ -475,7 +481,7 @@ class Messenger:
             cfg_animas = set(load_config().animas.keys())
             if self.anima_name in cfg_animas:
                 known_animas = cfg_animas
-        except Exception:
+        except (ConfigError, ConfigNotFoundError):
             logger.debug("load_config unavailable for inbox validation", exc_info=True)
 
         items: list[InboxItem] = []
@@ -494,7 +500,7 @@ class Messenger:
                     )
                     continue
                 items.append(InboxItem(msg=msg, path=f))
-            except Exception:
+            except (json.JSONDecodeError, OSError, KeyError):
                 logger.warning("Failed to read inbox file: %s", f, exc_info=True)
         return items
 
@@ -520,7 +526,7 @@ class Messenger:
             try:
                 from core.config.models import load_config
                 _send_ack = load_config().heartbeat.enable_read_ack
-            except Exception:
+            except (ConfigError, ConfigNotFoundError):
                 _send_ack = False
 
             if _send_ack:
@@ -577,7 +583,7 @@ class Messenger:
                 if data.get("from_person") == sender:
                     f.rename(processed_dir / f.name)
                     count += 1
-            except Exception as e:
+            except (OSError, json.JSONDecodeError, KeyError) as e:
                 logger.error("Failed to check message %s: %s", f, e)
         return count
 

@@ -59,9 +59,10 @@ from core.tooling.handler_base import (  # noqa: F401
     active_session_type,
     suppress_board_fanout,
 )
+from core.exceptions import AnimaWorksError, ConfigError
 from core.tooling.handler_base import (
-    ToolExecutionError,
     MemoryWriteError,
+    ToolExecutionError,
 )
 
 # ── Import Mixins ──
@@ -184,7 +185,7 @@ class ToolHandler(
                 self._descendant_state_files.append(_desc_dir / "injection.md")
                 self._descendant_state_files.append(_desc_dir / "state" / "task_queue.jsonl")
                 self._descendant_state_dirs.append(_desc_dir / "state" / "pending")
-        except Exception:
+        except (ConfigError, OSError, PermissionError, KeyError, AttributeError):
             logger.debug("Failed to cache subordinate paths for %s", self._anima_name, exc_info=True)
 
         # ── Dispatch table: tool name → handler method ──
@@ -350,7 +351,7 @@ class ToolHandler(
             entry = _json.dumps({"to": to, "success": success}, ensure_ascii=False)
             with replied_to_path.open("a", encoding="utf-8") as f:
                 f.write(entry + "\n")
-        except Exception as e:
+        except (OSError, TypeError, ValueError) as e:
             logger.warning("Failed to persist replied_to for '%s': %s", to, e)
 
     def merge_replied_to(self, names: set[str], session_type: str = "chat") -> None:
@@ -544,12 +545,13 @@ class ToolHandler(
 
             result = ExternalToolDispatcher._call_module(mod, schema_name, dispatch_args)
             return result
+        except AnimaWorksError:
+            raise
         except Exception as e:
             logger.warning("use_tool dispatch failed: %s %s – %s", tool_name, action, e)
-            return _error_result(
-                "ToolExecutionError",
+            raise ToolExecutionError(
                 f"use_tool execution failed: {tool_name}/{action}: {e}",
-            )
+            ) from e
 
     # ── Vault tools ──────────────────────────────────────────
 

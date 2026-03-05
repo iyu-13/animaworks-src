@@ -23,7 +23,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from core.exceptions import LLMAPIError, ToolExecutionError  # noqa: F401
+from core.exceptions import AnimaWorksError, LLMAPIError, ToolExecutionError  # noqa: F401
 from core.prompt.context import ContextTracker
 from core.execution._sanitize import TOOL_TRUST_LEVELS, wrap_tool_result
 from core.execution._session import build_continuation_prompt, handle_session_chaining
@@ -659,6 +659,8 @@ class AnthropicFallbackExecutor(BaseExecutor):
                     except ToolExecutionError as tool_err:
                         logger.warning("Tool execution error: %s – %s", tu.name, tool_err)
                         result = f"ツール実行エラー: {tool_err}"
+                    except AnimaWorksError:
+                        raise
                     except Exception as tool_err:
                         logger.exception("Unexpected tool error: %s", tu.name)
                         result = f"ツール実行エラー: {tool_err}"

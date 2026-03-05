@@ -17,11 +17,13 @@ AnimaWorks tools are categorized into three types:
 
 | Type | Location | Discovery |
 |------|----------|-----------|
-| **Core tools** | `core/tools/*.py` | TOOL_MODULES (fixed at startup) |
-| **Shared tools** | `~/.animaworks/common_tools/*.py` | discover_common_tools() |
+| **Core tools** | `core/tools/*.py` | `discover_core_tools()` → TOOL_MODULES (fixed at startup) |
+| **Shared tools** | `{data_dir}/common_tools/*.py` | discover_common_tools() |
 | **Personal tools** | `{anima_dir}/tools/*.py` | discover_personal_tools() |
 
-Personal and shared tools are auto-discovered by `ExternalToolDispatcher` and can be hot-reloaded via `refresh_tools`. ToolHandler checks the tool creation permission in permissions.md when writing to `tools/*.py` with `write_memory_file`.
+`{data_dir}` is typically `~/.animaworks/`. Personal and shared tools are re-scanned by `ExternalToolDispatcher` via `refresh_tools` and can be hot-reloaded. ToolHandler checks the tool creation permission in permissions.md when writing to `tools/*.py` with `write_memory_file`.
+
+Personal and shared tools are invoked via `use_tool(tool_name="...", action="...", args={...})`. Schema name format is `{tool_name}_{action}` (e.g., `my_tool` + `query` → `my_tool_query`).
 
 ## Procedure
 
@@ -36,6 +38,8 @@ Personal and shared tools are auto-discovered by `ExternalToolDispatcher` and ca
 Create a Python file following the template below.
 
 #### Single-Schema Tool (Simple)
+
+For file `my_tool.py`, `use_tool(tool_name="my_tool", action="action", args={...})` invokes it; schema name `my_tool_action` is passed to dispatch.
 
 ```python
 from __future__ import annotations
@@ -73,6 +77,7 @@ def get_tool_schemas() -> list[dict]:
 
 def dispatch(name: str, args: dict[str, Any]) -> Any:
     """Execute handling by schema name (recommended)."""
+    args.pop("anima_dir", None)  # Injected by use_tool; unused in this tool
     if name == "my_tool_action":
         return _do_action(
             param1=args["param1"],
@@ -88,6 +93,8 @@ def _do_action(param1: str, param2: int = 10) -> dict[str, Any]:
 ```
 
 #### Multi-Schema Tool (API Integration, etc.)
+
+Schema names use `{tool_name}_{action}` format. `use_tool(tool_name="myapi", action="query", args={...})` passes `myapi_query` to dispatch. File name: `myapi.py`.
 
 ```python
 from __future__ import annotations
@@ -159,6 +166,7 @@ class MyAPIClient:
 
 
 def dispatch(name: str, args: dict[str, Any]) -> Any:
+    args.pop("anima_dir", None)  # Injected by use_tool; unused in this tool
     client = MyAPIClient()
     if name == "myapi_query":
         return client.query(
@@ -188,7 +196,7 @@ After saving, call `refresh_tools` for hot reload:
 refresh_tools()
 ```
 
-The tool becomes available immediately without restarting the session.
+The tool becomes available immediately without restarting the session. Personal tools do not need to be listed in permissions.md external_tools; once discovered by `refresh_tools`, they are callable via `use_tool`.
 
 ### Step 5: Share (Optional)
 
@@ -205,18 +213,30 @@ This copies it to `~/.animaworks/common_tools/` and makes it available to all An
 | Function | Required | Description |
 |----------|----------|-------------|
 | `get_tool_schemas()` | ✅ Required | Return list of tool schemas. Must include `name`, `description`, `input_schema` (or `parameters`) |
-| `dispatch(name, args)` | 🔵 Recommended | Dispatch by schema name. ExternalToolDispatcher prefers this |
+| `dispatch(name, args)` | 🔵 Recommended | Dispatch by schema name. ExternalToolDispatcher prefers this. Remove `anima_dir` with `args.pop("anima_dir", None)` when passing args to other functions |
 | Function with same name as schema | 🟡 Alternative | Can be used instead of `dispatch()` |
 | `cli_main(argv)` | ⚪ Optional | For standalone execution via `animaworks-tool <tool_name>` |
 | `EXECUTION_PROFILE` | ⚪ Optional | For long-running tools. Enables background submission via `animaworks-tool submit` |
 
+## use_tool Invocation
+
+Anima invokes personal/shared tools via `use_tool`:
+
+```
+use_tool(tool_name="myapi", action="query", args={"query": "search term", "limit": 10})
+```
+
+`schema_name = tool_name + "_" + action` is passed to `dispatch(name, args)`. In the example above, `name="myapi_query"`.
+
 ## Schema Definition Conventions
+
+Both `input_schema` and `parameters` are supported and normalized (`core/tooling/schemas._normalise_schema`).
 
 ```python
 {
-    "name": "tool_action_name",       # snake_case, prefix with tool name
+    "name": "tool_action_name",       # snake_case. use_tool format: {tool_name}_{action}
     "description": "1-2 sentence description",  # Used by LLM for tool selection
-    "input_schema": {                  # JSON Schema format (parameters also accepted, normalized)
+    "input_schema": {                  # JSON Schema format (parameters also accepted)
         "type": "object",
         "properties": { ... },
         "required": [ ... ],
@@ -239,7 +259,7 @@ api_key = get_credential(
 )
 ```
 
-**Resolution order**: config.json → shared/credentials.json → environment variable. ToolConfigError if none found.
+**Resolution order**: config.json → vault.json (encrypted vault) → shared/credentials.json → environment variable. ToolConfigError if none found.
 
 ## Tool Creation Permission in permissions.md
 
@@ -258,8 +278,10 @@ Add the following to permissions.md for tool creation and sharing:
 - [ ] Filename: snake_case, `.py` extension (e.g., `my_tool.py`)
 - [ ] `from __future__ import annotations` at top of file
 - [ ] `get_tool_schemas()` exists and returns a list
+- [ ] Schema names follow `{tool_name}_{action}` format (use_tool integration)
 - [ ] Schema has `name`, `description`, `input_schema` (or `parameters`)
 - [ ] `dispatch()` or same-name function exists
+- [ ] `args.pop("anima_dir", None)` in dispatch when passing args to other functions
 - [ ] Handler exists for all schemas
 - [ ] Appropriate exceptions raised on error
 - [ ] Timeout set for external APIs
@@ -282,5 +304,6 @@ Add the following to permissions.md for tool creation and sharing:
 - Tool creation requires **personal tools: yes** in the "Tool creation" section of permissions.md
 - Sharing tools requires **shared tools: yes** permission
 - Created tools are discovered immediately on `refresh_tools` call (hot reload)
-- Schema names must be globally unique (no conflict with other tools)
-- Personal or shared tools with the same name as core tools are shadowed and skipped
+- Personal tools do not need to be in permissions.md external_tools; once discovered, they are available via `use_tool`
+- Schema names use `{tool_name}_{action}` format; keep them unique across tools
+- Personal or shared tools with the same name as core tools are shadowed and skipped (`core/tools/__init__.py`)

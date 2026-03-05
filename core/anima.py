@@ -14,6 +14,7 @@ Implementation is split into Mixin sub-modules for manageability:
 """
 
 import asyncio
+import json
 import logging
 import re
 import threading
@@ -181,7 +182,7 @@ class DigitalAnima(
             try:
                 notifications.append(path.read_text(encoding="utf-8"))
                 path.unlink()
-            except Exception:
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
                 logger.warning("Failed to read notification: %s", path.name)
 
         return notifications

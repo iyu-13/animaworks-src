@@ -426,25 +426,27 @@ class BaseExecutor(ABC):
         try:
             from core.config import load_config
             return load_config().server.llm_num_retries
-        except Exception:
+        except (OSError, AttributeError, ValueError):
             return 3
 
     def _resolve_cw(self) -> int:
         """Resolve context window with config overrides."""
         from core.config import load_config
+        from core.exceptions import ConfigError
         from core.prompt.context import resolve_context_window
         try:
             overrides = load_config().model_context_windows
-        except Exception:
+        except (ConfigError, OSError):
             overrides = None
         return resolve_context_window(self._model_config.model, overrides)
 
     def _resolve_cw_overrides(self) -> dict[str, int] | None:
         """Return config model_context_windows or None."""
         from core.config import load_config
+        from core.exceptions import ConfigError
         try:
             return load_config().model_context_windows
-        except Exception:
+        except (ConfigError, OSError):
             return None
 
     def _check_interrupted(self) -> bool:

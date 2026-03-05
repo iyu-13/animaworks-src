@@ -335,6 +335,9 @@ export function renderStreamingBubbleInner(msg, opts) {
  * @param {object} opts - Same as renderLiveBubble opts
  * @param {string} zone - Which zone to update: "text" | "tools" | "subordinate" | "thinking" | "all"
  */
+const _MD_RERENDER_MS = 80;
+const _MD_RERENDER_CHARS = 40;
+
 export function updateStreamingZone(bubble, msg, opts, zone = "all") {
   if (!bubble) return;
   if (zone === "all") {
@@ -351,6 +354,20 @@ export function updateStreamingZone(bubble, msg, opts, zone = "all") {
     _patchSubordinateZone(el, msg, opts);
     return;
   }
+
+  // Fast path: append-only textContent update (no innerHTML replacement)
+  if (zone === "text" && msg.streaming && msg.text && msg._mdCache) {
+    const c = msg._mdCache;
+    const now = performance.now();
+    if ((now - c.t < _MD_RERENDER_MS) && (msg.text.length - c.len < _MD_RERENDER_CHARS)) {
+      const tailEl = el.querySelector(".streaming-tail");
+      if (tailEl) {
+        tailEl.textContent = msg.text.slice(c.len);
+        return;
+      }
+    }
+  }
+
   const renderers = {
     text: _renderTextZoneContent,
     tools: _renderToolZoneContent,
@@ -359,9 +376,6 @@ export function updateStreamingZone(bubble, msg, opts, zone = "all") {
   const fn = renderers[zone];
   if (fn) el.innerHTML = fn(msg, opts);
 }
-
-const _MD_RERENDER_MS = 30;
-const _MD_RERENDER_CHARS = 10;
 
 function _renderTextZoneContent(msg, opts) {
   const { escapeHtml, renderMarkdown } = opts;
@@ -378,19 +392,11 @@ function _renderTextZoneContent(msg, opts) {
     return `<div class="heartbeat-relay-indicator"><span class="tool-spinner"></span>${doneLabel}</div>`;
   }
   if (msg.text) {
-    let html;
+    let html = renderMarkdown(msg.text, opts.animaName);
     if (msg.streaming) {
-      const c = msg._mdCache;
-      const now = performance.now();
-      if (c && (now - c.t < _MD_RERENDER_MS) && (msg.text.length - c.len < _MD_RERENDER_CHARS)) {
-        const tail = msg.text.slice(c.len);
-        html = c.html + escapeHtml(tail).replace(/\n/g, "<br>");
-      } else {
-        html = renderMarkdown(msg.text, opts.animaName);
-        msg._mdCache = { html, len: msg.text.length, t: now };
-      }
+      msg._mdCache = { html, len: msg.text.length, t: performance.now() };
+      html += '<span class="streaming-tail"></span>';
     } else {
-      html = renderMarkdown(msg.text, opts.animaName);
       delete msg._mdCache;
     }
     html += '<span class="streaming-cursor">▌</span>';

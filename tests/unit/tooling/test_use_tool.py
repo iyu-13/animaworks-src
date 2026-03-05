@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from core.exceptions import ToolExecutionError
 from core.tooling.handler import ToolHandler
 from core.tooling.schemas import USE_TOOL
 
@@ -201,30 +202,24 @@ class TestUseToolPassesArgsWithAnimaDir:
 class TestUseToolHandlesDispatchException:
     """Exception during dispatch returns error."""
 
-    def test_exception_during_dispatch_returns_error(
+    def test_exception_during_dispatch_raises_tool_execution_error(
         self, handler_with_web_search: ToolHandler,
     ):
-        """Exception during import or dispatch returns structured error."""
+        """Exception during import or dispatch raises ToolExecutionError."""
         with patch("core.tools.TOOL_MODULES", {"web_search": "core.tools.web_search"}), \
              patch(
                  "importlib.import_module",
                  side_effect=ImportError("module not found"),
              ):
-            result = handler_with_web_search.handle(
-                "use_tool",
-                {
-                    "tool_name": "web_search",
-                    "action": "search",
-                    "args": {},
-                },
-            )
-
-        parsed = json.loads(result)
-        assert parsed["status"] == "error"
-        msg = parsed.get("message", "")
-        assert "use_tool execution failed" in msg or "module not found" in msg
-        assert "web_search" in msg
-        assert "search" in msg
+            with pytest.raises(ToolExecutionError, match="module not found"):
+                handler_with_web_search.handle(
+                    "use_tool",
+                    {
+                        "tool_name": "web_search",
+                        "action": "search",
+                        "args": {},
+                    },
+                )
 
 
 # ── test_use_tool_schema_definition ────────────────────────────

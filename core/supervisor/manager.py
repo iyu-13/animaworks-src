@@ -23,7 +23,8 @@ from typing import Any
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from core.exceptions import (  # noqa: F401
-    ProcessError, AnimaNotFoundError, IPCConnectionError, ConfigError, MemoryIOError,
+    ProcessError, AnimaNotFoundError, IPCConnectionError, ConfigError,
+    ConfigNotFoundError, MemoryIOError,
 )
 from core.supervisor.ipc import IPCResponse
 from core.supervisor.process_handle import ProcessHandle, ProcessState
@@ -121,7 +122,7 @@ class ProcessSupervisor(HealthMixin, ReconcileMixin, SchedulerMixin):
             self._max_streaming_duration_sec = getattr(
                 srv, "max_streaming_duration", 1800,
             )
-        except Exception:
+        except (ConfigError, ConfigNotFoundError):
             logger.debug("Config load failed for max_streaming_duration", exc_info=True)
 
         # Callbacks for anima lifecycle events (set by server/app.py)
@@ -263,9 +264,10 @@ class ProcessSupervisor(HealthMixin, ReconcileMixin, SchedulerMixin):
                         anima_name, e,
                     )
 
-            except Exception as e:
-                logger.error("Failed to start process %s: %s", anima_name, e)
+            except (ProcessError, AnimaNotFoundError):
                 raise
+            except Exception as e:
+                raise ProcessError(f"Failed to start process {anima_name}: {e}") from e
         finally:
             self._starting.discard(anima_name)
 

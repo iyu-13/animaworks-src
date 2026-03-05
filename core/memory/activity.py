@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from core.exceptions import MemoryWriteError
 from core.paths import get_data_dir
 from core.time_utils import ensure_aware, now_iso, now_jst  # noqa: F401
 
@@ -154,11 +155,11 @@ class ActivityLogger(
                 f.flush()
                 os.fsync(f.fileno())
         except OSError as exc:
-            from core.exceptions import MemoryWriteError
             logger.exception("Failed to append activity log")
             raise MemoryWriteError(f"Activity log write failed: {exc}") from exc
-        except Exception:
+        except (TypeError, ValueError, AttributeError, KeyError) as exc:
             logger.exception("Failed to append activity log")
+            raise MemoryWriteError(f"Activity log write failed: {exc}") from exc
 
     def _emit_live_event(self, entry: ActivityEntry) -> None:
         """Write event file for ProcessSupervisor to broadcast via WebSocket."""
@@ -257,7 +258,7 @@ class ActivityLogger(
                     })
                     entry._line_number = line_num
                     entries.append(entry)
-            except Exception:
+            except (OSError, json.JSONDecodeError, KeyError, ValueError, TypeError):
                 logger.exception("Failed to read activity log %s", path)
 
         entries.sort(key=lambda e: e.ts)
