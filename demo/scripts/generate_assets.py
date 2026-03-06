@@ -49,6 +49,31 @@ PRESETS: dict[str, dict[str, object]] = {
 # ── Prompt extraction ─────────────────────────────────────────
 
 
+_MALE_KEYWORDS = {"male", "男性", "男"}
+_FEMALE_KEYWORDS = {"female", "女性", "女"}
+
+
+def _extract_gender(md_path: Path) -> str:
+    """Extract gender from character sheet (Gender/性別 field in table).
+
+    Returns ``"male"`` or ``"female"``.  Defaults to ``"female"``
+    when the field is absent or unrecognised.
+    """
+    text = md_path.read_text(encoding="utf-8")
+    match = re.search(
+        r"\|\s*(?:Gender|性別)\s*\|\s*(.+?)\s*\|",
+        text,
+        re.IGNORECASE,
+    )
+    if match:
+        value = match.group(1).strip().lower()
+        if value in _MALE_KEYWORDS:
+            return "male"
+        if value in _FEMALE_KEYWORDS:
+            return "female"
+    return "female"
+
+
 def _extract_appearance(md_path: Path) -> str | None:
     """Extract appearance description from a character sheet markdown."""
     text = md_path.read_text(encoding="utf-8")
@@ -62,7 +87,6 @@ def _extract_appearance(md_path: Path) -> str | None:
         if match:
             return match.group(1).strip()
 
-    # Fall back to ## 外見 / ## Appearance section
     section_pat = re.compile(
         r"^##\s+(?:外見|Appearance)\s*\n(.*?)(?=\n##|\Z)",
         re.MULTILINE | re.DOTALL,
@@ -74,15 +98,17 @@ def _extract_appearance(md_path: Path) -> str | None:
     return None
 
 
-def _build_prompt_for_style(appearance: str, style: str) -> str:
+def _build_prompt_for_style(appearance: str, style: str, gender: str = "female") -> str:
     """Convert appearance description to a generation prompt."""
     if style == "anime":
+        tag = "1boy" if gender == "male" else "1girl"
         return (
-            f"1girl, {appearance}, full body, standing, white background, "
+            f"{tag}, {appearance}, full body, standing, white background, "
             "anime illustration, high quality, detailed"
         )
+    person = "a young man" if gender == "male" else "a young woman"
     return (
-        f"A professional photo of a person: {appearance}. "
+        f"A professional photo of {person}: {appearance}. "
         "Full body, standing, studio lighting, neutral background, "
         "high quality photograph"
     )
@@ -113,7 +139,8 @@ def generate_character(
         print(f"  SKIP {character_name}: no appearance description found")
         return
 
-    prompt = _build_prompt_for_style(appearance, style)
+    gender = _extract_gender(md_path)
+    prompt = _build_prompt_for_style(appearance, style, gender)
     print(f"  Prompt: {prompt[:120]}...")
 
     assets_dir.mkdir(parents=True, exist_ok=True)
