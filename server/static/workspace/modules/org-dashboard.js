@@ -636,17 +636,21 @@ function _stopKpiPolling() {
 }
 
 async function _loadInitialStreams(animas) {
-  const results = await Promise.allSettled(
-    animas.map(async (a) => {
-      const resp = await fetch(`/api/activity/recent?hours=1&limit=5&anima=${encodeURIComponent(a.name)}`);
-      if (!resp.ok) return null;
-      const data = await resp.json();
-      const events = data.events ?? [];
-      if (!events.length) return null;
-      return { name: a.name, events };
-    })
-  );
-  for (const r of results) {
+  const [flatResults, activeGroups] = await Promise.all([
+    Promise.allSettled(
+      animas.map(async (a) => {
+        const resp = await fetch(`/api/activity/recent?hours=1&limit=5&anima=${encodeURIComponent(a.name)}`);
+        if (!resp.ok) return null;
+        const data = await resp.json();
+        const events = data.events ?? [];
+        if (!events.length) return null;
+        return { name: a.name, events };
+      })
+    ),
+    _fetchActiveGroups(),
+  ]);
+
+  for (const r of flatResults) {
     if (r.status !== "fulfilled" || !r.value) continue;
     const { name, events } = r.value;
     const entries = events.slice(0, MAX_STREAM_ENTRIES).reverse().map(ev => ({
@@ -657,9 +661,61 @@ async function _loadInitialStreams(animas) {
       ts: (ev.ts || ev.timestamp) ? new Date(ev.ts || ev.timestamp).getTime() : Date.now(),
     }));
     _cardStreams.set(name, entries);
+  }
+
+  for (const grp of activeGroups) {
+    const name = grp.anima;
+    if (!name || !_cardEls.has(name)) continue;
+    const entries = _cardStreams.get(name) || [];
+    const grpType = _mapGroupType(grp.type);
+    entries.push({
+      id: grp.id || `active-${name}-${Date.now()}`,
+      type: grpType,
+      text: _summarizeGroup(grp),
+      status: "running",
+      ts: Date.now(),
+    });
+    if (entries.length > MAX_STREAM_ENTRIES * 2) {
+      _cardStreams.set(name, entries.slice(-MAX_STREAM_ENTRIES));
+    } else {
+      _cardStreams.set(name, entries);
+    }
+  }
+
+  for (const [name, entries] of _cardStreams) {
     const streamEl = document.getElementById(`orgStream_${CSS.escape(name)}`);
     if (streamEl) _renderStream(streamEl, entries.slice(-MAX_STREAM_ENTRIES));
+    _syncCardSpinner(name);
   }
+
+  if (activeGroups.length > 0) _ensureStaleTimer();
+}
+
+async function _fetchActiveGroups() {
+  try {
+    const resp = await fetch("/api/activity/recent?grouped=true&hours=1&group_limit=50");
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    return (data.groups ?? []).filter(g => g.is_open);
+  } catch {
+    return [];
+  }
+}
+
+function _mapGroupType(type) {
+  if (!type) return "tool";
+  if (type === "heartbeat") return "heartbeat";
+  if (type === "cron") return "cron";
+  return "tool";
+}
+
+function _summarizeGroup(grp) {
+  if (grp.summary) return grp.summary.slice(0, 80);
+  const type = grp.type || "";
+  if (type === "heartbeat") return "Heartbeat";
+  if (type === "cron") return "Cron";
+  if (type === "task_exec") return `Task: ${grp.summary || ""}`.trim().slice(0, 80);
+  return type || "activity";
 }
 
 function _mapEventType(type) {
@@ -812,11 +868,11 @@ export function disposeOrgDashboard() {
 }
 
 export function updateAnimaStatus(name, status) {
-  const card = _cardEls.get(name);
-  if (!card) return;
-
   const node = _nodeData.get(name);
   if (node) node.status = status;
+
+  const card = _cardEls.get(name);
+  if (!card) return;
 
   const dotClass = getStatusDotClass(status);
   const label = getStatusLabel(status);
@@ -836,13 +892,10 @@ export function getCardPosition(name) {
 }
 
 const MAX_STREAM_ENTRIES = 4;
-const STALE_TIMEOUT_MS = 30_000;
+const STALE_TIMEOUT_MS = 120_000;
 let _staleTimerId = null;
 
 export function updateCardActivity(name, data) {
-  const streamEl = document.getElementById(`orgStream_${CSS.escape(name)}`);
-  if (!streamEl) return;
-
   let entries = _cardStreams.get(name) || [];
   const { eventType, toolName, toolId, isError, detail, channel, summary } = data;
 
@@ -906,7 +959,9 @@ export function updateCardActivity(name, data) {
     entries = entries.slice(-MAX_STREAM_ENTRIES);
   }
   _cardStreams.set(name, entries);
-  _renderStream(streamEl, entries.slice(-MAX_STREAM_ENTRIES));
+
+  const streamEl = document.getElementById(`orgStream_${CSS.escape(name)}`);
+  if (streamEl) _renderStream(streamEl, entries.slice(-MAX_STREAM_ENTRIES));
   _syncCardSpinner(name);
   _ensureStaleTimer();
 }

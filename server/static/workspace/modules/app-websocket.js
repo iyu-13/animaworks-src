@@ -70,8 +70,8 @@ export function setupWebSocket(deps) {
       lastAnimaStatus[data.name] = data.status;
       addActivity("system", data.name, `Status: ${data.status}`);
     }
+    updateAnimaStatus(data.name, data.status || data);
     if (getCurrentView() === "org") {
-      updateAnimaStatus(data.name, data.status || data);
       const state = typeof data.status === "object"
         ? (data.status.state || data.status.status || "idle")
         : String(data.status || "idle");
@@ -119,12 +119,10 @@ export function setupWebSocket(deps) {
       ts: data.ts || localISOString(),
       summary: data.summary || "heartbeat completed",
     });
-    if (getCurrentView() === "org") {
-      updateCardActivity(data.name, {
-        eventType: "heartbeat",
-        summary: data.summary || "heartbeat",
-      });
-    }
+    updateCardActivity(data.name, {
+      eventType: "heartbeat",
+      summary: data.summary || "heartbeat",
+    });
   }));
 
   wsUnsubscribers.push(onEvent("anima.cron", (data) => {
@@ -136,12 +134,10 @@ export function setupWebSocket(deps) {
       ts: data.ts || localISOString(),
       summary: data.summary || `cron: ${data.task || ""}`,
     });
-    if (getCurrentView() === "org") {
-      updateCardActivity(data.name, {
-        eventType: "cron",
-        summary: data.summary || `cron: ${data.task || ""}`,
-      });
-    }
+    updateCardActivity(data.name, {
+      eventType: "cron",
+      summary: data.summary || `cron: ${data.task || ""}`,
+    });
   }));
 
   // ── anima.tool_activity — live tool usage ──
@@ -161,15 +157,13 @@ export function setupWebSocket(deps) {
     document.dispatchEvent(
       new CustomEvent("anima-tool-activity", { detail: { ...data, event: evtType, tool_name: toolName } })
     );
-    if (getCurrentView() === "org") {
-      updateCardActivity(data.name, {
-        eventType: evtType,
-        toolName,
-        toolId: data.tool_id,
-        isError: data.is_error,
-        detail: data.detail,
-      });
-    }
+    updateCardActivity(data.name, {
+      eventType: evtType,
+      toolName,
+      toolId: data.tool_id,
+      isError: data.is_error,
+      detail: data.detail,
+    });
   }));
 
   // ── board.post — shared channel message ──
@@ -190,13 +184,11 @@ export function setupWebSocket(deps) {
 
     addActivity("chat", from, `[#${channel}] ${text}`);
 
-    if (getCurrentView() === "org") {
-      updateCardActivity(from, {
-        eventType: "board_post",
-        channel,
-        summary: text.slice(0, 60),
-      });
-    }
+    updateCardActivity(from, {
+      eventType: "board_post",
+      channel,
+      summary: text.slice(0, 60),
+    });
 
     addTimelineEvent({
       id: Date.now().toString(),
