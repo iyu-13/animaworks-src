@@ -52,10 +52,10 @@ from core.execution.base import (
     strip_thinking_tags,
 )
 from core.execution.reminder import (
-    MSG_CONTEXT_THRESHOLD,
-    MSG_FINAL_ITERATION,
-    MSG_OUTPUT_TRUNCATED,
     SystemReminderQueue,
+    msg_context_threshold,
+    msg_final_iteration,
+    msg_output_truncated,
 )
 from core.memory import MemoryManager
 from core.memory.shortterm import ShortTermMemory
@@ -156,7 +156,7 @@ class LiteLLMExecutor(
                     {
                         "role": "user",
                         "content": SystemReminderQueue.format_reminder(
-                            MSG_FINAL_ITERATION,
+                            msg_final_iteration(),
                         ),
                     }
                 )
@@ -217,7 +217,7 @@ class LiteLLMExecutor(
                         ratio = float(tracker.usage_ratio)
                     except (TypeError, ValueError):
                         ratio = 0.0
-                    self.reminder_queue.push_sync(MSG_CONTEXT_THRESHOLD.format(ratio=ratio))
+                    self.reminder_queue.push_sync(msg_context_threshold(ratio=ratio))
 
                 current_text = message.content or ""
                 _, current_text = strip_thinking_tags(current_text)
@@ -254,7 +254,7 @@ class LiteLLMExecutor(
 
             # ── P1-2: output truncation reminder ─────────────────
             if choice.finish_reason == "length":
-                self.reminder_queue.push_sync(MSG_OUTPUT_TRUNCATED)
+                self.reminder_queue.push_sync(msg_output_truncated())
 
             # ── Check for tool calls ──────────────────────────
             tool_calls = message.tool_calls

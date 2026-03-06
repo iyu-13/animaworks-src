@@ -274,10 +274,11 @@ class TestNotificationToolSchema:
     """Test that notify_human tool schema is properly defined."""
 
     def test_notify_human_in_notification_tools(self):
-        from core.tooling.schemas import NOTIFICATION_TOOLS
+        from core.tooling.schemas import _notification_tools
 
-        assert len(NOTIFICATION_TOOLS) == 1
-        schema = NOTIFICATION_TOOLS[0]
+        notification_tools = _notification_tools()
+        assert len(notification_tools) == 1
+        schema = notification_tools[0]
         assert schema["name"] == "call_human"
         assert "subject" in schema["parameters"]["properties"]
         assert "body" in schema["parameters"]["properties"]

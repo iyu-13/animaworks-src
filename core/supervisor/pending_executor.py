@@ -18,6 +18,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from core.i18n import t
+
 if TYPE_CHECKING:
     from core.anima import DigitalAnima
 
@@ -34,23 +36,23 @@ _TASK_RESULT_MAX_CHARS = 2000
 
 def _topological_sort(tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Return tasks in topological order. Raises ValueError on cycles."""
-    task_map = {t["task_id"]: t for t in tasks}
+    task_map = {td["task_id"]: td for td in tasks}
     in_degree: dict[str, int] = {tid: 0 for tid in task_map}
-    for t in tasks:
-        for dep in t.get("depends_on", []):
+    for td in tasks:
+        for dep in td.get("depends_on", []):
             if dep in in_degree:
-                in_degree[t["task_id"]] += 1
+                in_degree[td["task_id"]] += 1
 
     queue = [tid for tid, deg in in_degree.items() if deg == 0]
     result: list[dict[str, Any]] = []
     while queue:
         tid = queue.pop(0)
         result.append(task_map[tid])
-        for t in tasks:
-            if tid in t.get("depends_on", []):
-                in_degree[t["task_id"]] -= 1
-                if in_degree[t["task_id"]] == 0:
-                    queue.append(t["task_id"])
+        for td in tasks:
+            if tid in td.get("depends_on", []):
+                in_degree[td["task_id"]] -= 1
+                if in_degree[td["task_id"]] == 0:
+                    queue.append(td["task_id"])
 
     if len(result) != len(tasks):
         raise ValueError("Cycle detected in task dependencies")
@@ -121,7 +123,7 @@ class PendingTaskExecutor:
         for dep_id in task_desc.get("depends_on", []):
             result = completed.get(dep_id, "")
             if result:
-                parts.append(f"## 先行タスク [{dep_id}] の結果\n{result}")
+                parts.append(t("pending_executor.dep_result_header", dep_id=dep_id) + f"\n{result}")
         return "\n\n".join(parts)
 
     def _write_failed_result(self, task_id: str, reason: str) -> None:
@@ -323,8 +325,8 @@ class PendingTaskExecutor:
                 self._anima_name,
                 batch_id,
             )
-            for t in tasks:
-                self._write_failed_result(t["task_id"], "cycle_in_batch")
+            for td in tasks:
+                self._write_failed_result(td["task_id"], "cycle_in_batch")
             return
 
         completed: dict[str, str] = {}  # task_id -> result_summary
@@ -332,20 +334,19 @@ class PendingTaskExecutor:
         remaining = list(order)
 
         while remaining:
-            ready = [t for t in remaining if _deps_satisfied(t, completed, failed)]
+            ready = [td for td in remaining if _deps_satisfied(td, completed, failed)]
             if not ready:
-                # Remaining tasks all have failed dependencies
-                for t in remaining:
-                    failed.add(t["task_id"])
-                    self._write_failed_result(t["task_id"], "failed_dependency")
+                for td in remaining:
+                    failed.add(td["task_id"])
+                    self._write_failed_result(td["task_id"], "failed_dependency")
                 break
 
-            parallel_ready = [t for t in ready if t.get("parallel")]
-            serial_ready = [t for t in ready if not t.get("parallel")]
+            parallel_ready = [td for td in ready if td.get("parallel")]
+            serial_ready = [td for td in ready if not td.get("parallel")]
 
             # Execute parallel tasks concurrently under semaphore
             if parallel_ready:
-                coros = [self._execute_parallel_task(t, completed, batch_id) for t in parallel_ready]
+                coros = [self._execute_parallel_task(td, completed, batch_id) for td in parallel_ready]
                 results = await asyncio.gather(*coros, return_exceptions=True)
                 for task, result in zip(parallel_ready, results, strict=False):
                     remaining.remove(task)
@@ -558,15 +559,16 @@ class PendingTaskExecutor:
         activity = ActivityLogger(self._anima_dir)
         activity.log(
             "task_exec_start",
-            summary=f"タスク実行開始: {title}",
+            summary=t("pending_executor.task_exec_start", title=title),
             meta={"task_id": task_id, "submitted_by": submitted_by},
         )
 
-        criteria_text = "\n".join(f"- {c}" for c in acceptance_criteria) if acceptance_criteria else "(なし)"
-        constraints_text = "\n".join(f"- {c}" for c in constraints) if constraints else "(なし)"
-        paths_text = "\n".join(f"- {p}" for p in file_paths) if file_paths else "(なし)"
+        _none = t("pending_executor.none_value")
+        criteria_text = "\n".join(f"- {c}" for c in acceptance_criteria) if acceptance_criteria else _none
+        constraints_text = "\n".join(f"- {c}" for c in constraints) if constraints else _none
+        paths_text = "\n".join(f"- {p}" for p in file_paths) if file_paths else _none
 
-        full_context = context or "(なし)"
+        full_context = context or _none
         if dep_context:
             full_context = f"{full_context}\n\n{dep_context}"
 
@@ -609,11 +611,11 @@ class PendingTaskExecutor:
             journal.close()
 
         if not result_summary:
-            result_summary = accumulated_text[:500] or "(タスク完了)"
+            result_summary = accumulated_text[:500] or t("pending_executor.task_completed")
 
         activity.log(
             "task_exec_end",
-            summary=f"タスク完了: {title} — {result_summary[:200]}",
+            summary=t("pending_executor.task_exec_end", title=title, result=result_summary[:200]),
             meta={"task_id": task_id},
         )
 

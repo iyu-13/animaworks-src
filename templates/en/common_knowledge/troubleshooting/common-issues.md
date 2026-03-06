@@ -163,7 +163,7 @@ send_message(
 2. **Try different keywords**
    - Synonyms and related terms (e.g. "send", "message", "notify", "contact")
    - English keywords (e.g. "slack", "message", "send")
-   - Partial match (e.g. "Chatwork" → "chatwork", "チャットワーク")
+   - Partial match (e.g. "Chatwork" → "chatwork", "chat work")
 
 3. **Search common knowledge**
    - If not in personal memory, it may be in shared knowledge:

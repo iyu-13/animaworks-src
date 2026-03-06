@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -39,7 +39,7 @@
         </button>
         <div class="ws-system-status" id="wsSystemStatus">
           <span class="status-dot status-offline"></span>
-          <span class="status-text" data-i18n="ws.connecting">接続中...</span>
+          <span class="status-text" data-i18n="ws.connecting">Connecting...</span>
         </div>
         <span class="ws-user-info" id="wsUserInfo"></span>
         <button class="ws-logout-btn" id="wsLogoutBtn" data-i18n="ws.logout">Log out</button>
@@ -65,10 +65,10 @@
           <aside class="ws-conv-sidebar">
             <!-- Tab Bar -->
             <div class="ws-right-tabs" id="wsRightTabs">
-              <button class="right-tab active" data-tab="state" id="wsTabState" data-i18n="ws.state_tab">状態</button>
-              <button class="right-tab" data-tab="activity" id="wsTabActivity" data-i18n="ws.activity_tab">活動</button>
+              <button class="right-tab active" data-tab="state" id="wsTabState" data-i18n="ws.state_tab">State</button>
+              <button class="right-tab" data-tab="activity" id="wsTabActivity" data-i18n="ws.activity_tab">Activity</button>
               <button class="right-tab" data-tab="board" id="wsTabBoard" data-i18n="ws.board_tab">Board</button>
-              <button class="right-tab" data-tab="history" id="wsTabHistory" data-i18n="ws.history_tab">履歴</button>
+              <button class="right-tab" data-tab="history" id="wsTabHistory" data-i18n="ws.history_tab">History</button>
             </div>
 
             <!-- Tab Panes -->
@@ -103,16 +103,16 @@
               <div class="image-preview-bar" id="wsConvPreviewBar" style="display:none"></div>
               <div class="pending-queue-bar" id="wsConvPending" style="display:none">
                 <div class="pending-queue-header">
-                  <span class="pending-queue-label" id="wsConvPendingLabel" data-i18n="chat.queue_label">キュー</span>
-                  <button class="pending-queue-clear" id="wsConvPendingCancel" type="button" data-i18n-title="chat.queue_clear_all" title="全クリア">✕ all</button>
+                  <span class="pending-queue-label" id="wsConvPendingLabel" data-i18n="chat.queue_label">Queue</span>
+                  <button class="pending-queue-clear" id="wsConvPendingCancel" type="button" data-i18n-title="chat.queue_clear_all" title="Clear all">✕ all</button>
                 </div>
                 <div id="wsConvPendingList"></div>
               </div>
               <div class="chat-input-wrap">
-                <textarea class="ws-conv-input" id="wsConvInput" data-i18n-placeholder="ws.message_placeholder" placeholder="メッセージを入力... (Ctrl+Enter, Alt+Enter でキュー)" rows="1"></textarea>
+                <textarea class="ws-conv-input" id="wsConvInput" data-i18n-placeholder="ws.message_placeholder" placeholder="Type a message... (Ctrl+Enter, Alt+Enter to queue)" rows="1"></textarea>
                 <div class="chat-input-actions">
-                  <button class="chat-attach-btn" type="button" id="wsConvAttachBtn" data-i18n-title="ws.attach_image" title="画像を添付">+</button>
-                  <button class="chat-queue-btn" type="button" id="wsConvQueueBtn" data-i18n-title="chat.queue_add" title="キューに追加 (Alt+Enter)">
+                  <button class="chat-attach-btn" type="button" id="wsConvAttachBtn" data-i18n-title="ws.attach_image" title="Attach image">+</button>
+                  <button class="chat-queue-btn" type="button" id="wsConvQueueBtn" data-i18n-title="chat.queue_add" title="Add to queue (Alt+Enter)">
                     <svg class="chat-queue-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                       <path d="M12 5v14M5 12l7 7 7-7" />
                     </svg>

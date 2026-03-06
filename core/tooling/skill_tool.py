@@ -10,6 +10,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from core.i18n import t
 from core.time_utils import now_jst
 
 logger = logging.getLogger("animaworks.skill_tool")
@@ -49,34 +50,38 @@ def build_skill_tool_description(
     <available_skills> block within the budget.
     """
     lines = [
-        "スキル・手順書をオンデマンドでロードする。",
-        "スキルを発動すると、詳細な手順がこのツールのレスポンスとして提供される。",
-        "該当するスキルがある場合に使用すること。",
+        t("skill.desc_line1"),
+        t("skill.desc_line2"),
+        t("skill.desc_line3"),
         "",
         "<available_skills>",
     ]
     total = sum(len(line) for line in lines)
 
+    truncated = t("skill.truncated")
+
     for meta in skill_metas:
         entry = f"- {meta.name}: {meta.description}"
         if total + len(entry) > _DESCRIPTION_BUDGET:
-            lines.append("(以降省略)")
+            lines.append(truncated)
             break
         lines.append(entry)
         total += len(entry)
 
+    common_label = t("skill.label_common")
     for meta in common_skill_metas:
-        entry = f"- {meta.name} (共通): {meta.description}"
+        entry = f"- {meta.name} ({common_label}): {meta.description}"
         if total + len(entry) > _DESCRIPTION_BUDGET:
-            lines.append("(以降省略)")
+            lines.append(truncated)
             break
         lines.append(entry)
         total += len(entry)
 
+    procedure_label = t("skill.label_procedure")
     for meta in procedure_metas:
-        entry = f"- {meta.name} (手順): {meta.description}"
+        entry = f"- {meta.name} ({procedure_label}): {meta.description}"
         if total + len(entry) > _DESCRIPTION_BUDGET:
-            lines.append("(以降省略)")
+            lines.append(truncated)
             break
         lines.append(entry)
         total += len(entry)
@@ -105,7 +110,7 @@ def load_and_render_skill(
     path, skill_type = _resolve_skill_path(skill_name, skills_dir, common_skills_dir, procedures_dir)
     if path is None:
         available = _list_available_names(skills_dir, common_skills_dir, procedures_dir)
-        return f"スキル '{skill_name}' が見つかりません。\n利用可能なスキル: {', '.join(available)}"
+        return t("skill.not_found", skill_name=skill_name, available=", ".join(available))
 
     # Read and strip frontmatter
     raw = path.read_text(encoding="utf-8")
@@ -121,13 +126,13 @@ def load_and_render_skill(
 
     # Append context if provided
     if context:
-        parts.append(f"\n## コンテキスト\n{context}")
+        parts.append(f"\n{t('skill.context_header')}\n{context}")
 
     # Append allowed_tools soft constraint
     allowed_tools = frontmatter.get("allowed_tools", [])
     if allowed_tools:
-        parts.append("\n## ツール制約")
-        parts.append("このスキルの実行中は以下のツールのみ使用してください:")
+        parts.append(f"\n{t('skill.tool_constraint_header')}")
+        parts.append(t("skill.tool_constraint_desc"))
         for tool in allowed_tools:
             parts.append(f"- {tool}")
 
@@ -151,17 +156,17 @@ def _resolve_skill_path(
     # 1. Personal skills: {name}/SKILL.md
     candidate = skills_dir / name / "SKILL.md"
     if candidate.is_file():
-        return candidate, "個人"
+        return candidate, t("skill.type_personal")
 
     # 2. Common skills: {name}/SKILL.md
     candidate = common_skills_dir / name / "SKILL.md"
     if candidate.is_file():
-        return candidate, "共通"
+        return candidate, t("skill.type_common")
 
     # 3. Procedures (flat file, unchanged)
     candidate = procedures_dir / f"{name}.md"
     if candidate.is_file():
-        return candidate, "手順"
+        return candidate, t("skill.type_procedure")
 
     return None, ""
 

@@ -13,7 +13,7 @@ You have messages in your inbox. Review the following and reply appropriately.
 ### Replying to External Platform Messages
 When a message has `[reply_instruction: ...]` metadata:
 - **Always follow the instruction** to reply (execute via `execute_command`)
-- Replace `{返信内容}` with your actual reply text
+- Replace `{reply_content}` with your actual reply text
 - Do NOT use `send_message` (it sends DMs, not thread replies)
 
 {task_delegation_rules}

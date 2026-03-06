@@ -25,6 +25,7 @@ async function _doInit() {
 
 export async function loadTranslations(locale) {
   _locale = locale;
+  document.documentElement.lang = locale;
   try {
     const res = await fetch(`/i18n/${locale}.json`);
     _translations = await res.json();

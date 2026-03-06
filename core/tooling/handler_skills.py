@@ -77,7 +77,7 @@ class SkillsToolsMixin:
                 suggestion="Check tool name with refresh_tools first",
             )
 
-        if not self._check_tool_creation_permission("共有ツール"):
+        if not self._check_tool_creation_permission(t("handler.shared_tool_keyword")):
             return _error_result(
                 "PermissionDenied",
                 t("handler.shared_tool_denied"),
@@ -258,11 +258,11 @@ class SkillsToolsMixin:
         allowed_tools = args.get("allowed_tools")
 
         if not skill_name:
-            return "skill_name パラメータは必須です。"
+            return t("handler.skill_name_required")
         if not description:
-            return "description パラメータは必須です。"
+            return t("handler.description_param_required")
         if not body:
-            return "body パラメータは必須です。"
+            return t("handler.body_param_required")
 
         if location == "common":
             base_dir = get_common_skills_dir()

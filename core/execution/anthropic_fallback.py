@@ -41,11 +41,12 @@ from core.execution.base import (
     tool_result_save_budget,
 )
 from core.execution.reminder import (
-    MSG_CONTEXT_THRESHOLD,
-    MSG_FINAL_ITERATION,
-    MSG_OUTPUT_TRUNCATED,
     SystemReminderQueue,
+    msg_context_threshold,
+    msg_final_iteration,
+    msg_output_truncated,
 )
+from core.i18n import t
 from core.memory import MemoryManager
 from core.memory.shortterm import ShortTermMemory
 from core.prompt.builder import build_system_prompt
@@ -283,7 +284,7 @@ class AnthropicFallbackExecutor(BaseExecutor):
                     {
                         "role": "user",
                         "content": SystemReminderQueue.format_reminder(
-                            MSG_FINAL_ITERATION,
+                            msg_final_iteration(),
                         ),
                     }
                 )
@@ -352,7 +353,7 @@ class AnthropicFallbackExecutor(BaseExecutor):
                         ratio = float(tracker.usage_ratio)
                     except (TypeError, ValueError):
                         ratio = 0.0
-                    self.reminder_queue.push_sync(MSG_CONTEXT_THRESHOLD.format(ratio=ratio))
+                    self.reminder_queue.push_sync(msg_context_threshold(ratio=ratio))
 
                 current_text = "\n".join(b.text for b in response.content if b.type == "text")
                 new_sys, chain_count = await handle_session_chaining(
@@ -384,7 +385,7 @@ class AnthropicFallbackExecutor(BaseExecutor):
 
             # ── P1-2: output truncation reminder ─────────────────
             if response.stop_reason == "max_tokens":
-                self.reminder_queue.push_sync(MSG_OUTPUT_TRUNCATED)
+                self.reminder_queue.push_sync(msg_output_truncated())
 
             # ── Check for tool use ────────────────────────────
             tool_uses = [b for b in response.content if b.type == "tool_use"]
@@ -555,7 +556,7 @@ class AnthropicFallbackExecutor(BaseExecutor):
                         {
                             "role": "user",
                             "content": SystemReminderQueue.format_reminder(
-                                MSG_FINAL_ITERATION,
+                                msg_final_iteration(),
                             ),
                         }
                     )
@@ -645,11 +646,11 @@ class AnthropicFallbackExecutor(BaseExecutor):
                             ratio = float(tracker.usage_ratio)
                         except (TypeError, ValueError):
                             ratio = 0.0
-                        self.reminder_queue.push_sync(MSG_CONTEXT_THRESHOLD.format(ratio=ratio))
+                        self.reminder_queue.push_sync(msg_context_threshold(ratio=ratio))
 
                 # P1-2: output truncation reminder
                 if final_message and getattr(final_message, "stop_reason", None) == "max_tokens":
-                    self.reminder_queue.push_sync(MSG_OUTPUT_TRUNCATED)
+                    self.reminder_queue.push_sync(msg_output_truncated())
 
                 # ── Check for tool use ────────────────────────
                 tool_uses = [b for b in final_message.content if b.type == "tool_use"]
@@ -703,12 +704,12 @@ class AnthropicFallbackExecutor(BaseExecutor):
                         )
                     except ToolExecutionError as tool_err:
                         logger.warning("Tool execution error: %s – %s", tu.name, tool_err)
-                        result = f"ツール実行エラー: {tool_err}"
+                        result = t("assisted.tool_exec_error", error=str(tool_err))
                     except AnimaWorksError:
                         raise
                     except Exception as tool_err:
                         logger.exception("Unexpected tool error: %s", tu.name)
-                        result = f"ツール実行エラー: {tool_err}"
+                        result = t("assisted.tool_exec_error", error=str(tool_err))
 
                     trust = TOOL_TRUST_LEVELS.get(tu.name, "untrusted")
                     self._tool_handler._min_trust_seen = min(

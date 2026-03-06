@@ -377,9 +377,13 @@ class OrgToolsMixin:
             background_credential=credential if credential else "",
         )
 
-        log_summary = f"{target_name}のbackground_modelを{model or '(クリア)'}に変更"
+        log_summary = t(
+            "handler.bg_model_change_log",
+            target_name=target_name,
+            model=model or t("handler.none_value"),
+        )
         if reason:
-            log_summary += f" (理由: {reason})"
+            log_summary += t("handler.reason_prefix", reason=reason)
         self._activity.log(
             "tool_use",
             tool="set_subordinate_background_model",
@@ -396,8 +400,8 @@ class OrgToolsMixin:
         )
 
         if model:
-            return f"{target_name}のbackground_modelを'{model}'に変更しました。反映にはrestart_subordinateが必要です。"
-        return f"{target_name}のbackground_modelをクリアしました（メインモデルを使用）。"
+            return t("handler.bg_model_changed", target_name=target_name, model=model)
+        return t("handler.bg_model_cleared", target_name=target_name)
 
     def _handle_restart_subordinate(self, args: dict[str, Any]) -> str:
         """Request restart of a subordinate anima via sentinel flag in status.json."""

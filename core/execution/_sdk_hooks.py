@@ -360,12 +360,18 @@ def _intercept_task_to_delegation(
     # Send DM via Messenger
     dm_result = ""
     try:
+        from core.i18n import t
         from core.messenger import Messenger
 
         messenger = Messenger(get_shared_dir(), my_name)
         messenger.send(
             to=target_name,
-            content=(f"タスクを委譲します。\n\n指示: {prompt[:500]}\n期限: 2h\ntask_id: {sub_entry.task_id}"),
+            content=t(
+                "handler.delegation_dm_content",
+                instruction=prompt[:500],
+                deadline="2h",
+                task_id=sub_entry.task_id,
+            ),
             intent="delegation",
         )
         dm_result = "DM sent"

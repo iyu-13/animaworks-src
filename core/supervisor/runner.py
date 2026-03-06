@@ -27,6 +27,7 @@ from typing import Any
 
 from core.anima import DigitalAnima
 from core.exceptions import ExecutionError, MemoryWriteError, ProcessError  # noqa: F401
+from core.i18n import t
 from core.memory.streaming_journal import StreamingJournal
 from core.supervisor.inbox_rate_limiter import InboxRateLimiter
 from core.supervisor.ipc import IPCRequest, IPCResponse, IPCServer
@@ -259,7 +260,7 @@ class AnimaRunner:
                             self.anima.model_config,
                             thread_id=thread_id,
                         )
-                        saved_text = recovery.recovered_text + "\n[応答が中断されました]"
+                        saved_text = recovery.recovered_text + "\n" + t("anima.response_interrupted")
                         conv_memory.append_turn("assistant", saved_text)
                         conv_memory.save()
                         StreamingJournal.confirm_recovery(self._anima_dir, session_type, thread_id=thread_id)
@@ -284,7 +285,6 @@ class AnimaRunner:
                 if session_type == "heartbeat":
                     try:
                         recovery_note_path = self._anima_dir / "state" / "recovery_note.md"
-                        from core.i18n import t
                         from core.time_utils import now_iso
 
                         note_content = t(
@@ -308,7 +308,10 @@ class AnimaRunner:
                     from core.memory.activity import ActivityLogger
 
                     activity = ActivityLogger(self._anima_dir)
-                    recovery_summary = f"応答が中断されました（前回セッションの未完了ストリームを回復, {session_type}）"
+                    recovery_summary = t(
+                        "runner.recovery_text",
+                        session_type=session_type,
+                    )
                     recovery_content = recovery_summary
                     if recovery.recovered_text:
                         recovery_content = f"{recovery.recovered_text}\n\n{recovery_summary}"

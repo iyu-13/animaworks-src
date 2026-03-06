@@ -1072,7 +1072,7 @@ class PrimingEngine:
         # New: active parallel tasks from _active_parallel_tasks
         active = self._get_active_parallel_tasks() if self._get_active_parallel_tasks else {}
         if active:
-            lines = ["## 実行中の並列タスク"]
+            lines = [t("priming.active_parallel_tasks_header")]
             for tid, info in active.items():
                 elapsed = self._format_elapsed(info.get("started_at", ""))
                 status = info.get("status", "running")
@@ -1094,7 +1094,7 @@ class PrimingEngine:
                     reverse=True,
                 )[:5]
                 if result_files:
-                    lines = ["## 完了済みバックグラウンドタスク"]
+                    lines = [t("priming.completed_bg_tasks_header")]
                     for rf in result_files:
                         try:
                             content = rf.read_text(encoding="utf-8").strip()

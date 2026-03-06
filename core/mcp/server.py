@@ -92,9 +92,9 @@ def _get_supervisor_tool_names() -> frozenset[str]:
 
     Used by list_tools() to dynamically filter supervisor-only tools.
     """
-    from core.tooling.schemas import SUPERVISOR_TOOLS
+    from core.tooling.schemas import _supervisor_tools
 
-    return frozenset(t["name"] for t in SUPERVISOR_TOOLS)
+    return frozenset(t["name"] for t in _supervisor_tools())
 
 
 _SUPERVISOR_TOOL_NAMES: frozenset[str] = _get_supervisor_tool_names()
@@ -179,33 +179,33 @@ def _build_mcp_tools() -> tuple[list[Tool], frozenset[str]]:
         is the set of internal tool names.
     """
     from core.tooling.schemas import (
-        BACKGROUND_TASK_TOOLS,
-        CHANNEL_TOOLS,
-        CHECK_PERMISSIONS_TOOLS,
         KNOWLEDGE_TOOLS,
         MEMORY_TOOLS,
-        NOTIFICATION_TOOLS,
         PLAN_TASKS_TOOLS,
         PROCEDURE_TOOLS,
-        SKILL_TOOLS,
-        SUPERVISOR_TOOLS,
-        TASK_TOOLS,
-        VAULT_TOOLS,
+        _background_task_tools,
+        _channel_tools,
+        _check_permissions_tools,
+        _notification_tools,
+        _skill_tools,
+        _supervisor_tools,
+        _task_tools,
+        _vault_tools,
     )
 
     all_schemas: list[dict[str, Any]] = [
         *MEMORY_TOOLS,
-        *CHANNEL_TOOLS,
-        *TASK_TOOLS,
-        *NOTIFICATION_TOOLS,
+        *_channel_tools(),
+        *_task_tools(),
+        *_notification_tools(),
         *PROCEDURE_TOOLS,
         *KNOWLEDGE_TOOLS,
-        *SUPERVISOR_TOOLS,
-        *SKILL_TOOLS,
+        *_supervisor_tools(),
+        *_skill_tools(),
         *PLAN_TASKS_TOOLS,
-        *BACKGROUND_TASK_TOOLS,
-        *VAULT_TOOLS,
-        *CHECK_PERMISSIONS_TOOLS,
+        *_background_task_tools(),
+        *_vault_tools(),
+        *_check_permissions_tools(),
     ]
 
     exposed = _EXPOSED_TOOL_NAMES

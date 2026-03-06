@@ -73,5 +73,5 @@ type: command
 tool: slack_send
 args:
   channel: "#general"
-  message: "おはようございます！"
+  message: "Good morning!"
 -->

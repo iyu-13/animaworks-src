@@ -22,6 +22,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from core.i18n import t
 from core.time_utils import now_jst
 
 logger = logging.getLogger(__name__)
@@ -403,15 +404,27 @@ def _get_locale() -> str:
 
 def get_default_description(tool_name: str, locale: str | None = None) -> str:
     """Get default tool description for given locale with fallback."""
-    loc = locale or _get_locale()
+    key = f"prompt_db.{tool_name}"
+    from core.i18n import _STRINGS
+
+    if key in _STRINGS:
+        loc = locale if locale in ("ja", "en") else "en"
+        return t(key, locale=loc)
     entry = DEFAULT_DESCRIPTIONS.get(tool_name, {})
+    loc = locale or _get_locale()
     return entry.get(loc) or entry.get("en") or entry.get("ja", "")
 
 
 def get_default_guide(key: str, locale: str | None = None) -> str:
     """Get default tool guide for given locale with fallback."""
-    loc = locale or _get_locale()
+    i18n_key = f"prompt_db.guide.{key}"
+    from core.i18n import _STRINGS
+
+    if i18n_key in _STRINGS:
+        loc = locale if locale in ("ja", "en") else "en"
+        return t(i18n_key, locale=loc)
     entry = DEFAULT_GUIDES.get(key, {})
+    loc = locale or _get_locale()
     return entry.get(loc) or entry.get("en") or entry.get("ja", "")
 
 

@@ -20,6 +20,7 @@ import logging
 from typing import Any
 
 from core.exceptions import ToolConfigError  # noqa: F401
+from core.i18n import t as _t
 
 logger = logging.getLogger("animaworks.tool_schemas")
 
@@ -164,118 +165,97 @@ MEMORY_TOOLS: list[dict[str, Any]] = [
     },
 ]
 
-CHANNEL_TOOLS: list[dict[str, Any]] = [
-    {
-        "name": "post_channel",
-        "description": (
-            "Boardの共有チャネルにメッセージを投稿する。"
-            "チーム全体に共有すべき情報はgeneralチャネルに、"
-            "運用・インフラ関連はopsチャネルに投稿する。"
-            "全Animaが閲覧できるため、解決済み情報の共有や"
-            "お知らせに使うこと。1対1の連絡にはsend_messageを使う。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "channel": {
-                    "type": "string",
-                    "description": "チャネル名 (general=全体共有, ops=運用系)",
+
+def _channel_tools() -> list[dict[str, Any]]:
+    return [
+        {
+            "name": "post_channel",
+            "description": _t("schema.post_channel.desc"),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "channel": {
+                        "type": "string",
+                        "description": _t("schema.post_channel.channel"),
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": _t("schema.post_channel.text"),
+                    },
                 },
-                "text": {
-                    "type": "string",
-                    "description": "投稿するメッセージ本文。@名前 でメンション可能（メンション先にDM通知される）。@all で起動中の全員にDM通知",
-                },
+                "required": ["channel", "text"],
             },
-            "required": ["channel", "text"],
         },
-    },
-    {
-        "name": "read_channel",
-        "description": (
-            "Boardの共有チャネルの直近メッセージを読む。"
-            "他のAnimaやユーザーが共有した情報を確認できる。"
-            "human_only=trueでユーザー発言のみフィルタリング可能。"
-            "inbox はチャネルではないため指定不可（inbox はシステムが自動処理）。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "channel": {
-                    "type": "string",
-                    "description": "チャネル名 (general, ops)",
+        {
+            "name": "read_channel",
+            "description": _t("schema.read_channel.desc"),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "channel": {
+                        "type": "string",
+                        "description": _t("schema.read_channel.channel"),
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": _t("schema.read_channel.limit"),
+                    },
+                    "human_only": {
+                        "type": "boolean",
+                        "description": _t("schema.read_channel.human_only"),
+                    },
                 },
-                "limit": {
-                    "type": "integer",
-                    "description": "取得件数（デフォルト: 20）",
-                },
-                "human_only": {
-                    "type": "boolean",
-                    "description": "trueの場合、人間の発言のみ返す",
-                },
+                "required": ["channel"],
             },
-            "required": ["channel"],
         },
-    },
-    {
-        "name": "read_dm_history",
-        "description": (
-            "特定の相手との過去のDM履歴を読む。"
-            "send_messageで送受信したメッセージの履歴を時系列で確認できる。"
-            "以前のやり取りの文脈を確認したいときに使う。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "peer": {
-                    "type": "string",
-                    "description": "DM相手の名前",
+        {
+            "name": "read_dm_history",
+            "description": _t("schema.read_dm_history.desc"),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "peer": {
+                        "type": "string",
+                        "description": _t("schema.read_dm_history.peer"),
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": _t("schema.read_dm_history.limit"),
+                    },
                 },
-                "limit": {
-                    "type": "integer",
-                    "description": "取得件数（デフォルト: 20）",
-                },
+                "required": ["peer"],
             },
-            "required": ["peer"],
         },
-    },
-    {
-        "name": "manage_channel",
-        "description": (
-            "Boardチャネルのアクセス制御(ACL)を管理する。"
-            "チャネルの作成、メンバーの追加・削除、チャネル情報の確認ができる。"
-            "メンバーリストが空のチャネル（general, ops等）は全員アクセス可能。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "action": {
-                    "type": "string",
-                    "enum": ["create", "add_member", "remove_member", "info"],
-                    "description": (
-                        "操作種別。create=チャネル作成, "
-                        "add_member=メンバー追加, "
-                        "remove_member=メンバー削除, "
-                        "info=チャネル情報表示"
-                    ),
+        {
+            "name": "manage_channel",
+            "description": _t("schema.manage_channel.desc"),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["create", "add_member", "remove_member", "info"],
+                        "description": _t("schema.manage_channel.action"),
+                    },
+                    "channel": {
+                        "type": "string",
+                        "description": _t("schema.manage_channel.channel"),
+                    },
+                    "members": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": _t("schema.manage_channel.members"),
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": _t("schema.manage_channel.description"),
+                    },
                 },
-                "channel": {
-                    "type": "string",
-                    "description": "チャネル名（小文字英数字・ハイフン・アンダースコア）",
-                },
-                "members": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "対象メンバー名リスト（create時は初期メンバー、add/remove時は操作対象）",
-                },
-                "description": {
-                    "type": "string",
-                    "description": "チャネルの説明（create時のみ）",
-                },
+                "required": ["action", "channel"],
             },
-            "required": ["action", "channel"],
         },
-    },
-]
+    ]
+
 
 FILE_TOOLS: list[dict[str, Any]] = [
     {
@@ -416,35 +396,34 @@ SEARCH_TOOLS: list[dict[str, Any]] = [
     },
 ]
 
-NOTIFICATION_TOOLS: list[dict[str, Any]] = [
-    {
-        "name": "call_human",
-        "description": (
-            "人間の管理者に連絡します。"
-            "重要な報告、問題のエスカレーション、判断が必要な事項がある場合に使用してください。"
-            "チャット画面と外部通知チャネル（Slack等）の両方に届きます。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "subject": {
-                    "type": "string",
-                    "description": "通知の件名（簡潔に）",
+
+def _notification_tools() -> list[dict[str, Any]]:
+    return [
+        {
+            "name": "call_human",
+            "description": _t("schema.call_human.desc"),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "subject": {
+                        "type": "string",
+                        "description": _t("schema.call_human.subject"),
+                    },
+                    "body": {
+                        "type": "string",
+                        "description": _t("schema.call_human.body"),
+                    },
+                    "priority": {
+                        "type": "string",
+                        "enum": ["low", "normal", "high", "urgent"],
+                        "description": _t("schema.call_human.priority"),
+                    },
                 },
-                "body": {
-                    "type": "string",
-                    "description": "通知の本文（詳細な報告内容）",
-                },
-                "priority": {
-                    "type": "string",
-                    "enum": ["low", "normal", "high", "urgent"],
-                    "description": "通知の優先度（デフォルト: normal）",
-                },
+                "required": ["subject", "body"],
             },
-            "required": ["subject", "body"],
         },
-    },
-]
+    ]
+
 
 DISCOVERY_TOOLS: list[dict[str, Any]] = []
 
@@ -580,272 +559,215 @@ ADMIN_TOOLS: list[dict[str, Any]] = [
     },
 ]
 
-SUPERVISOR_TOOLS: list[dict[str, Any]] = [
-    {
-        "name": "disable_subordinate",
-        "description": ("部下のAnimaを休止させる（プロセス停止 + 自動復帰防止）。自分の直属部下のみ操作可能。"),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "description": "休止させる部下のAnima名（例: hinata）",
-                },
-                "reason": {
-                    "type": "string",
-                    "description": "休止理由（activity_logに記録される）",
-                },
-            },
-            "required": ["name"],
-        },
-    },
-    {
-        "name": "enable_subordinate",
-        "description": ("休止中の部下のAnimaを復帰させる。自分の直属部下のみ操作可能。"),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "description": "復帰させる部下のAnima名（例: hinata）",
-                },
-            },
-            "required": ["name"],
-        },
-    },
-    {
-        "name": "set_subordinate_model",
-        "description": (
-            "部下のLLMモデルを変更する（直属部下のみ可能）。\n"
-            "変更は即時 config.json に保存されるが、実行中プロセスへの反映には "
-            "restart_subordinate を併用すること。\n\n"
-            "指定するモデル名は provider/model_name 形式（Claude は prefix 不要）。\n"
-            "KNOWN_MODELS 外の名前を指定した場合も警告のみで処理は続行する。\n\n"
-            "主なモデル名:\n"
-            "  [Mode S / Claude]\n"
-            "  claude-opus-4-6            最高性能・推奨\n"
-            "  claude-sonnet-4-6          バランス型・推奨\n"
-            "  claude-haiku-4-5-20251001  軽量・高速（レガシー）\n"
-            "  [Mode A / OpenAI]\n"
-            "  openai/gpt-4.1             最新・コーディング強\n"
-            "  openai/gpt-4.1-mini        高速・低コスト\n"
-            "  openai/o4-mini-2025-04-16  推論・低コスト\n"
-            "  [Mode A / Google]\n"
-            "  google/gemini-2.5-pro      最高性能\n"
-            "  google/gemini-2.5-flash    高速バランス\n"
-            "  [Mode A / xAI]\n"
-            "  xai/grok-4                 最新Grok\n"
-            "  [Mode A / Ollama local]\n"
-            "  ollama/glm-4.7             ローカル・tool_use対応\n"
-            "  [Mode B / Ollama local]\n"
-            "  ollama/gemma3:12b          中型ローカル\n"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "description": "変更する部下のAnima名",
-                },
-                "model": {
-                    "type": "string",
-                    "description": "新しいモデル名（例: claude-sonnet-4-6, openai/gpt-4.1）",
-                },
-                "reason": {
-                    "type": "string",
-                    "description": "変更理由（activity_log に記録される）",
-                },
-            },
-            "required": ["name", "model"],
-        },
-    },
-    {
-        "name": "set_subordinate_background_model",
-        "description": (
-            "部下のバックグラウンドモデル（heartbeat/cron用）を変更する（直属部下のみ可能）。\n"
-            "変更は即時 status.json に保存される。反映には restart_subordinate を併用すること。\n\n"
-            "バックグラウンドモデル未設定時はメインモデル（model）がそのまま使用される。\n"
-            "クリアするには model に空文字 '' を指定する。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "description": "対象の部下Anima名",
-                },
-                "model": {
-                    "type": "string",
-                    "description": "バックグラウンドモデル名（空文字でクリア）",
-                },
-                "credential": {
-                    "type": "string",
-                    "description": "credential名（省略可）",
-                },
-                "reason": {
-                    "type": "string",
-                    "description": "変更理由",
-                },
-            },
-            "required": ["name", "model"],
-        },
-    },
-    {
-        "name": "restart_subordinate",
-        "description": (
-            "部下のAnimaプロセスを再起動する（直属部下のみ可能）。\n"
-            "モデル変更（set_subordinate_model）後に呼び出すことで新モデルを即時反映できる。\n"
-            "Reconciliation ループが 30 秒以内にプロセスを再起動する。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "description": "再起動する部下のAnima名",
-                },
-                "reason": {
-                    "type": "string",
-                    "description": "再起動理由（activity_log に記録される）",
-                },
-            },
-            "required": ["name"],
-        },
-    },
-    {
-        "name": "org_dashboard",
-        "description": (
-            "配下全体の組織ダッシュボードを表示する。"
-            "各Animaのプロセス状態・最終アクティビティ時刻・現在タスク要約・タスク数を"
-            "ツリー形式で一覧する。配下が多い場合も全員分を返す。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {},
-        },
-    },
-    {
-        "name": "ping_subordinate",
-        "description": (
-            "配下のAnimaの生存確認を行う。"
-            "name を省略すると全配下を一括 ping する。"
-            "指定すると単一Animaのみ確認する。"
-            "プロセス状態・最終アクティビティ時刻・経過時間を返す。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "description": "確認するAnima名（省略時は全配下）",
-                },
-            },
-        },
-    },
-    {
-        "name": "read_subordinate_state",
-        "description": (
-            "配下のAnimaの現在のタスク状態を読み取る。"
-            "current_task.md（進行中タスク）と pending.md（保留タスク）の内容を返す。"
-            "直属部下だけでなく孫以下の配下も指定可能。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "description": "読み取る配下のAnima名",
-                },
-            },
-            "required": ["name"],
-        },
-    },
-    {
-        "name": "delegate_task",
-        "description": (
-            "直属部下にタスクを委譲する。部下のタスクキューにタスクを追加し、"
-            "同時にDMで指示を送信する。自分側にも追跡用エントリが作成される。"
-            "直属部下のみ操作可能。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "description": "委譲先の直属部下のAnima名",
-                },
-                "instruction": {
-                    "type": "string",
-                    "description": "タスクの指示内容",
-                },
-                "summary": {
-                    "type": "string",
-                    "description": "タスクの1行要約",
-                },
-                "deadline": {
-                    "type": "string",
-                    "description": "期限（相対形式: '30m', '2h', '1d' または ISO8601）",
-                },
-            },
-            "required": ["name", "instruction", "deadline"],
-        },
-    },
-    {
-        "name": "task_tracker",
-        "description": (
-            "delegate_task で委譲したタスクの進捗を追跡する。"
-            "自分のタスクキューから delegated ステータスのエントリを取得し、"
-            "部下側の最新ステータスと突き合わせて返す。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "status": {
-                    "type": "string",
-                    "enum": ["all", "active", "completed"],
-                    "description": "フィルタ（all: 全件, active: 進行中, completed: 完了済み）。デフォルト: active",
-                },
-            },
-        },
-    },
-    {
-        "name": "audit_subordinate",
-        "description": (
-            "配下のAnimaの直近活動を包括的に監査する。"
-            "活動サマリー・タスク状況・エラー頻度・ツール使用統計・通信パターンを"
-            "構造化レポートとして返す。定期的なパフォーマンスレビューに使う。"
-            "直属部下だけでなく孫以下の配下も指定可能。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "description": "監査対象の配下Anima名",
-                },
-                "days": {
-                    "type": "integer",
-                    "description": "監査期間（日数、デフォルト: 1）",
-                },
-            },
-            "required": ["name"],
-        },
-    },
-]
 
-CHECK_PERMISSIONS_TOOLS: list[dict[str, Any]] = [
-    {
-        "name": "check_permissions",
-        "description": (
-            "自分に現在許可されているツール・外部ツール・ファイルアクセスの一覧を確認する。"
-            "何が使えて何が使えないかを事前に把握し、試行→失敗のサイクルを防ぐ。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {},
+def _supervisor_tools() -> list[dict[str, Any]]:
+    return [
+        {
+            "name": "disable_subordinate",
+            "description": _t("schema.disable_subordinate.desc"),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": _t("schema.disable_subordinate.name"),
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": _t("schema.disable_subordinate.reason"),
+                    },
+                },
+                "required": ["name"],
+            },
         },
-    },
-]
+        {
+            "name": "enable_subordinate",
+            "description": _t("schema.enable_subordinate.desc"),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": _t("schema.enable_subordinate.name"),
+                    },
+                },
+                "required": ["name"],
+            },
+        },
+        {
+            "name": "set_subordinate_model",
+            "description": _t("schema.set_subordinate_model.desc"),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": _t("schema.set_subordinate_model.name"),
+                    },
+                    "model": {
+                        "type": "string",
+                        "description": _t("schema.set_subordinate_model.model"),
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": _t("schema.set_subordinate_model.reason"),
+                    },
+                },
+                "required": ["name", "model"],
+            },
+        },
+        {
+            "name": "set_subordinate_background_model",
+            "description": _t("schema.set_subordinate_background_model.desc"),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": _t("schema.set_subordinate_background_model.name"),
+                    },
+                    "model": {
+                        "type": "string",
+                        "description": _t("schema.set_subordinate_background_model.model"),
+                    },
+                    "credential": {
+                        "type": "string",
+                        "description": _t("schema.set_subordinate_background_model.credential"),
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": _t("schema.set_subordinate_background_model.reason"),
+                    },
+                },
+                "required": ["name", "model"],
+            },
+        },
+        {
+            "name": "restart_subordinate",
+            "description": _t("schema.restart_subordinate.desc"),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": _t("schema.restart_subordinate.name"),
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": _t("schema.restart_subordinate.reason"),
+                    },
+                },
+                "required": ["name"],
+            },
+        },
+        {
+            "name": "org_dashboard",
+            "description": _t("schema.org_dashboard.desc"),
+            "parameters": {
+                "type": "object",
+                "properties": {},
+            },
+        },
+        {
+            "name": "ping_subordinate",
+            "description": _t("schema.ping_subordinate.desc"),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": _t("schema.ping_subordinate.name"),
+                    },
+                },
+            },
+        },
+        {
+            "name": "read_subordinate_state",
+            "description": _t("schema.read_subordinate_state.desc"),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": _t("schema.read_subordinate_state.name"),
+                    },
+                },
+                "required": ["name"],
+            },
+        },
+        {
+            "name": "delegate_task",
+            "description": _t("schema.delegate_task.desc"),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": _t("schema.delegate_task.name"),
+                    },
+                    "instruction": {
+                        "type": "string",
+                        "description": _t("schema.delegate_task.instruction"),
+                    },
+                    "summary": {
+                        "type": "string",
+                        "description": _t("schema.delegate_task.summary"),
+                    },
+                    "deadline": {
+                        "type": "string",
+                        "description": _t("schema.delegate_task.deadline"),
+                    },
+                },
+                "required": ["name", "instruction", "deadline"],
+            },
+        },
+        {
+            "name": "task_tracker",
+            "description": _t("schema.task_tracker.desc"),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "enum": ["all", "active", "completed"],
+                        "description": _t("schema.task_tracker.status"),
+                    },
+                },
+            },
+        },
+        {
+            "name": "audit_subordinate",
+            "description": _t("schema.audit_subordinate.desc"),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": _t("schema.audit_subordinate.name"),
+                    },
+                    "days": {
+                        "type": "integer",
+                        "description": _t("schema.audit_subordinate.days"),
+                    },
+                },
+                "required": ["name"],
+            },
+        },
+    ]
+
+
+def _check_permissions_tools() -> list[dict[str, Any]]:
+    return [
+        {
+            "name": "check_permissions",
+            "description": _t("schema.check_permissions.desc"),
+            "parameters": {
+                "type": "object",
+                "properties": {},
+            },
+        },
+    ]
+
 
 PROCEDURE_TOOLS: list[dict[str, Any]] = [
     {
@@ -911,191 +833,176 @@ KNOWLEDGE_TOOLS: list[dict[str, Any]] = [
     },
 ]
 
-VAULT_TOOLS: list[dict[str, Any]] = [
-    {
-        "name": "vault_get",
-        "description": (
-            "暗号化されたクレデンシャルvaultから値を取得する。"
-            "APIキー、パスワード、トークンなどの秘密情報を安全に保管・取得できる。"
-            "sectionとkeyを指定して値を取得する。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "section": {
-                    "type": "string",
-                    "description": "セクション名（例: 'shared', 'bitwarden', 'bank'）",
-                },
-                "key": {
-                    "type": "string",
-                    "description": "キー名（例: 'api_key', 'master_password'）",
-                },
-            },
-            "required": ["section", "key"],
-        },
-    },
-    {
-        "name": "vault_store",
-        "description": (
-            "暗号化されたクレデンシャルvaultに値を保存する。"
-            "APIキー、パスワード、トークンなどの秘密情報を暗号化して保管する。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "section": {
-                    "type": "string",
-                    "description": "セクション名（例: 'shared', 'bitwarden', 'bank'）",
-                },
-                "key": {
-                    "type": "string",
-                    "description": "キー名（例: 'api_key', 'master_password'）",
-                },
-                "value": {
-                    "type": "string",
-                    "description": "保存する値（暗号化されて保存される）",
-                },
-            },
-            "required": ["section", "key", "value"],
-        },
-    },
-    {
-        "name": "vault_list",
-        "description": (
-            "暗号化されたクレデンシャルvaultのセクション・キー一覧を表示する。"
-            "値は表示されない（セクション名とキー名のみ）。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "section": {
-                    "type": "string",
-                    "description": "セクション名（省略時は全セクション一覧）",
-                },
-            },
-        },
-    },
-]
 
-SKILL_TOOLS: list[dict[str, Any]] = [
-    {
-        "name": "skill",
-        "description": "スキル・手順書を発動する。skill_nameで指定したスキルの全文を返す。",  # Enriched at runtime via build_skill_tool_description()
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "skill_name": {
-                    "type": "string",
-                    "description": "発動するスキル名（個人スキル、共通スキル、手順書）",
+def _vault_tools() -> list[dict[str, Any]]:
+    return [
+        {
+            "name": "vault_get",
+            "description": _t("schema.vault_get.desc"),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "section": {
+                        "type": "string",
+                        "description": _t("schema.vault_get.section"),
+                    },
+                    "key": {
+                        "type": "string",
+                        "description": _t("schema.vault_get.key"),
+                    },
                 },
-                "context": {
-                    "type": "string",
-                    "description": "スキルに渡す補足コンテキスト（任意）",
+                "required": ["section", "key"],
+            },
+        },
+        {
+            "name": "vault_store",
+            "description": _t("schema.vault_store.desc"),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "section": {
+                        "type": "string",
+                        "description": _t("schema.vault_store.section"),
+                    },
+                    "key": {
+                        "type": "string",
+                        "description": _t("schema.vault_store.key"),
+                    },
+                    "value": {
+                        "type": "string",
+                        "description": _t("schema.vault_store.value"),
+                    },
+                },
+                "required": ["section", "key", "value"],
+            },
+        },
+        {
+            "name": "vault_list",
+            "description": _t("schema.vault_list.desc"),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "section": {
+                        "type": "string",
+                        "description": _t("schema.vault_list.section"),
+                    },
                 },
             },
-            "required": ["skill_name"],
         },
-    },
-    {
-        "name": "create_skill",
-        "description": (
-            "スキルをディレクトリ構造で作成する。"
-            "SKILL.md（frontmatter + 本文）を生成し、"
-            "オプションでreferences/やtemplates/にファイルを配置する。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "skill_name": {
-                    "type": "string",
-                    "description": "スキル名（ケバブケース。例: my-skill）",
-                },
-                "description": {
-                    "type": "string",
-                    "description": "frontmatter description（トリガーキーワード含む）",
-                },
-                "body": {
-                    "type": "string",
-                    "description": "SKILL.md本文（Markdown）",
-                },
-                "location": {
-                    "type": "string",
-                    "enum": ["personal", "common"],
-                    "description": "保存先。personal=個人スキル、common=共通スキル。デフォルト: personal",
-                },
-                "references": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "filename": {"type": "string"},
-                            "content": {"type": "string"},
-                        },
-                        "required": ["filename", "content"],
-                    },
-                    "description": "references/ に配置するファイル群（任意）",
-                },
-                "templates": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "filename": {"type": "string"},
-                            "content": {"type": "string"},
-                        },
-                        "required": ["filename", "content"],
-                    },
-                    "description": "templates/ に配置するファイル群（任意）",
-                },
-                "allowed_tools": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "frontmatter allowed_tools（任意）",
-                },
-            },
-            "required": ["skill_name", "description", "body"],
-        },
-    },
-]
+    ]
 
-BACKGROUND_TASK_TOOLS: list[dict[str, Any]] = [
-    {
-        "name": "check_background_task",
-        "description": (
-            "バックグラウンドタスクの状態を確認する。"
-            "task_idを指定して、実行中・完了・失敗の状態と結果を取得する。"
-            "ツール呼び出しが background ステータスで返された場合に使用する。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "task_id": {
-                    "type": "string",
-                    "description": "確認するタスクのID（submit時に返されたID）",
+
+def _skill_tools() -> list[dict[str, Any]]:
+    return [
+        {
+            "name": "skill",
+            "description": _t("schema.skill.desc"),  # Enriched at runtime via build_skill_tool_description()
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "skill_name": {
+                        "type": "string",
+                        "description": _t("schema.skill.skill_name"),
+                    },
+                    "context": {
+                        "type": "string",
+                        "description": _t("schema.skill.context"),
+                    },
                 },
-            },
-            "required": ["task_id"],
-        },
-    },
-    {
-        "name": "list_background_tasks",
-        "description": (
-            "バックグラウンドタスクの一覧を取得する。"
-            "ステータスでフィルタリング可能（running/completed/failed）。"
-            "省略時は全件を返す。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "status": {
-                    "type": "string",
-                    "enum": ["running", "completed", "failed", "pending"],
-                    "description": "フィルタするステータス（省略時は全件）",
-                },
+                "required": ["skill_name"],
             },
         },
-    },
-]
+        {
+            "name": "create_skill",
+            "description": _t("schema.create_skill.desc"),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "skill_name": {
+                        "type": "string",
+                        "description": _t("schema.create_skill.skill_name"),
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": _t("schema.create_skill.description"),
+                    },
+                    "body": {
+                        "type": "string",
+                        "description": _t("schema.create_skill.body"),
+                    },
+                    "location": {
+                        "type": "string",
+                        "enum": ["personal", "common"],
+                        "description": _t("schema.create_skill.location"),
+                    },
+                    "references": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "filename": {"type": "string"},
+                                "content": {"type": "string"},
+                            },
+                            "required": ["filename", "content"],
+                        },
+                        "description": _t("schema.create_skill.references"),
+                    },
+                    "templates": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "filename": {"type": "string"},
+                                "content": {"type": "string"},
+                            },
+                            "required": ["filename", "content"],
+                        },
+                        "description": _t("schema.create_skill.templates"),
+                    },
+                    "allowed_tools": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": _t("schema.create_skill.allowed_tools"),
+                    },
+                },
+                "required": ["skill_name", "description", "body"],
+            },
+        },
+    ]
+
+
+def _background_task_tools() -> list[dict[str, Any]]:
+    return [
+        {
+            "name": "check_background_task",
+            "description": _t("schema.check_background_task.desc"),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task_id": {
+                        "type": "string",
+                        "description": _t("schema.check_background_task.task_id"),
+                    },
+                },
+                "required": ["task_id"],
+            },
+        },
+        {
+            "name": "list_background_tasks",
+            "description": _t("schema.list_background_tasks.desc"),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "enum": ["running", "completed", "failed", "pending"],
+                        "description": _t("schema.list_background_tasks.status"),
+                    },
+                },
+            },
+        },
+    ]
+
 
 PLAN_TASKS_TOOLS: list[dict[str, Any]] = [
     {
@@ -1154,87 +1061,84 @@ PLAN_TASKS_TOOLS: list[dict[str, Any]] = [
     },
 ]
 
-TASK_TOOLS: list[dict[str, Any]] = [
-    {
-        "name": "add_task",
-        "description": (
-            "タスクキューに新しいタスクを追加する。"
-            "人間からの指示は必ず source='human' で記録すること。"
-            "Anima間の委任は source='anima' で記録する。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "source": {
-                    "type": "string",
-                    "enum": ["human", "anima"],
-                    "description": "タスクの発生源 (human=人間からの指示, anima=Anima間委任)",
+
+def _task_tools() -> list[dict[str, Any]]:
+    return [
+        {
+            "name": "add_task",
+            "description": _t("schema.add_task.desc"),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "source": {
+                        "type": "string",
+                        "enum": ["human", "anima"],
+                        "description": _t("schema.add_task.source"),
+                    },
+                    "original_instruction": {
+                        "type": "string",
+                        "description": _t("schema.add_task.original_instruction"),
+                    },
+                    "assignee": {
+                        "type": "string",
+                        "description": _t("schema.add_task.assignee"),
+                    },
+                    "summary": {
+                        "type": "string",
+                        "description": _t("schema.add_task.summary"),
+                    },
+                    "deadline": {
+                        "type": "string",
+                        "description": _t("schema.add_task.deadline"),
+                    },
+                    "relay_chain": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": _t("schema.add_task.relay_chain"),
+                    },
                 },
-                "original_instruction": {
-                    "type": "string",
-                    "description": "元の指示文（委任時は原文引用を含める）",
-                },
-                "assignee": {
-                    "type": "string",
-                    "description": "担当者名（自分自身または委任先のAnima名）",
-                },
-                "summary": {
-                    "type": "string",
-                    "description": "タスクの1行要約",
-                },
-                "deadline": {
-                    "type": "string",
-                    "description": "期限（必須）。相対形式 '30m','2h','1d' またはISO8601。例: '1h' = 1時間後",
-                },
-                "relay_chain": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "委任経路（例: ['taka', 'sakura', 'rin']）",
-                },
+                "required": ["source", "original_instruction", "assignee", "summary", "deadline"],
             },
-            "required": ["source", "original_instruction", "assignee", "summary", "deadline"],
         },
-    },
-    {
-        "name": "update_task",
-        "description": (
-            "タスクのステータスを更新する。完了時は status='done'、中断時は status='cancelled' に設定する。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "task_id": {
-                    "type": "string",
-                    "description": "タスクID（add_task時に返されたID）",
+        {
+            "name": "update_task",
+            "description": _t("schema.update_task.desc"),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task_id": {
+                        "type": "string",
+                        "description": _t("schema.update_task.task_id"),
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": ["pending", "in_progress", "done", "cancelled", "blocked", "failed"],
+                        "description": _t("schema.update_task.status"),
+                    },
+                    "summary": {
+                        "type": "string",
+                        "description": _t("schema.update_task.summary"),
+                    },
                 },
-                "status": {
-                    "type": "string",
-                    "enum": ["pending", "in_progress", "done", "cancelled", "blocked", "failed"],
-                    "description": "新しいステータス",
-                },
-                "summary": {
-                    "type": "string",
-                    "description": "更新後の要約（任意）",
-                },
+                "required": ["task_id", "status"],
             },
-            "required": ["task_id", "status"],
         },
-    },
-    {
-        "name": "list_tasks",
-        "description": ("タスクキューの一覧を取得する。ステータスでフィルタリング可能。"),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "status": {
-                    "type": "string",
-                    "enum": ["pending", "in_progress", "done", "cancelled", "blocked", "failed"],
-                    "description": "フィルタするステータス（省略時は全件）",
+        {
+            "name": "list_tasks",
+            "description": _t("schema.list_tasks.desc"),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "enum": ["pending", "in_progress", "done", "cancelled", "blocked", "failed"],
+                        "description": _t("schema.list_tasks.status"),
+                    },
                 },
             },
         },
-    },
-]
+    ]
+
 
 # ── Format converters ────────────────────────────────────────
 
@@ -1281,66 +1185,30 @@ def to_text_format(
     anti-hallucination rules to maximise tool-call compliance from
     weaker models.
     """
-    from core.tooling.prompt_db import _get_locale
-
-    loc = locale or _get_locale()
-
-    if loc == "ja":
-        header = "## 利用可能なツール"
-        instruction = (
-            "外部情報の取得やコマンド実行が必要な場合は、"
-            "**必ず**以下の形式で ```json コードブロックを出力してツールを呼び出してください:"
-        )
-        example = '{"tool": "ツール名", "arguments": {"引数名": "値"}}'
-        rules = [
-            "ツールの実行結果は次のメッセージで提供されます。結果を待ってから回答してください。",
-            "ツールを使う必要がなければ、普通にテキストで返答してください。",
-            "1回のメッセージでツール呼び出しは1つだけにしてください。",
-            "**重要**: コマンド出力・ファイル内容・プロセス情報などを推測や想像で生成してはいけません。必ずツールで取得してください。",
-            "「調べます」「確認します」とだけ言って終わらないでください。調べるならツールを呼び出してください。",
-        ]
-        fewshot_header = "### 使用例"
-        fewshot_items = [
-            (
-                "ユーザー: docker ps して",
-                '```json\n{"tool": "execute_command", "arguments": {"command": "docker ps"}}\n```',
-            ),
-            (
-                "ユーザー: 今のメモリ使用量を教えて",
-                '```json\n{"tool": "execute_command", "arguments": {"command": "free -h"}}\n```',
-            ),
-        ]
-        args_label = "引数"
-        required_label = "(必須)"
-        tools_header = "### ツール一覧"
-    else:
-        header = "## Available Tools"
-        instruction = (
-            "When you need external information or command execution, "
-            "you **MUST** output a ```json code block to invoke a tool:"
-        )
-        example = '{"tool": "tool_name", "arguments": {"arg_name": "value"}}'
-        rules = [
-            "Tool results will be provided in the next message. Wait for results before answering.",
-            "If you don't need to use a tool, respond with plain text.",
-            "Only one tool call per message.",
-            "**Important**: NEVER fabricate command output, file contents, or system information. Always use a tool to retrieve real data.",
-            'Do NOT just say "I\'ll check" without actually calling a tool.',
-        ]
-        fewshot_header = "### Examples"
-        fewshot_items = [
-            (
-                "User: run docker ps",
-                '```json\n{"tool": "execute_command", "arguments": {"command": "docker ps"}}\n```',
-            ),
-            (
-                "User: show current memory usage",
-                '```json\n{"tool": "execute_command", "arguments": {"command": "free -h"}}\n```',
-            ),
-        ]
-        args_label = "Args"
-        required_label = "(required)"
-        tools_header = "### Tool List"
+    header = _t("schema.text_format.header")
+    instruction = _t("schema.text_format.instruction")
+    example = _t("schema.text_format.example")
+    rules = [
+        _t("schema.text_format.rule_wait"),
+        _t("schema.text_format.rule_plain_text"),
+        _t("schema.text_format.rule_one_call"),
+        _t("schema.text_format.rule_no_fabricate"),
+        _t("schema.text_format.rule_no_empty_promise"),
+    ]
+    fewshot_header = _t("schema.text_format.fewshot_header")
+    fewshot_items = [
+        (
+            _t("schema.text_format.fewshot1_prompt"),
+            '```json\n{"tool": "execute_command", "arguments": {"command": "docker ps"}}\n```',
+        ),
+        (
+            _t("schema.text_format.fewshot2_prompt"),
+            '```json\n{"tool": "execute_command", "arguments": {"command": "free -h"}}\n```',
+        ),
+    ]
+    args_label = _t("schema.text_format.args_label")
+    required_label = _t("schema.text_format.required_label")
+    tools_header = _t("schema.text_format.tools_header")
 
     lines = [
         header,
@@ -1433,14 +1301,10 @@ def build_tool_list(
         Combined list in canonical format.
     """
     tools: list[dict[str, Any]] = list(MEMORY_TOOLS)
-    # Channel tools are always included (shared messaging)
-    tools.extend(CHANNEL_TOOLS)
-    # Procedure outcome reporting is always included
+    tools.extend(_channel_tools())
     tools.extend(PROCEDURE_TOOLS)
-    # Knowledge outcome reporting is always included
     tools.extend(KNOWLEDGE_TOOLS)
-    # check_permissions is always available (all Animas can check their own permissions)
-    tools.extend(CHECK_PERMISSIONS_TOOLS)
+    tools.extend(_check_permissions_tools())
     if include_file_tools:
         tools.extend(FILE_TOOLS)
     if include_search_tools:
@@ -1450,21 +1314,21 @@ def build_tool_list(
     if include_use_tool:
         tools.extend(USE_TOOL)
     if include_notification_tools:
-        tools.extend(NOTIFICATION_TOOLS)
+        tools.extend(_notification_tools())
     if include_admin_tools:
         tools.extend(ADMIN_TOOLS)
     if include_supervisor_tools:
-        tools.extend(SUPERVISOR_TOOLS)
+        tools.extend(_supervisor_tools())
     if include_tool_management:
         tools.extend(TOOL_MANAGEMENT_TOOLS)
     if include_task_tools:
-        tools.extend(TASK_TOOLS)
+        tools.extend(_task_tools())
     if include_plan_tasks:
         tools.extend(PLAN_TASKS_TOOLS)
     if include_background_task_tools:
-        tools.extend(BACKGROUND_TASK_TOOLS)
+        tools.extend(_background_task_tools())
     if include_vault_tools:
-        tools.extend(VAULT_TOOLS)
+        tools.extend(_vault_tools())
     if external_schemas:
         tools.extend(external_schemas)
     tools = apply_db_descriptions(tools)
@@ -1479,10 +1343,10 @@ def build_tool_list(
             common_skill_metas or [],
             procedure_metas or [],
         )
-        skill_tool_schema = {**SKILL_TOOLS[0], "description": desc}
+        skill_schemas = _skill_tools()
+        skill_tool_schema = {**skill_schemas[0], "description": desc}
         tools.append(skill_tool_schema)
-        # create_skill has static description; append remaining SKILL_TOOLS
-        for st in SKILL_TOOLS[1:]:
+        for st in skill_schemas[1:]:
             tools.append(st)
     return tools
 

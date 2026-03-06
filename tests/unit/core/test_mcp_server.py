@@ -150,9 +150,9 @@ class TestListToolsHandler:
     async def test_supervisor_tool_names_from_schemas(self) -> None:
         """_SUPERVISOR_TOOL_NAMES matches SUPERVISOR_TOOLS from schemas.py."""
         from core.mcp.server import _SUPERVISOR_TOOL_NAMES
-        from core.tooling.schemas import SUPERVISOR_TOOLS
+        from core.tooling.schemas import _supervisor_tools
 
-        expected = frozenset(t["name"] for t in SUPERVISOR_TOOLS)
+        expected = frozenset(t["name"] for t in _supervisor_tools())
         assert _SUPERVISOR_TOOL_NAMES == expected
 
     async def test_check_permissions_always_visible(self) -> None:

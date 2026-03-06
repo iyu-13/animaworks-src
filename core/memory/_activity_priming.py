@@ -340,7 +340,7 @@ class PrimingMixin:
                 text = (e.summary or e.content or "")[:50].replace("\n", " ")
                 snippets.append(f"{who}→{text}")
             body = ", ".join(snippets)
-            lines = [f"{time_range} #{ch_name} ({count}件): {body}"]
+            lines = [f"{time_range} #{ch_name} ({t('activity.items_count', count=count)}): {body}"]
             if group.source_lines:
                 lines.append(f"  -> {group.source_lines}")
             return "\n".join(lines)

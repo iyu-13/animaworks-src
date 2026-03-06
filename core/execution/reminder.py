@@ -20,18 +20,28 @@ import logging
 import threading
 from collections import deque
 
+from core.i18n import t
+
 logger = logging.getLogger(__name__)
 
 # Maximum queued reminders before oldest are dropped
 _MAX_QUEUE_SIZE = 10
 
+
 # ── Standard reminder messages ──────────────────────────────
-MSG_CONTEXT_THRESHOLD = "コンテキスト使用量: {ratio:.0%}。出力を簡潔にし、重要な状態をセッション状態に保存せよ。"
-MSG_OUTPUT_TRUNCATED = "出力がmax_tokensで途切れた。残りの内容を小さく分割して続行せよ。"
-MSG_FINAL_ITERATION = (
-    "ツールの使用回数が上限に達しました。これ以上ツールは使用できません。"
-    "これまでの作業内容と得られた情報を踏まえて、最終回答を作成してください。"
-)
+def msg_context_threshold(ratio: float) -> str:
+    """Return localized context threshold warning with pre-formatted ratio."""
+    return t("reminder.context_threshold", ratio=f"{ratio:.0%}")
+
+
+def msg_output_truncated() -> str:
+    """Return localized output-truncated reminder."""
+    return t("reminder.output_truncated")
+
+
+def msg_final_iteration() -> str:
+    """Return localized final-iteration reminder."""
+    return t("reminder.final_iteration")
 
 
 class SystemReminderQueue:

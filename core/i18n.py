@@ -642,6 +642,1071 @@ _STRINGS: dict[str, dict[str, str]] = {
         "ja": "[タスク失敗通知]\nタスクID: {task_id}\nタスク: {title}\nエラー: {error}",
         "en": "[Task Failure]\nTask ID: {task_id}\nTask: {title}\nError: {error}",
     },
+    # ── assisted.* (i18n) ──────────────────────────────
+    "assisted.intent_reprompt": {
+        "ja": (
+            "ツールを使う意図があるようですが、実際にツールが呼び出されていません。必要な操作を以下の形式で出力してください:\n"
+            "\n"
+            "```json\n"
+            '{"tool": "ツール名", "arguments": {"引数名": "値"}}\n'
+            "```"
+        ),
+        "en": (
+            "You indicated intent to use a tool but did not actually call one. Please output the tool call in the following format:\n"
+            "\n"
+            "```json\n"
+            '{"tool": "tool_name", "arguments": {"arg_name": "value"}}\n'
+            "```"
+        ),
+    },
+    # ── builder.* (i18n) ──────────────────────────────
+    "builder.c_response_requirement": {
+        "ja": (
+            "## 応答要件\n"
+            "あなたはユーザーとの対話において、**必ずテキストで応答**してください。\n"
+            "ツール呼び出しを行った場合でも、その結果の要約やユーザーへの返答を\n"
+            "テキストメッセージとして出力してください。\n"
+            "挨拶・質問・雑談などの会話メッセージには、ツール呼び出しの前後に\n"
+            "自然なテキスト応答を必ず含めてください。"
+        ),
+        "en": (
+            "## Response Requirements\n"
+            "You **must always respond with text** when interacting with users.\n"
+            "Even when making tool calls, output a summary of results or a reply\n"
+            "to the user as a text message.\n"
+            "For greetings, questions, or casual conversation, always include\n"
+            "natural text responses before or after any tool calls."
+        ),
+    },
+    "builder.heartbeat_tool_fallback": {
+        "ja": (
+            "Heartbeatでは**観察・報告・計画・フォローアップ**にツールを使ってください。\n"
+            "- OK: チャネル読み取り、記憶検索、メッセージ送信、タスク更新、pending作成、外部ツール確認\n"
+            "- NG: コード変更、ファイル大量編集、長時間の分析・調査\n"
+            "重い作業が必要な場合は state/pending/ にタスクファイルを書き出してください。"
+        ),
+        "en": (
+            "In Heartbeat, use tools for **observation, reporting, planning, and follow-up**.\n"
+            "- OK: channel reading, memory search, sending messages, task updates, creating pending tasks, checking external tools\n"
+            "- NG: code changes, bulk file edits, lengthy analysis/investigation\n"
+            "If heavy work is needed, write a task file to state/pending/."
+        ),
+    },
+    "builder.procedure_label": {"ja": "手順", "en": "procedure"},
+    # ── handler.* (i18n) ──────────────────────────────
+    "handler.bg_model_change_log": {
+        "ja": "{target_name}のbackground_modelを{model}に変更",
+        "en": "Changing {target_name}'s background_model to {model}",
+    },
+    "handler.bg_model_changed": {
+        "ja": "{target_name}のbackground_modelを'{model}'に変更しました。反映にはrestart_subordinateが必要です。",
+        "en": "Changed {target_name}'s background_model to '{model}'. Call restart_subordinate to apply.",
+    },
+    "handler.bg_model_cleared": {
+        "ja": "{target_name}のbackground_modelをクリアしました（メインモデルを使用）。",
+        "en": "Cleared {target_name}'s background_model (will use main model).",
+    },
+    "handler.body_param_required": {"ja": "`body` パラメータは必須です。", "en": "The `body` parameter is required."},
+    "handler.description_param_required": {
+        "ja": "`description` パラメータは必須です。",
+        "en": "The `description` parameter is required.",
+    },
+    "handler.send_msg_chat_hint": {
+        "ja": "宛先 '{to}' には send_message で送信できません。チャット中は直接テキストで返答すれば人間ユーザーに届きます。send_message は他のAnima宛てにのみ使用してください。",
+        "en": "Cannot send to '{to}' via send_message. During chat, reply directly in text to reach the human user. Use send_message only for other Animas.",
+    },
+    "handler.send_msg_non_chat_hint": {
+        "ja": "宛先 '{to}' には send_message で送信できません。人間への連絡は call_human を使用してください。send_message は他のAnima宛てにのみ使用してください。",
+        "en": "Cannot send to '{to}' via send_message. Use call_human to contact humans. Use send_message only for other Animas.",
+    },
+    "handler.shared_tool_keyword": {"ja": "共有ツール", "en": "Shared Tool"},
+    # ── pending_executor.* (i18n) ──────────────────────────────
+    "pending_executor.dep_result_header": {
+        "ja": "## 先行タスク [{dep_id}] の結果",
+        "en": "## Preceding task [{dep_id}] result",
+    },
+    "pending_executor.none_value": {"ja": "(なし)", "en": "(none)"},
+    "pending_executor.task_completed": {"ja": "(タスク完了)", "en": "(task completed)"},
+    "pending_executor.task_exec_end": {
+        "ja": "タスク完了: {title} — {result}",
+        "en": "Task completed: {title} — {result}",
+    },
+    "pending_executor.task_exec_start": {"ja": "タスク実行開始: {title}", "en": "Task execution started: {title}"},
+    # ── priming.* (i18n) ──────────────────────────────
+    "priming.active_parallel_tasks_header": {"ja": "## 実行中の並列タスク", "en": "## Active Parallel Tasks"},
+    "priming.completed_bg_tasks_header": {
+        "ja": "## 完了済みバックグラウンドタスク",
+        "en": "## Completed Background Tasks",
+    },
+    # ── prompt_db.* (i18n) ──────────────────────────────
+    "prompt_db.add_task": {
+        "ja": "タスクキューに新しいタスクを追加する。人間からの指示は必ずsource='human'で記録すること。Anima間の委任はsource='anima'で記録する。deadlineは必須。相対形式（'30m','2h','1d'）またはISO8601で指定。",
+        "en": "Add a new task to the task queue. Always record human instructions with source='human'. Use source='anima' for Anima delegation. deadline required: relative ('30m','2h','1d') or ISO8601.",
+    },
+    "prompt_db.archive_memory_file": {
+        "ja": "不要になった記憶ファイル（knowledge, procedures）をアーカイブする。ファイルはarchive/ディレクトリに移動され、完全には削除されない。古くなった知識、重複ファイル、陳腐化した手順の整理に使用する。",
+        "en": "Archive memory files (knowledge, procedures) that are no longer needed. Files are moved to archive/ directory, not permanently deleted. Use for cleaning up stale knowledge, duplicates, or outdated procedures.",
+    },
+    "prompt_db.call_human": {
+        "ja": "人間の管理者に連絡する。重要な報告、問題のエスカレーション、判断が必要な事項がある場合に使用する。チャット画面と外部通知チャネル（Slack等）の両方に届く。日常的な報告にはsend_messageを使い、緊急時のみcall_humanを使うこと。",
+        "en": "Contact the human administrator. Use for important reports, escalation, or decisions requiring human input. Delivered to chat UI and external channel (e.g. Slack). Use send_message for routine reports; call_human for urgent cases only.",
+    },
+    "prompt_db.create_anima": {
+        "ja": "キャラクターシートから新しいDigital Animaを作成する。character_sheet_contentで直接内容を渡すか、character_sheet_pathでファイルパスを指定する。ディレクトリ構造が原子的に作成され、初回起動時にbootstrapで自己設定される。",
+        "en": "Create a new Digital Anima from a character sheet. Pass content via character_sheet_content or a path via character_sheet_path. Directory structure is created atomically; bootstrap runs on first startup.",
+    },
+    "prompt_db.edit_file": {
+        "ja": "ファイル内の特定の文字列を別の文字列に置換する。ファイル全体を書き換えずに一部だけ変更したい時に使う。old_stringが一意に特定できる十分な長さであることを確認すること。",
+        "en": "Replace a specific string in a file with another. Use when changing only part of a file. Ensure old_string is long enough to uniquely identify the target.",
+    },
+    "prompt_db.execute_command": {
+        "ja": "シェルコマンドを実行する（permissions.mdの許可リスト内のみ）。ファイル操作にはread_file/write_file/edit_fileを優先し、コマンド実行が本当に必要な場合のみ使う。",
+        "en": "Execute a shell command (allow-list in permissions.md only). Prefer read_file/write_file/edit_file for file ops; use this only when command execution is truly needed.",
+    },
+    "prompt_db.guide.non_s": {
+        "ja": (
+            "## ツールの使い方\n"
+            "\n"
+            "### 記憶について\n"
+            "\n"
+            "あなたのコンテキストには「あなたが思い出していること」セクションが含まれています。\n"
+            "これは、相手の顔を見た瞬間に名前や過去のやり取りを自然と思い出すのと同じです。\n"
+            "\n"
+            "#### 応答の判断基準\n"
+            "- コンテキスト内の記憶で十分に判断できる場合: そのまま応答してよい\n"
+            "- コンテキスト内の記憶では不足する場合: search_memory / read_memory_file で追加検索せよ\n"
+            "\n"
+            "※ 上記は記憶検索についての判断基準である。システムプロンプト内の行動指示\n"
+            " （チーム構成の提案など）への対応は、記憶の十分性とは独立して行うこと。\n"
+            "\n"
+            "#### 追加検索が必要な典型例\n"
+            "- 具体的な日時・数値を正確に答える必要がある時\n"
+            "- 過去の特定のやり取りの詳細を確認したい時\n"
+            "- 手順書（procedures/）に従って作業する時\n"
+            "- コンテキストに該当する記憶がない未知のトピックの時\n"
+            "- Priming に `->` ポインタがある場合、具体的なパスやコマンドを回答する必要があるとき\n"
+            "\n"
+            "#### 禁止事項\n"
+            "- 記憶の検索プロセスについてユーザーに言及すること（人間は「今から思い出します」とは言わない）\n"
+            "- 毎回機械的に記憶検索を実行すること（コンテキストで判断できることに追加検索は不要）\n"
+            "\n"
+            "### 記憶の書き込み\n"
+            "\n"
+            "#### 自動記録（あなたは何もしなくてよい）\n"
+            "- 会話の内容はシステムが自動的にエピソード記憶（episodes/）に記録する\n"
+            "- あなたが意識的にエピソード記録を書く必要はない\n"
+            "- 日次・週次でシステムが自動的にエピソードから教訓やパターンを抽出し、知識記憶（knowledge/）に統合する\n"
+            "\n"
+            "#### 意図的な記録（あなたが判断して行う）\n"
+            "以下の場面では write_memory_file で積極的に記録すること:\n"
+            "- 問題を解決したとき → knowledge/ に原因・調査過程・解決策を記録\n"
+            "- 正しいパラメータ・設定値を発見したとき → knowledge/ に記録\n"
+            "- 重要な方針・判断基準を確立したとき → knowledge/ に記録\n"
+            "- 作業手順を確立・改善したとき → procedures/ に手順書を作成\n"
+            "  - 第1見出し（`# ...`）は手順の目的が一目でわかる具体的な1行にすること\n"
+            "  - YAMLフロントマターは任意（省略時はシステムが自動付与する。knowledge/proceduresとも対応済み）\n"
+            "- 新しいスキル・テクニックを習得したとき → skills/ に記録\n"
+            "自動統合（日次consolidation）を待たず、重要な発見は即座に書き込むこと。\n"
+            "\n"
+            "**記憶の書き込みについては報告不要**\n"
+            "\n"
+            "#### 成果追跡\n"
+            "手順書やスキルに従って作業した後は、report_procedure_outcome で必ず結果を報告すること。\n"
+            "search_memoryやPrimingで取得した知識を使った後は、report_knowledge_outcome で有用性を報告すること。\n"
+            "\n"
+            "### スキル・手続きの詳細取得\n"
+            "\n"
+            "Primingのスキルヒントに表示された名前は、`skill` ツールで全文を取得できる:\n"
+            "```\n"
+            'skill(name="スキル名またはファイル名")\n'
+            "```\n"
+            "- skills/、common_skills/、procedures/ の全文を返す\n"
+            "- 手順書に従って作業する前に、必ず全文を確認すること\n"
+            "- ヒントに `->` ポインタがある場合、具体的な手順を取得するために使う\n"
+            "\n"
+            "#### ユーザー記憶の更新\n"
+            "ユーザーについて新しい情報を得たら shared/users/{ユーザー名}/index.md の該当セクションを更新し、log.md の先頭に追記する\n"
+            "- index.md のセクション構造（基本情報/重要な好み・傾向/注意事項）は固定。新セクション追加禁止\n"
+            "- log.md フォーマット: `## YYYY-MM-DD {自分の名前}: {要約1行}` + 本文数行\n"
+            "- log.md が20件を超えたら末尾の古いエントリを削除する\n"
+            "- ユーザーのディレクトリが未作成の場合は mkdir して index.md / log.md を新規作成する\n"
+            "\n"
+            "### 業務指示の内在化\n"
+            "\n"
+            "あなたには2つの定期実行メカニズムがある:\n"
+            "\n"
+            "- **Heartbeat（定期巡回）**: 30分固定間隔でシステムが起動。heartbeat.md のチェックリストを実行する\n"
+            "- **Cron（定時タスク）**: cron.md で指定した時刻に実行\n"
+            "\n"
+            "業務指示を受けた場合の振り分け:\n"
+            "- 「常に確認して」「チェックして」→ **heartbeat.md** にチェックリスト項目を追加\n"
+            "- 「毎朝○○して」「毎週金曜に○○して」→ **cron.md** に定時タスクを追加\n"
+            "\n"
+            "#### Heartbeat への追加手順\n"
+            '1. read_memory_file(path="heartbeat.md") で現在のチェックリストを確認する\n'
+            "2. チェックリストセクションに新しい項目を追加する\n"
+            '   - write_memory_file(path="heartbeat.md", content="...", mode="overwrite") で更新\n'
+            "   - ⚠「## 活動時間」「## 通知ルール」セクションは変更しないこと\n"
+            "\n"
+            "#### Cron への追加手順\n"
+            '1. read_memory_file(path="cron.md") で現在のタスク一覧を確認する\n'
+            "2. 新しいタスクを追加する（type: llm or type: command を指定）\n"
+            '3. write_memory_file(path="cron.md", content="...", mode="overwrite") で保存\n'
+            "\n"
+            "いずれの場合も:\n"
+            "- 具体的な手順が伴う場合は procedures/ にも手順書を作成する\n"
+            "- 更新完了を指示者に報告する\n"
+            ""
+        ),
+        "en": (
+            "## How to Use Tools\n"
+            "\n"
+            "### About memory\n"
+            "\n"
+            'Your context includes a "What you recall" section. It works like recalling a face and past interactions naturally.\n'
+            "\n"
+            "#### Response criteria\n"
+            "- If context memory is sufficient: respond directly\n"
+            "- If context memory is insufficient: use search_memory / read_memory_file for additional search\n"
+            "\n"
+            "Note: This applies to memory search. Follow system prompt action guidance (e.g. team structure proposals) independently.\n"
+            "\n"
+            "#### When additional search is needed\n"
+            "- When accurate dates, times, or numbers are required\n"
+            "- When checking past interaction details\n"
+            "- When following procedures in procedures/\n"
+            "- For unknown topics with no matching context memory\n"
+            "- When Priming has `->` pointers and you need specific paths/commands\n"
+            "\n"
+            "#### Prohibited\n"
+            '- Mentioning the memory search process to the user (humans don\'t say "Let me recall")\n'
+            "- Mechanical memory search every time (no need when context suffices)\n"
+            "\n"
+            "### Memory writing\n"
+            "\n"
+            "#### Automatic (nothing for you to do)\n"
+            "- Conversation content is auto-recorded to episodes/\n"
+            "- No need to write episodes manually\n"
+            "- System auto-extracts lessons and patterns daily/weekly into knowledge/\n"
+            "\n"
+            "#### Intentional (your decision)\n"
+            "Use write_memory_file when:\n"
+            "- Problem solved → knowledge/ with cause, investigation, solution\n"
+            "- Correct parameters discovered → knowledge/\n"
+            "- Important policy or criteria established → knowledge/\n"
+            "- Procedure established/improved → procedures/ with new doc\n"
+            "  - First heading (`# ...`) should state purpose clearly in one line\n"
+            "  - YAML frontmatter optional (system auto-adds it for both knowledge/ and procedures/)\n"
+            "- New skill learned → skills/\n"
+            "Write immediately; do not wait for consolidation.\n"
+            "\n"
+            "**No need to report memory writes**\n"
+            "\n"
+            "#### Outcome tracking\n"
+            "After following procedures or skills, always report via report_procedure_outcome.\n"
+            "After using knowledge from search_memory or Priming, report via report_knowledge_outcome.\n"
+            "\n"
+            "### Skill and procedure details\n"
+            "\n"
+            "Names shown in Priming skill hints can be fetched in full via the `skill` tool:\n"
+            "```\n"
+            'skill(name="skill_name_or_file")\n'
+            "```\n"
+            "- Returns full text from skills/, common_skills/, procedures/\n"
+            "- Always fetch full content before following a procedure\n"
+            "- Use for specific steps when hints include `->` pointers\n"
+            "\n"
+            "#### Updating user memory\n"
+            "When you learn new user info, update shared/users/{username}/index.md and prepend to log.md\n"
+            "- index.md section structure (basic info/preferences/notes) is fixed. No new sections\n"
+            "- log.md format: `## YYYY-MM-DD {your_name}: {one-line summary}` + body\n"
+            "- Trim log.md when entries exceed 20\n"
+            "- Create mkdir + index.md / log.md if user dir doesn't exist\n"
+            "\n"
+            "### Internalising work instructions\n"
+            "\n"
+            "You have two scheduled mechanisms:\n"
+            "\n"
+            "- **Heartbeat**: Runs every 30 minutes. Execute the checklist in heartbeat.md\n"
+            "- **Cron**: Runs at times specified in cron.md\n"
+            "\n"
+            "When receiving work instructions:\n"
+            '- "Always check" / "monitor" → add checklist items to **heartbeat.md**\n'
+            '- "Every morning" / "Every Friday" → add scheduled tasks to **cron.md**\n'
+            "\n"
+            "#### Adding to Heartbeat\n"
+            '1. read_memory_file(path="heartbeat.md") to see current checklist\n'
+            "2. Add new item to checklist section\n"
+            '   - write_memory_file(path="heartbeat.md", content="...", mode="overwrite")\n'
+            '   - Do not change "## 活動時間" or "## 通知ルール" sections\n'
+            "\n"
+            "#### Adding to Cron\n"
+            '1. read_memory_file(path="cron.md") to see current tasks\n'
+            "2. Add new task (specify type: llm or type: command)\n"
+            '3. write_memory_file(path="cron.md", content="...", mode="overwrite")\n'
+            "\n"
+            "In both cases:\n"
+            "- Create procedures/ doc when specific steps are involved\n"
+            "- Report completion to the requester\n"
+            ""
+        ),
+    },
+    # prompt_db.guide.s_builtin intentionally omitted — always empty
+    "prompt_db.guide.s_mcp": {
+        "ja": (
+            "## MCPツール（mcp__aw__*）\n"
+            "\n"
+            "以下のMCPツールが利用可能です。ファイル操作（Read/Write/Edit）とは別に、AnimaWorks固有の機能を提供します。\n"
+            "\n"
+            "### タスク管理\n"
+            "- **mcp__aw__add_task**: タスクキューにタスクを追加。人間からの指示はsource='human'で必ず記録。deadline必須\n"
+            "- **mcp__aw__update_task**: タスクのステータスを更新。完了時はstatus='done'\n"
+            "- **mcp__aw__list_tasks**: タスク一覧取得。heartbeat時の進捗確認に使う\n"
+            "\n"
+            "### 記憶の検索と活用\n"
+            "- **mcp__aw__search_memory**: 長期記憶をキーワード検索。以下の場面で積極的に使うこと:\n"
+            "  - コマンド実行・設定変更の前に手順書や過去の教訓を確認\n"
+            "  - 報告・判断の前に既存知識で事実を裏付ける\n"
+            "  - 結果のファイルはReadツールで詳細確認\n"
+            "\n"
+            "### 記憶の書き込み（Sモード）\n"
+            "Sモードでは **Writeツール**（ネイティブ）を使って直接記憶ファイルを書き込める。\n"
+            "以下の場面で積極的に記録すること:\n"
+            "- 問題を解決した → `knowledge/` に原因と解決策\n"
+            "- 正しいパラメータ・設定値を発見した → `knowledge/` に記録\n"
+            "- 作業手順を確立した → `procedures/` に手順書作成\n"
+            "  - 第1見出し（`# ...`）は手順の目的が一目でわかる具体的な1行にすること\n"
+            "  - YAMLフロントマターは任意（省略時はシステムが自動付与する。knowledge/proceduresとも対応済み）\n"
+            "- 新スキル習得 → `skills/` に記録\n"
+            "自動統合（日次consolidation）を待たず、重要な発見は即座に書き込むこと。\n"
+            "\n"
+            "### 成果追跡\n"
+            "- **mcp__aw__report_procedure_outcome**: 手順書・スキル実行後に必ず結果を報告（成功/失敗の追跡）\n"
+            "- **mcp__aw__report_knowledge_outcome**: search_memoryやPrimingで得た知識の有用性を報告。知識品質の維持に必要\n"
+            "\n"
+            "### 人間通知\n"
+            "- **mcp__aw__call_human**: 人間の管理者に通知を送信。重要な報告・エスカレーション用。日常報告にはsend_messageを使う\n"
+            "\n"
+            "### スキル・手続きの詳細取得\n"
+            "- **mcp__aw__skill**: スキル（skills/）・共通スキル（common_skills/）・手順書（procedures/）の全文を取得する\n"
+            "  - Primingのスキルヒントに表示された名前を `name` パラメータに指定する\n"
+            "  - 手順書に従って作業する前に、必ずこのツールで全文を確認すること\n"
+            "\n"
+            "### 外部ツール（CLI経由）\n"
+            "\n"
+            "permissions.md で許可された外部サービス連携ツール（Chatwork, Slack, Gmail等）は\n"
+            "`skill` ツールで使い方を確認し、Bash経由の `animaworks-tool` CLIで実行する。\n"
+            "\n"
+            "#### 使い方\n"
+            "1. `mcp__aw__skill` でツール名（chatwork, slack等）のスキルを取得し、CLIコマンドを確認\n"
+            "2. Bash で `animaworks-tool <ツール名> <サブコマンド> [引数...]` を実行\n"
+            "\n"
+            "#### 長時間ツールのバックグラウンド実行\n"
+            "画像生成・ローカルLLM推論等の長時間ツールはBash経由で `submit` を使い非同期実行すること:\n"
+            "```\n"
+            "animaworks-tool submit <ツール名> <サブコマンド> [引数...]\n"
+            "```\n"
+            "完了時は `state/background_notifications/` に通知が書かれ、次回heartbeatで確認できる。\n"
+            "\n"
+            "#### 注意事項\n"
+            "- MCPツール（`mcp__aw__*`）: 内部機能（記憶・タスク・スキル等）のみ。外部ツールはCLI経由\n"
+            "- 使えるツールは `permissions.md` で許可されたもののみ\n"
+            ""
+        ),
+        "en": (
+            "## MCP Tools (mcp__aw__*)\n"
+            "\n"
+            "The following MCP tools are available. They provide AnimaWorks-specific functionality separate from file operations (Read/Write/Edit).\n"
+            "\n"
+            "### Task management\n"
+            "- **mcp__aw__add_task**: Add a task to the queue. Always record human instructions with source='human'. deadline required\n"
+            "- **mcp__aw__update_task**: Update task status. Use status='done' when complete\n"
+            "- **mcp__aw__list_tasks**: List tasks. Use during heartbeat for progress tracking\n"
+            "\n"
+            "### Memory search and use\n"
+            "- **mcp__aw__search_memory**: Search long-term memory by keyword. Use actively when:\n"
+            "  - Checking procedures and past lessons before commands or config changes\n"
+            "  - Verifying facts with existing knowledge before reports or decisions\n"
+            "  - Use Read tool to view result file details\n"
+            "\n"
+            "### Memory writing (S mode)\n"
+            "In S mode use the native **Write tool** to write memory files directly. Record when:\n"
+            "- Problem solved → `knowledge/` with cause and solution\n"
+            "- Correct parameters discovered → `knowledge/`\n"
+            "- Procedure established → `procedures/` with a new doc\n"
+            "  - First heading (`# ...`) should clearly state the procedure purpose in one line\n"
+            "  - YAML frontmatter is optional (system auto-adds it for both knowledge/ and procedures/)\n"
+            "- New skill learned → `skills/`\n"
+            "Write important discoveries immediately; do not wait for consolidation.\n"
+            "\n"
+            "### Outcome tracking\n"
+            "- **mcp__aw__report_procedure_outcome**: Report results after procedures/skills (success/failure tracking)\n"
+            "- **mcp__aw__report_knowledge_outcome**: Report usefulness of knowledge from search_memory or Priming. Required for quality\n"
+            "\n"
+            "### Human notification\n"
+            "- **mcp__aw__call_human**: Send notification to human admin. Use for reports and escalation. Use send_message for routine reports\n"
+            "\n"
+            "### Skill and procedure details\n"
+            "- **mcp__aw__skill**: Get full text of skills (skills/), common skills (common_skills/), procedures (procedures/)\n"
+            "  - Specify the name shown in Priming skill hints as the `name` parameter\n"
+            "  - Always fetch full content before following a procedure\n"
+            "\n"
+            "### External tools (via CLI)\n"
+            "\n"
+            "External service tools (Chatwork, Slack, Gmail, etc.) permitted in permissions.md\n"
+            "are accessed via the `skill` tool and executed through the `animaworks-tool` CLI.\n"
+            "\n"
+            "#### Usage\n"
+            "1. Use `mcp__aw__skill` to look up the tool name (chatwork, slack, etc.) and confirm CLI commands\n"
+            "2. Execute via Bash: `animaworks-tool <tool_name> <subcommand> [args...]`\n"
+            "\n"
+            "#### Background execution for long-running tools\n"
+            "Image generation, local LLM inference, etc. hold the lock if run directly.\n"
+            "Use `submit` for async execution via Bash:\n"
+            "```\n"
+            "animaworks-tool submit <tool_name> <subcommand> [args...]\n"
+            "```\n"
+            "On completion, notifications go to `state/background_notifications/` for the next heartbeat.\n"
+            "\n"
+            "#### Notes\n"
+            "- MCP tools (`mcp__aw__*`): Internal features only (memory, tasks, skills, etc.). External tools use CLI\n"
+            "- Allowed tools are those permitted in `permissions.md`\n"
+            ""
+        ),
+    },
+    "prompt_db.list_directory": {
+        "ja": "指定パスのファイルとディレクトリを一覧表示する。globパターンでフィルタリング可能。execute_commandでlsやfindを使う代わりにこのツールを使うこと。",
+        "en": "List files and directories at the given path. Supports glob patterns for filtering. Use this instead of execute_command with ls or find.",
+    },
+    "prompt_db.list_tasks": {
+        "ja": "タスクキューの一覧を取得する。ステータスでフィルタリング可能。heartbeat時の進捗確認やタスク割り当て時に使う。",
+        "en": "List tasks in the task queue. Filter by status. Use during heartbeat for progress and task assignment.",
+    },
+    "prompt_db.post_channel": {
+        "ja": "Boardの共有チャネルにメッセージを投稿する。チーム全体に共有すべき情報はgeneralチャネルに、運用・インフラ関連はopsチャネルに投稿する。全Animaが閲覧できるため、解決済み情報の共有やお知らせに使うこと。1対1の連絡にはsend_messageを使う。",
+        "en": "Post a message to a Board shared channel. Use general for team-wide info, ops for infrastructure. All Animas can read; use for shared solutions and announcements. Use send_message for 1:1 communication.",
+    },
+    "prompt_db.read_channel": {
+        "ja": "Boardの共有チャネルの直近メッセージを読む。他のAnimaやユーザーが共有した情報を確認できる。heartbeat時のチャネル巡回や、特定トピックの共有状況を確認する時に使う。human_only=trueでユーザー発言のみフィルタリング可能。",
+        "en": "Read recent messages from a Board shared channel. See what other Animas and users have shared. Use during heartbeat or to check sharing on a topic. human_only=true filters to user messages only.",
+    },
+    "prompt_db.read_dm_history": {
+        "ja": "特定の相手との過去のDM履歴を読む。send_messageで送受信したメッセージの履歴を時系列で確認できる。以前のやり取りの文脈を確認したいとき、報告や委任の進捗を追跡したいときに使う。",
+        "en": "Read past DM history with a specific peer. View send_message history in chronological order. Use to recall prior context or track report/delegation progress.",
+    },
+    "prompt_db.read_file": {
+        "ja": "任意のファイルを絶対パスで読む（permissions.mdの許可範囲内）。出力は行番号付き（N|content形式）でコードブロックに囲まれる。大きいファイルはoffset（開始行、1始まり）とlimit（行数）で部分読み取り可能。自分の記憶ディレクトリ内のファイルにはread_memory_fileを使うこと。",
+        "en": "Read any file by absolute path (within permissions.md scope). Output is line-numbered (N|content) in a code block. Use offset (1-based) and limit for partial reads. Use read_memory_file for files inside your memory directory.",
+    },
+    "prompt_db.read_memory_file": {
+        "ja": "自分の記憶ディレクトリ内のファイルを相対パスで読む。heartbeat.md や cron.md の現在の内容を確認する時、手順書（procedures/）やスキル（skills/）の詳細を読む時、Primingで「->」ポインタが示すファイルの具体的内容を確認する時に使う。",
+        "en": "Read a file from your memory directory by relative path. Use when checking heartbeat.md or cron.md, reading procedure/skill details, or following Priming -> pointers to file contents.",
+    },
+    "prompt_db.refresh_tools": {
+        "ja": "個人・共通ツールディレクトリを再スキャンして新しいツールを発見する。新しいツールファイルを作成した後に呼んで、現在のセッションで即座に使えるようにする。",
+        "en": "Re-scan personal and common tool directories to discover new tools. Call after creating a new tool file to make it available in the current session.",
+    },
+    "prompt_db.report_knowledge_outcome": {
+        "ja": (
+            "知識ファイルの有用性を報告する。\n"
+            "search_memoryやPrimingで取得した知識を実際に使った後、必ず報告すること:\n"
+            "- 知識が正確で役立った → success=true\n"
+            "- 不正確・古い・無関係だった → success=false + notesに問題点を記録\n"
+            "報告データは能動的忘却と知識品質の維持に使われる。未報告の知識は品質評価できない。"
+        ),
+        "en": (
+            "Report usefulness of a knowledge file.\n"
+            "Always report after using knowledge from search_memory or Priming:\n"
+            "- Accurate and helpful → success=true\n"
+            "- Inaccurate, stale, or irrelevant → success=false + notes with issues\n"
+            "Data feeds forgetting and quality. Unreported knowledge cannot be evaluated."
+        ),
+    },
+    "prompt_db.report_procedure_outcome": {
+        "ja": (
+            "手順書・スキルの実行結果を報告する。成功/失敗のカウントと信頼度が更新される。\n"
+            "手順書（procedures/）やスキル（skills/）に従って作業した後は、必ずこのツールで結果を報告すること。\n"
+            "成功時はsuccess=true、失敗・問題発生時はsuccess=falseとnotesに詳細を記録する。\n"
+            "信頼度の低い手順は自動的に改善対象としてマークされる。"
+        ),
+        "en": (
+            "Report outcome of following a procedure or skill. Updates success/failure counts and confidence.\n"
+            "Always call this after completing work per procedures/ or skills/.\n"
+            "Use success=true on success; success=false and notes for failures.\n"
+            "Low-confidence procedures are auto-flagged for improvement."
+        ),
+    },
+    "prompt_db.search_code": {
+        "ja": "正規表現パターンでファイル内のテキストを検索する。マッチした行をファイルパスと行番号付きで返す。execute_commandでgrepを使う代わりにこのツールを使うこと。",
+        "en": "Search for text in files using a regex pattern. Returns matching lines with file path and line numbers. Use this instead of execute_command with grep.",
+    },
+    "prompt_db.search_memory": {
+        "ja": (
+            "長期記憶（knowledge, episodes, procedures）をキーワード検索する。\n"
+            "以下の場面で積極的に使うこと:\n"
+            "- コマンド実行・設定変更の前に、関連する手順書や過去の教訓を確認する\n"
+            "- 報告・判断の前に、関連する既存知識で事実を裏付ける\n"
+            "- 未知または曖昧なトピックについて、過去の経験を参照する\n"
+            "- Primingの記憶だけでは具体的な手順・数値が不足する場合\n"
+            "コンテキスト内で明確に判断できる単純な応答には不要。"
+        ),
+        "en": (
+            "Search long-term memory (knowledge, episodes, procedures) by keyword.\n"
+            "Use actively in these situations:\n"
+            "- Before executing commands or changing settings, check related procedures and past lessons\n"
+            "- Before reporting or making decisions, verify with existing knowledge\n"
+            "- When facing unknown or ambiguous topics, reference past experience\n"
+            "- When Priming memory alone lacks specific procedures or values\n"
+            "Not needed for simple responses that can be clearly determined from context."
+        ),
+    },
+    "prompt_db.send_message": {
+        "ja": "他のAnimaまたは人間ユーザーにDMを送信する。人間ユーザーへのメッセージは設定された外部チャネル（Slack等）経由で自動配信される。intentパラメータで即時処理（delegation/report/question）か次回heartbeat処理（未指定）かが決まる。1対1の指示・報告・質問に使う。全体共有にはpost_channelを使う。",
+        "en": "Send a DM to another Anima or human user. Messages to humans are delivered via configured external channel (e.g. Slack). intent parameter controls immediate handling (delegation/report/question) vs next heartbeat. Use for 1:1 instructions, reports, questions. Use post_channel for broadcast.",
+    },
+    "prompt_db.share_tool": {
+        "ja": "個人ツールをcommon_tools/にコピーして全Animaで共有する。自分のtools/ディレクトリにあるツールファイルが共有のcommon_tools/ディレクトリにコピーされる。",
+        "en": "Copy a personal tool to common_tools/ for all Animas to use. Copies from your tools/ directory to the shared common_tools/ directory.",
+    },
+    "prompt_db.skill": {
+        "ja": (
+            "スキル・共通スキル・手順書の全文を取得する。\n"
+            "Primingのスキルヒントに表示された名前を指定して呼ぶ。\n"
+            "手順書に従って作業する前に、必ずこのツールで全文を確認すること。"
+        ),
+        "en": (
+            "Get full text of a skill, common skill, or procedure.\n"
+            "Specify the name shown in Priming skill hints.\n"
+            "Always fetch full content before following a procedure."
+        ),
+    },
+    "prompt_db.update_task": {
+        "ja": "タスクのステータスを更新する。完了時はstatus='done'、中断時はstatus='cancelled'に設定する。タスク完了後は必ずこのツールでステータスを更新すること。",
+        "en": "Update task status. Use status='done' when complete, status='cancelled' when aborted. Always update status when a task is finished.",
+    },
+    "prompt_db.write_file": {
+        "ja": "任意のファイルに書き込む（permissions.mdの許可範囲内）。自分の記憶ディレクトリ外のファイルを書く時に使う。自分の記憶ディレクトリ内のファイルにはwrite_memory_fileを使うこと。",
+        "en": "Write to any file (within permissions.md scope). Use for files outside your memory directory. Use write_memory_file for files inside your memory directory.",
+    },
+    "prompt_db.write_memory_file": {
+        "ja": (
+            "自分の記憶ディレクトリ内のファイルに書き込みまたは追記する。\n"
+            "以下の場面で記録すべき:\n"
+            "- 問題を解決した → knowledge/ に原因と解決策を記録\n"
+            "- 正しいパラメータ・設定値を発見した → knowledge/ に記録\n"
+            "- 作業手順を確立・改善した → procedures/ に手順書を作成\n"
+            "- 新しいスキル・テクニックを習得した → skills/ に記録\n"
+            "- heartbeat.md や cron.md の更新\n"
+            "mode='overwrite' で全体置換、mode='append' で末尾追記。\n"
+            "自動統合（日次consolidation）を待たず、重要な発見は即座に書き込むこと。"
+        ),
+        "en": (
+            "Write or append to a file in your memory directory.\n"
+            "Record when:\n"
+            "- Problem solved → knowledge/ with cause and solution\n"
+            "- Correct parameters discovered → knowledge/\n"
+            "- Procedure established/improved → procedures/ with new doc\n"
+            "- New skill learned → skills/\n"
+            "- Updating heartbeat.md or cron.md\n"
+            "mode='overwrite' for replace, mode='append' for append.\n"
+            "Write important discoveries immediately; do not wait for consolidation."
+        ),
+    },
+    # ── reminder.* (i18n) ──────────────────────────────
+    "reminder.context_threshold": {
+        "ja": "コンテキスト使用量: {ratio}。出力を簡潔にし、重要な状態をセッション状態に保存せよ。",
+        "en": "Context usage: {ratio}. Keep output concise and save important state to session state.",
+    },
+    "reminder.final_iteration": {
+        "ja": "ツールの使用回数が上限に達しました。これ以上ツールは使用できません。これまでの作業内容と得られた情報を踏まえて、最終回答を作成してください。",
+        "en": "Tool usage limit reached. No more tools can be used. Based on the work done and information gathered so far, compose your final answer.",
+    },
+    "reminder.output_truncated": {
+        "ja": "出力がmax_tokensで途切れた。残りの内容を小さく分割して続行せよ。",
+        "en": "Output was cut off at max_tokens. Split the remaining content into smaller parts and continue.",
+    },
+    # ── runner.* (i18n) ──────────────────────────────
+    "runner.recovery_text": {
+        "ja": "応答が中断されました（前回セッションの未完了ストリームを回復, {session_type}）",
+        "en": "Response was interrupted (recovered incomplete stream from previous session, {session_type})",
+    },
+    # ── schema.* (i18n) ──────────────────────────────
+    "schema.add_task.assignee": {
+        "ja": "担当者名（自分自身または委任先のAnima名）",
+        "en": "Assignee name (yourself or the delegated Anima name)",
+    },
+    "schema.add_task.deadline": {
+        "ja": "期限（必須）。相対形式 '30m','2h','1d' またはISO8601。例: '1h' = 1時間後",
+        "en": "Deadline (required). Relative format '30m','2h','1d' or ISO8601. Example: '1h' = 1 hour from now",
+    },
+    "schema.add_task.desc": {
+        "ja": "タスクキューに新しいタスクを追加する。人間からの指示は必ず source='human' で記録すること。Anima間の委任は source='anima' で記録する。",
+        "en": "Add a new task to the task queue. Instructions from humans must be recorded with source='human'. Inter-Anima delegation uses source='anima'.",
+    },
+    "schema.add_task.original_instruction": {
+        "ja": "元の指示文（委任時は原文引用を含める）",
+        "en": "Original instruction text (include original quote when delegating)",
+    },
+    "schema.add_task.relay_chain": {
+        "ja": "委任経路（例: ['taka', 'sakura', 'rin']）",
+        "en": "Delegation chain (e.g. ['taka', 'sakura', 'rin'])",
+    },
+    "schema.add_task.source": {
+        "ja": "タスクの発生源 (human=人間からの指示, anima=Anima間委任)",
+        "en": "Task source (human=instruction from human, anima=inter-Anima delegation)",
+    },
+    "schema.add_task.summary": {"ja": "タスクの1行要約", "en": "One-line task summary"},
+    "schema.audit_subordinate.days": {
+        "ja": "監査期間（日数、デフォルト: 1）",
+        "en": "Audit period in days (default: 1)",
+    },
+    "schema.audit_subordinate.desc": {
+        "ja": "配下のAnimaの直近活動を包括的に監査する。活動サマリー・タスク状況・エラー頻度・ツール使用統計・通信パターンを構造化レポートとして返す。定期的なパフォーマンスレビューに使う。直属部下だけでなく孫以下の配下も指定可能。",
+        "en": "Comprehensively audit a subordinate Anima's recent activity. Returns a structured report covering activity summary, task status, error frequency, tool usage statistics, and communication patterns. Use for periodic performance reviews. Can target any descendant, not just direct subordinates.",
+    },
+    "schema.audit_subordinate.name": {"ja": "監査対象の配下Anima名", "en": "Subordinate Anima name to audit"},
+    "schema.call_human.body": {
+        "ja": "通知の本文（詳細な報告内容）",
+        "en": "Notification body (detailed report content)",
+    },
+    "schema.call_human.desc": {
+        "ja": "人間の管理者に連絡します。重要な報告、問題のエスカレーション、判断が必要な事項がある場合に使用してください。チャット画面と外部通知チャネル（Slack等）の両方に届きます。",
+        "en": "Contact the human administrator. Use this for important reports, problem escalation, or matters requiring human judgment. Notifications are delivered to both the chat UI and external channels (Slack, etc.).",
+    },
+    "schema.call_human.priority": {
+        "ja": "通知の優先度（デフォルト: normal）",
+        "en": "Notification priority (default: normal)",
+    },
+    "schema.call_human.subject": {"ja": "通知の件名（簡潔に）", "en": "Notification subject (keep it brief)"},
+    "schema.check_background_task.desc": {
+        "ja": "バックグラウンドタスクの状態を確認する。task_idを指定して、実行中・完了・失敗の状態と結果を取得する。ツール呼び出しが background ステータスで返された場合に使用する。",
+        "en": "Check the status of a background task. Specify a task_id to get its running/completed/failed status and result. Use this when a tool call returns with 'background' status.",
+    },
+    "schema.check_background_task.task_id": {
+        "ja": "確認するタスクのID（submit時に返されたID）",
+        "en": "Task ID to check (the ID returned when submitted)",
+    },
+    "schema.check_permissions.desc": {
+        "ja": "自分に現在許可されているツール・外部ツール・ファイルアクセスの一覧を確認する。何が使えて何が使えないかを事前に把握し、試行→失敗のサイクルを防ぐ。",
+        "en": "Check the list of currently permitted tools, external tools, and file access. Know what you can and cannot use in advance to avoid trial-and-error cycles.",
+    },
+    "schema.create_skill.allowed_tools": {
+        "ja": "frontmatter allowed_tools（任意）",
+        "en": "Frontmatter allowed_tools (optional)",
+    },
+    "schema.create_skill.body": {"ja": "SKILL.md本文（Markdown）", "en": "SKILL.md body content (Markdown)"},
+    "schema.create_skill.desc": {
+        "ja": "スキルをディレクトリ構造で作成する。SKILL.md（frontmatter + 本文）を生成し、オプションでreferences/やtemplates/にファイルを配置する。",
+        "en": "Create a skill with directory structure. Generates SKILL.md (frontmatter + body) and optionally places files in references/ and templates/.",
+    },
+    "schema.create_skill.description": {
+        "ja": "frontmatter description（トリガーキーワード含む）",
+        "en": "Frontmatter description (include trigger keywords)",
+    },
+    "schema.create_skill.location": {
+        "ja": "保存先。personal=個人スキル、common=共通スキル。デフォルト: personal",
+        "en": "Storage location. personal=personal skill, common=shared skill. Default: personal",
+    },
+    "schema.create_skill.references": {
+        "ja": "references/ に配置するファイル群（任意）",
+        "en": "Files to place in references/ (optional)",
+    },
+    "schema.create_skill.skill_name": {
+        "ja": "スキル名（ケバブケース。例: my-skill）",
+        "en": "Skill name (kebab-case, e.g. my-skill)",
+    },
+    "schema.create_skill.templates": {
+        "ja": "templates/ に配置するファイル群（任意）",
+        "en": "Files to place in templates/ (optional)",
+    },
+    "schema.delegate_task.deadline": {
+        "ja": "期限（相対形式: '30m', '2h', '1d' または ISO8601）",
+        "en": "Deadline (relative format: '30m', '2h', '1d' or ISO8601)",
+    },
+    "schema.delegate_task.desc": {
+        "ja": "直属部下にタスクを委譲する。部下のタスクキューにタスクを追加し、同時にDMで指示を送信する。自分側にも追跡用エントリが作成される。直属部下のみ操作可能。",
+        "en": "Delegate a task to a direct subordinate. Adds the task to the subordinate's task queue and sends a DM with instructions. A tracking entry is also created on your side. Only direct subordinates can be targeted.",
+    },
+    "schema.delegate_task.instruction": {"ja": "タスクの指示内容", "en": "Task instructions"},
+    "schema.delegate_task.name": {
+        "ja": "委譲先の直属部下のAnima名",
+        "en": "Direct subordinate Anima name to delegate to",
+    },
+    "schema.delegate_task.summary": {"ja": "タスクの1行要約", "en": "One-line task summary"},
+    "schema.disable_subordinate.desc": {
+        "ja": "部下のAnimaを休止させる（プロセス停止 + 自動復帰防止）。自分の直属部下のみ操作可能。",
+        "en": "Disable a subordinate Anima (stop process + prevent auto-restart). Only direct subordinates can be targeted.",
+    },
+    "schema.disable_subordinate.name": {
+        "ja": "休止させる部下のAnima名（例: hinata）",
+        "en": "Subordinate Anima name to disable (e.g. hinata)",
+    },
+    "schema.disable_subordinate.reason": {
+        "ja": "休止理由（activity_logに記録される）",
+        "en": "Reason for disabling (recorded in activity_log)",
+    },
+    "schema.enable_subordinate.desc": {
+        "ja": "休止中の部下のAnimaを復帰させる。自分の直属部下のみ操作可能。",
+        "en": "Re-enable a disabled subordinate Anima. Only direct subordinates can be targeted.",
+    },
+    "schema.enable_subordinate.name": {
+        "ja": "復帰させる部下のAnima名（例: hinata）",
+        "en": "Subordinate Anima name to enable (e.g. hinata)",
+    },
+    "schema.list_background_tasks.desc": {
+        "ja": "バックグラウンドタスクの一覧を取得する。ステータスでフィルタリング可能（running/completed/failed）。省略時は全件を返す。",
+        "en": "List background tasks. Filter by status (running/completed/failed). Returns all tasks when status is omitted.",
+    },
+    "schema.list_background_tasks.status": {
+        "ja": "フィルタするステータス（省略時は全件）",
+        "en": "Status to filter by (omit for all tasks)",
+    },
+    "schema.list_tasks.desc": {
+        "ja": "タスクキューの一覧を取得する。ステータスでフィルタリング可能。",
+        "en": "List tasks in the task queue. Can filter by status.",
+    },
+    "schema.list_tasks.status": {
+        "ja": "フィルタするステータス（省略時は全件）",
+        "en": "Status to filter by (omit for all tasks)",
+    },
+    "schema.manage_channel.action": {
+        "ja": "操作種別。create=チャネル作成, add_member=メンバー追加, remove_member=メンバー削除, info=チャネル情報表示",
+        "en": "Action type. create=create channel, add_member=add members, remove_member=remove members, info=show channel info",
+    },
+    "schema.manage_channel.channel": {
+        "ja": "チャネル名（小文字英数字・ハイフン・アンダースコア）",
+        "en": "Channel name (lowercase alphanumeric, hyphens, underscores)",
+    },
+    "schema.manage_channel.desc": {
+        "ja": "Boardチャネルのアクセス制御(ACL)を管理する。チャネルの作成、メンバーの追加・削除、チャネル情報の確認ができる。メンバーリストが空のチャネル（general, ops等）は全員アクセス可能。",
+        "en": "Manage Board channel access control (ACL). Create channels, add/remove members, and view channel info. Channels with an empty member list (general, ops, etc.) are accessible to all.",
+    },
+    "schema.manage_channel.description": {
+        "ja": "チャネルの説明（create時のみ）",
+        "en": "Channel description (only used on create)",
+    },
+    "schema.manage_channel.members": {
+        "ja": "対象メンバー名リスト（create時は初期メンバー、add/remove時は操作対象）",
+        "en": "List of member names (initial members on create, target members on add/remove)",
+    },
+    "schema.org_dashboard.desc": {
+        "ja": "配下全体の組織ダッシュボードを表示する。各Animaのプロセス状態・最終アクティビティ時刻・現在タスク要約・タスク数をツリー形式で一覧する。配下が多い場合も全員分を返す。",
+        "en": "Display the organization dashboard for all subordinates. Shows each Anima's process status, last activity time, current task summary, and task count in a tree format. Returns data for all subordinates regardless of count.",
+    },
+    "schema.ping_subordinate.desc": {
+        "ja": "配下のAnimaの生存確認を行う。name を省略すると全配下を一括 ping する。指定すると単一Animaのみ確認する。プロセス状態・最終アクティビティ時刻・経過時間を返す。",
+        "en": "Check if subordinate Animas are alive. Omit name to ping all subordinates at once. Specify a name to check a single Anima. Returns process status, last activity time, and elapsed time.",
+    },
+    "schema.ping_subordinate.name": {
+        "ja": "確認するAnima名（省略時は全配下）",
+        "en": "Anima name to check (omit to ping all subordinates)",
+    },
+    "schema.post_channel.channel": {
+        "ja": "チャネル名 (general=全体共有, ops=運用系)",
+        "en": "Channel name (general=team-wide, ops=operations)",
+    },
+    "schema.post_channel.desc": {
+        "ja": "Boardの共有チャネルにメッセージを投稿する。チーム全体に共有すべき情報はgeneralチャネルに、運用・インフラ関連はopsチャネルに投稿する。全Animaが閲覧できるため、解決済み情報の共有やお知らせに使うこと。1対1の連絡にはsend_messageを使う。",
+        "en": "Post a message to a Board shared channel. Use the general channel for team-wide information and the ops channel for operations/infrastructure topics. All Animas can read shared channels, so use them for resolved info and announcements. For 1-on-1 communication, use send_message instead.",
+    },
+    "schema.post_channel.text": {
+        "ja": "投稿するメッセージ本文。@名前 でメンション可能（メンション先にDM通知される）。@all で起動中の全員にDM通知",
+        "en": "Message body to post. Use @name to mention (triggers DM notification to the mentioned person). @all sends DM notification to all active members",
+    },
+    "schema.read_channel.channel": {"ja": "チャネル名 (general, ops)", "en": "Channel name (general, ops)"},
+    "schema.read_channel.desc": {
+        "ja": "Boardの共有チャネルの直近メッセージを読む。他のAnimaやユーザーが共有した情報を確認できる。human_only=trueでユーザー発言のみフィルタリング可能。inbox はチャネルではないため指定不可（inbox はシステムが自動処理）。",
+        "en": "Read recent messages from a Board shared channel. View information shared by other Animas and users. Set human_only=true to filter for human messages only. 'inbox' is not a channel and cannot be specified (inbox is processed automatically by the system).",
+    },
+    "schema.read_channel.human_only": {
+        "ja": "trueの場合、人間の発言のみ返す",
+        "en": "If true, return only human messages",
+    },
+    "schema.read_channel.limit": {
+        "ja": "取得件数（デフォルト: 20）",
+        "en": "Number of messages to fetch (default: 20)",
+    },
+    "schema.read_dm_history.desc": {
+        "ja": "特定の相手との過去のDM履歴を読む。send_messageで送受信したメッセージの履歴を時系列で確認できる。以前のやり取りの文脈を確認したいときに使う。",
+        "en": "Read past DM history with a specific peer. View chronological history of messages sent/received via send_message. Use this when you need context from previous conversations.",
+    },
+    "schema.read_dm_history.limit": {
+        "ja": "取得件数（デフォルト: 20）",
+        "en": "Number of messages to fetch (default: 20)",
+    },
+    "schema.read_dm_history.peer": {"ja": "DM相手の名前", "en": "Name of the DM peer"},
+    "schema.read_subordinate_state.desc": {
+        "ja": "配下のAnimaの現在のタスク状態を読み取る。current_task.md（進行中タスク）と pending.md（保留タスク）の内容を返す。直属部下だけでなく孫以下の配下も指定可能。",
+        "en": "Read a subordinate Anima's current task state. Returns contents of current_task.md (active task) and pending.md (pending tasks). Can target any descendant, not just direct subordinates.",
+    },
+    "schema.read_subordinate_state.name": {"ja": "読み取る配下のAnima名", "en": "Subordinate Anima name to read"},
+    "schema.restart_subordinate.desc": {
+        "ja": (
+            "部下のAnimaプロセスを再起動する（直属部下のみ可能）。\n"
+            "モデル変更（set_subordinate_model）後に呼び出すことで新モデルを即時反映できる。\n"
+            "Reconciliation ループが 30 秒以内にプロセスを再起動する。"
+        ),
+        "en": (
+            "Restart a subordinate Anima process (direct subordinates only).\n"
+            "Call this after set_subordinate_model to apply the new model immediately.\n"
+            "The reconciliation loop will restart the process within 30 seconds."
+        ),
+    },
+    "schema.restart_subordinate.name": {"ja": "再起動する部下のAnima名", "en": "Subordinate Anima name to restart"},
+    "schema.restart_subordinate.reason": {
+        "ja": "再起動理由（activity_log に記録される）",
+        "en": "Reason for restart (recorded in activity_log)",
+    },
+    "schema.set_subordinate_background_model.credential": {
+        "ja": "credential名（省略可）",
+        "en": "Credential name (optional)",
+    },
+    "schema.set_subordinate_background_model.desc": {
+        "ja": (
+            "部下のバックグラウンドモデル（heartbeat/cron用）を変更する（直属部下のみ可能）。\n"
+            "変更は即時 status.json に保存される。反映には restart_subordinate を併用すること。\n"
+            "\n"
+            "バックグラウンドモデル未設定時はメインモデル（model）がそのまま使用される。\n"
+            "クリアするには model に空文字 '' を指定する。"
+        ),
+        "en": (
+            "Change a subordinate's background model (for heartbeat/cron). Direct subordinates only.\n"
+            "Changes are saved to status.json immediately. Use restart_subordinate to apply.\n"
+            "\n"
+            "When no background model is set, the main model is used.\n"
+            "Pass an empty string '' to clear the background model."
+        ),
+    },
+    "schema.set_subordinate_background_model.model": {
+        "ja": "バックグラウンドモデル名（空文字でクリア）",
+        "en": "Background model name (empty string to clear)",
+    },
+    "schema.set_subordinate_background_model.name": {"ja": "対象の部下Anima名", "en": "Target subordinate Anima name"},
+    "schema.set_subordinate_background_model.reason": {"ja": "変更理由", "en": "Reason for change"},
+    "schema.set_subordinate_model.desc": {
+        "ja": (
+            "部下のLLMモデルを変更する（直属部下のみ可能）。\n"
+            "変更は即時 config.json に保存されるが、実行中プロセスへの反映には restart_subordinate を併用すること。\n"
+            "\n"
+            "指定するモデル名は provider/model_name 形式（Claude は prefix 不要）。\n"
+            "KNOWN_MODELS 外の名前を指定した場合も警告のみで処理は続行する。\n"
+            "\n"
+            "主なモデル名:\n"
+            "  [Mode S / Claude]\n"
+            "  claude-opus-4-6            最高性能・推奨\n"
+            "  claude-sonnet-4-6          バランス型・推奨\n"
+            "  claude-haiku-4-5-20251001  軽量・高速（レガシー）\n"
+            "  [Mode A / OpenAI]\n"
+            "  openai/gpt-4.1             最新・コーディング強\n"
+            "  openai/gpt-4.1-mini        高速・低コスト\n"
+            "  openai/o4-mini-2025-04-16  推論・低コスト\n"
+            "  [Mode A / Google]\n"
+            "  google/gemini-2.5-pro      最高性能\n"
+            "  google/gemini-2.5-flash    高速バランス\n"
+            "  [Mode A / xAI]\n"
+            "  xai/grok-4                 最新Grok\n"
+            "  [Mode A / Ollama local]\n"
+            "  ollama/glm-4.7             ローカル・tool_use対応\n"
+            "  [Mode B / Ollama local]\n"
+            "  ollama/gemma3:12b          中型ローカル\n"
+            ""
+        ),
+        "en": (
+            "Change a subordinate's LLM model (direct subordinates only).\n"
+            "Changes are saved to config.json immediately, but require restart_subordinate to take effect on a running process.\n"
+            "\n"
+            "Model names use provider/model_name format (Claude models need no prefix).\n"
+            "Unknown model names produce a warning but processing continues.\n"
+            "\n"
+            "Available models:\n"
+            "  [Mode S / Claude]\n"
+            "  claude-opus-4-6            Highest performance, recommended\n"
+            "  claude-sonnet-4-6          Balanced, recommended\n"
+            "  claude-haiku-4-5-20251001  Lightweight, fast (legacy)\n"
+            "  [Mode A / OpenAI]\n"
+            "  openai/gpt-4.1             Latest, strong at coding\n"
+            "  openai/gpt-4.1-mini        Fast, low cost\n"
+            "  openai/o4-mini-2025-04-16  Reasoning, low cost\n"
+            "  [Mode A / Google]\n"
+            "  google/gemini-2.5-pro      Highest performance\n"
+            "  google/gemini-2.5-flash    Fast, balanced\n"
+            "  [Mode A / xAI]\n"
+            "  xai/grok-4                 Latest Grok\n"
+            "  [Mode A / Ollama local]\n"
+            "  ollama/glm-4.7             Local, tool_use capable\n"
+            "  [Mode B / Ollama local]\n"
+            "  ollama/gemma3:12b          Mid-size local\n"
+            ""
+        ),
+    },
+    "schema.set_subordinate_model.model": {
+        "ja": "新しいモデル名（例: claude-sonnet-4-6, openai/gpt-4.1）",
+        "en": "New model name (e.g. claude-sonnet-4-6, openai/gpt-4.1)",
+    },
+    "schema.set_subordinate_model.name": {"ja": "変更する部下のAnima名", "en": "Subordinate Anima name to change"},
+    "schema.set_subordinate_model.reason": {
+        "ja": "変更理由（activity_log に記録される）",
+        "en": "Reason for change (recorded in activity_log)",
+    },
+    "schema.skill.context": {
+        "ja": "スキルに渡す補足コンテキスト（任意）",
+        "en": "Supplementary context to pass to the skill (optional)",
+    },
+    "schema.skill.desc": {
+        "ja": "スキル・手順書を発動する。skill_nameで指定したスキルの全文を返す。",
+        "en": "Invoke a skill or procedure. Returns the full text of the skill specified by skill_name.",
+    },
+    "schema.skill.skill_name": {
+        "ja": "発動するスキル名（個人スキル、共通スキル、手順書）",
+        "en": "Skill name to invoke (personal skill, common skill, or procedure)",
+    },
+    "schema.task_tracker.desc": {
+        "ja": "delegate_task で委譲したタスクの進捗を追跡する。自分のタスクキューから delegated ステータスのエントリを取得し、部下側の最新ステータスと突き合わせて返す。",
+        "en": "Track progress of tasks delegated via delegate_task. Retrieves delegated-status entries from your task queue and cross-references them with the subordinate's latest status.",
+    },
+    "schema.task_tracker.status": {
+        "ja": "フィルタ（all: 全件, active: 進行中, completed: 完了済み）。デフォルト: active",
+        "en": "Filter (all: all tasks, active: in-progress, completed: finished). Default: active",
+    },
+    "schema.text_format.args_label": {"ja": "引数", "en": "Args"},
+    "schema.text_format.example": {
+        "ja": '{"tool": "ツール名", "arguments": {"引数名": "値"}}',
+        "en": '{"tool": "tool_name", "arguments": {"arg_name": "value"}}',
+    },
+    "schema.text_format.fewshot1_prompt": {"ja": "ユーザー: docker ps して", "en": "User: run docker ps"},
+    "schema.text_format.fewshot2_prompt": {
+        "ja": "ユーザー: 今のメモリ使用量を教えて",
+        "en": "User: show current memory usage",
+    },
+    "schema.text_format.fewshot_header": {"ja": "### 使用例", "en": "### Examples"},
+    "schema.text_format.header": {"ja": "## 利用可能なツール", "en": "## Available Tools"},
+    "schema.text_format.instruction": {
+        "ja": "外部情報の取得やコマンド実行が必要な場合は、**必ず**以下の形式で ```json コードブロックを出力してツールを呼び出してください:",
+        "en": "When you need external information or command execution, you **MUST** output a ```json code block to invoke a tool:",
+    },
+    "schema.text_format.required_label": {"ja": "(必須)", "en": "(required)"},
+    "schema.text_format.rule_no_empty_promise": {
+        "ja": "「調べます」「確認します」とだけ言って終わらないでください。調べるならツールを呼び出してください。",
+        "en": 'Do NOT just say "I\'ll check" without actually calling a tool.',
+    },
+    "schema.text_format.rule_no_fabricate": {
+        "ja": "**重要**: コマンド出力・ファイル内容・プロセス情報などを推測や想像で生成してはいけません。必ずツールで取得してください。",
+        "en": "**Important**: NEVER fabricate command output, file contents, or system information. Always use a tool to retrieve real data.",
+    },
+    "schema.text_format.rule_one_call": {
+        "ja": "1回のメッセージでツール呼び出しは1つだけにしてください。",
+        "en": "Only one tool call per message.",
+    },
+    "schema.text_format.rule_plain_text": {
+        "ja": "ツールを使う必要がなければ、普通にテキストで返答してください。",
+        "en": "If you don't need to use a tool, respond with plain text.",
+    },
+    "schema.text_format.rule_wait": {
+        "ja": "ツールの実行結果は次のメッセージで提供されます。結果を待ってから回答してください。",
+        "en": "Tool results will be provided in the next message. Wait for results before answering.",
+    },
+    "schema.text_format.tools_header": {"ja": "### ツール一覧", "en": "### Tool List"},
+    "schema.update_task.desc": {
+        "ja": "タスクのステータスを更新する。完了時は status='done'、中断時は status='cancelled' に設定する。",
+        "en": "Update a task's status. Set status='done' on completion, status='cancelled' on abort.",
+    },
+    "schema.update_task.status": {"ja": "新しいステータス", "en": "New status"},
+    "schema.update_task.summary": {"ja": "更新後の要約（任意）", "en": "Updated summary (optional)"},
+    "schema.update_task.task_id": {
+        "ja": "タスクID（add_task時に返されたID）",
+        "en": "Task ID (the ID returned by add_task)",
+    },
+    "schema.vault_get.desc": {
+        "ja": "暗号化されたクレデンシャルvaultから値を取得する。APIキー、パスワード、トークンなどの秘密情報を安全に保管・取得できる。sectionとkeyを指定して値を取得する。",
+        "en": "Retrieve a value from the encrypted credential vault. Securely stores and retrieves secrets such as API keys, passwords, and tokens. Specify section and key to get a value.",
+    },
+    "schema.vault_get.key": {
+        "ja": "キー名（例: 'api_key', 'master_password'）",
+        "en": "Key name (e.g. 'api_key', 'master_password')",
+    },
+    "schema.vault_get.section": {
+        "ja": "セクション名（例: 'shared', 'bitwarden', 'bank'）",
+        "en": "Section name (e.g. 'shared', 'bitwarden', 'bank')",
+    },
+    "schema.vault_list.desc": {
+        "ja": "暗号化されたクレデンシャルvaultのセクション・キー一覧を表示する。値は表示されない（セクション名とキー名のみ）。",
+        "en": "List sections and keys in the encrypted credential vault. Values are not shown (section and key names only).",
+    },
+    "schema.vault_list.section": {
+        "ja": "セクション名（省略時は全セクション一覧）",
+        "en": "Section name (omit to list all sections)",
+    },
+    "schema.vault_store.desc": {
+        "ja": "暗号化されたクレデンシャルvaultに値を保存する。APIキー、パスワード、トークンなどの秘密情報を暗号化して保管する。",
+        "en": "Store a value in the encrypted credential vault. Encrypts and stores secrets such as API keys, passwords, and tokens.",
+    },
+    "schema.vault_store.key": {
+        "ja": "キー名（例: 'api_key', 'master_password'）",
+        "en": "Key name (e.g. 'api_key', 'master_password')",
+    },
+    "schema.vault_store.section": {
+        "ja": "セクション名（例: 'shared', 'bitwarden', 'bank'）",
+        "en": "Section name (e.g. 'shared', 'bitwarden', 'bank')",
+    },
+    "schema.vault_store.value": {
+        "ja": "保存する値（暗号化されて保存される）",
+        "en": "Value to store (will be encrypted)",
+    },
+    # ── session.* (i18n) ──────────────────────────────
+    "session.caution_continue": {
+        "ja": "中断前の作業の続きを実行してください",
+        "en": "Continue the work from before the interruption",
+    },
+    "session.caution_header": {"ja": "## 注意", "en": "## Caution"},
+    "session.caution_no_repeat": {
+        "ja": "完了済みステップを繰り返さないでください",
+        "en": "Do not repeat completed steps",
+    },
+    "session.caution_skip_existing": {
+        "ja": "ファイルが既に存在する場合はスキップまたは更新してください",
+        "en": "If files already exist, skip or update them",
+    },
+    "session.completed_none": {"ja": "(なし)", "en": "(none)"},
+    "session.completed_steps_header": {"ja": "## 完了済みステップ", "en": "## Completed Steps"},
+    "session.continuation_intro": {
+        "ja": ("あなたは以下のタスクを実行中でしたが、通信エラーで中断されました。\n続きから実行してください。"),
+        "en": (
+            "You were executing the following task but it was interrupted by a communication error.\n"
+            "Please continue from where you left off."
+        ),
+    },
+    "session.original_instruction_header": {"ja": "## 元の指示", "en": "## Original Instruction"},
+    "session.output_so_far_header": {"ja": "## これまでの出力", "en": "## Output So Far"},
+    "session.text_truncated": {"ja": "...(前半省略)...", "en": "...(earlier omitted)..."},
+    # ── skill.* (i18n) ──────────────────────────────
+    "skill.context_header": {"ja": "## コンテキスト", "en": "## Context"},
+    "skill.desc_line1": {
+        "ja": "スキル・手順書をオンデマンドでロードする。",
+        "en": "Load skills and procedures on demand.",
+    },
+    "skill.desc_line2": {
+        "ja": "スキルを発動すると、詳細な手順がこのツールのレスポンスとして提供される。",
+        "en": "When activated, detailed instructions are provided in the tool response.",
+    },
+    "skill.desc_line3": {
+        "ja": "該当するスキルがある場合に使用すること。",
+        "en": "Use when a matching skill is available.",
+    },
+    "skill.label_common": {"ja": "共通", "en": "common"},
+    "skill.label_procedure": {"ja": "手順", "en": "procedure"},
+    "skill.not_found": {
+        "ja": ("スキル '{skill_name}' が見つかりません。\n利用可能なスキル: {available}"),
+        "en": ("Skill '{skill_name}' not found.\nAvailable skills: {available}"),
+    },
+    "skill.tool_constraint_desc": {
+        "ja": "このスキルの実行中は以下のツールのみ使用してください:",
+        "en": "Only use the following tools while executing this skill:",
+    },
+    "skill.tool_constraint_header": {"ja": "## ツール制約", "en": "## Tool Constraints"},
+    "skill.truncated": {"ja": "(以降省略)", "en": "(truncated)"},
+    "skill.type_common": {"ja": "共通", "en": "common"},
+    "skill.type_personal": {"ja": "個人", "en": "personal"},
+    "skill.type_procedure": {"ja": "手順", "en": "procedure"},
 }
 
 

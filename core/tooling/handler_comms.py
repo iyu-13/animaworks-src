@@ -84,16 +84,8 @@ class CommsToolsMixin:
             if isinstance(e, (ValueError, RecipientNotFoundError)):
                 session = active_session_type.get()
                 if session == "chat":
-                    return (
-                        f"宛先 '{to}' には send_message で送信できません。"
-                        "チャット中は直接テキストで返答すれば人間ユーザーに届きます。"
-                        "send_message は他のAnima宛てにのみ使用してください。"
-                    )
-                return (
-                    f"宛先 '{to}' には send_message で送信できません。"
-                    "人間への連絡は call_human を使用してください。"
-                    "send_message は他のAnima宛てにのみ使用してください。"
-                )
+                    return t("handler.send_msg_chat_hint", to=to)
+                return t("handler.send_msg_non_chat_hint", to=to)
             logger.warning(
                 "Recipient resolution failed for '%s': %s",
                 to,

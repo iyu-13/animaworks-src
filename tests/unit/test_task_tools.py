@@ -6,17 +6,19 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.tooling.schemas import TASK_TOOLS, build_tool_list
+from core.tooling.schemas import _task_tools, build_tool_list
 
 
 class TestTaskToolSchemas:
     def test_task_tools_defined(self):
-        assert len(TASK_TOOLS) == 3
-        names = {t["name"] for t in TASK_TOOLS}
+        task_tools = _task_tools()
+        assert len(task_tools) == 3
+        names = {t["name"] for t in task_tools}
         assert names == {"add_task", "update_task", "list_tasks"}
 
     def test_add_task_schema(self):
-        add_task = next(t for t in TASK_TOOLS if t["name"] == "add_task")
+        task_tools = _task_tools()
+        add_task = next(t for t in task_tools if t["name"] == "add_task")
         required = add_task["parameters"]["required"]
         assert "source" in required
         assert "original_instruction" in required
@@ -25,14 +27,15 @@ class TestTaskToolSchemas:
         assert "deadline" in required
 
     def test_update_task_schema(self):
-        update_task = next(t for t in TASK_TOOLS if t["name"] == "update_task")
+        task_tools = _task_tools()
+        update_task = next(t for t in task_tools if t["name"] == "update_task")
         required = update_task["parameters"]["required"]
         assert "task_id" in required
         assert "status" in required
 
     def test_list_tasks_schema(self):
-        list_tasks = next(t for t in TASK_TOOLS if t["name"] == "list_tasks")
-        # status is optional
+        task_tools = _task_tools()
+        list_tasks = next(t for t in task_tools if t["name"] == "list_tasks")
         assert "required" not in list_tasks["parameters"] or "status" not in list_tasks["parameters"].get("required", [])
 
     def test_build_tool_list_includes_task_tools(self):

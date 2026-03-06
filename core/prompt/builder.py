@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from core.i18n import t
 from core.memory import MemoryManager
 from core.memory.shortterm import ShortTermMemory
 from core.paths import PROJECT_DIR, get_data_dir, load_prompt
@@ -825,7 +826,7 @@ def build_system_prompt(
         skill_lines.append(f"- {m.name}{_common}{desc}")
     for m in procedure_metas:
         desc = f": {m.description}" if m.description else ""
-        skill_lines.append(f"- {m.name} (手順){desc}")
+        skill_lines.append(f"- {m.name} ({t('builder.procedure_label')}){desc}")
     skill_names = "\n".join(skill_lines) or _none
     shared_users_list = ", ".join(memory.list_shared_users()) or _none
 
@@ -908,12 +909,7 @@ def build_system_prompt(
         try:
             hb_tool = load_prompt("builder/heartbeat_tool_instruction")
         except FileNotFoundError:
-            hb_tool = (
-                "Heartbeatでは**観察・報告・計画・フォローアップ**にツールを使ってください。\n"
-                "- OK: チャネル読み取り、記憶検索、メッセージ送信、タスク更新、pending作成、外部ツール確認\n"
-                "- NG: コード変更、ファイル大量編集、長時間の分析・調査\n"
-                "重い作業が必要な場合は state/pending/ にタスクファイルを書き出してください。"
-            )
+            hb_tool = t("builder.heartbeat_tool_fallback")
         _add(hb_tool, "tool_guides", 2)
     else:
         if _is_mcp_mode(execution_mode):
@@ -1018,15 +1014,7 @@ def build_system_prompt(
     # because model_instructions_file replaces the CLI's built-in preamble
     # prompt.  Only injected for chat / inbox (not background / task).
     if execution_mode == "c" and not is_background_auto and not is_task:
-        c_resp = (
-            "## 応答要件\n"
-            "あなたはユーザーとの対話において、**必ずテキストで応答**してください。\n"
-            "ツール呼び出しを行った場合でも、その結果の要約やユーザーへの返答を\n"
-            "テキストメッセージとして出力してください。\n"
-            "挨拶・質問・雑談などの会話メッセージには、ツール呼び出しの前後に\n"
-            "自然なテキスト応答を必ず含めてください。"
-        )
-        _add(c_resp, "c_response_requirement", 2)
+        _add(t("builder.c_response_requirement"), "c_response_requirement", 2)
 
     # ── Budget allocation + Final assembly ─────────────────────
     allocated = _allocate_sections(sections, budget)

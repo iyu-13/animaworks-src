@@ -52,7 +52,7 @@ from core.execution.base import (
     tool_input_save_budget,
     tool_result_save_budget,
 )
-from core.execution.reminder import MSG_OUTPUT_TRUNCATED, SystemReminderQueue
+from core.execution.reminder import SystemReminderQueue, msg_output_truncated
 from core.i18n import t
 from core.memory import MemoryManager
 from core.memory.shortterm import ShortTermMemory
@@ -77,16 +77,8 @@ _TOOL_INTENT_PATTERNS_EN = re.compile(
     re.IGNORECASE,
 )
 
-_INTENT_REPROMPT_JA = (
-    "ツールを使う意図があるようですが、実際にツールが呼び出されていません。"
-    "必要な操作を以下の形式で出力してください:\n\n"
-    '```json\n{"tool": "ツール名", "arguments": {"引数名": "値"}}\n```'
-)
-_INTENT_REPROMPT_EN = (
-    "You indicated intent to use a tool but did not actually call one. "
-    "Please output the tool call in the following format:\n\n"
-    '```json\n{"tool": "tool_name", "arguments": {"arg_name": "value"}}\n```'
-)
+_INTENT_REPROMPT_JA = t("assisted.intent_reprompt", locale="ja")
+_INTENT_REPROMPT_EN = t("assisted.intent_reprompt", locale="en")
 
 
 def _looks_like_tool_intent(text: str) -> bool:
@@ -463,7 +455,7 @@ class AssistedExecutor(BaseExecutor):
 
             # P1-2: output truncation reminder
             if choice.finish_reason == "length":
-                self.reminder_queue.push_sync(MSG_OUTPUT_TRUNCATED)
+                self.reminder_queue.push_sync(msg_output_truncated())
 
             # ── 3. Extract tool call ─────────────────────────
             tool_call = extract_tool_call(content)
@@ -671,7 +663,7 @@ class AssistedExecutor(BaseExecutor):
 
                 # P1-2: output truncation reminder
                 if choice.finish_reason == "length":
-                    self.reminder_queue.push_sync(MSG_OUTPUT_TRUNCATED)
+                    self.reminder_queue.push_sync(msg_output_truncated())
 
                 # ── 3. Extract tool call ─────────────────────
                 tool_call = extract_tool_call(content)

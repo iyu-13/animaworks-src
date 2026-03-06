@@ -34,7 +34,7 @@ Create a consistent, deep character from minimal information (name, role, person
 
 ### Image Color
 
-- Choose a color联想 from personality and role
+- Choose a color association from personality and role
 - Japanese color name + HEX code (e.g., Cherry blossom (#FFB7C5))
 
 ## Internal Consistency Check
