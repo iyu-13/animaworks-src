@@ -135,25 +135,16 @@ function getStatusAttr(status) {
   return "idle";
 }
 
-function _hasRunningStreamEntry(name) {
-  const entries = _cardStreams.get(name);
-  if (!entries) return false;
-  return entries.some(e => e.status === "running");
-}
-
 function _syncCardSpinner(name) {
   const card = _cardEls.get(name);
   if (!card) return;
   const entries = _cardStreams.get(name) || [];
-  const runningEntry = [...entries].reverse().find(e => e.status === "running");
-  if (runningEntry) {
-    card.dataset.status = runningEntry.type === "heartbeat" ? "heartbeat" : "working";
-  } else {
+  const hasRunning = entries.some(e => e.status === "running");
+  if (hasRunning) {
+    card.dataset.status = "working";
+  } else if (card.dataset.status === "working") {
     const node = _nodeData.get(name);
-    const baseAttr = node ? getStatusAttr(node.status) : "idle";
-    if (card.dataset.status === "working" || card.dataset.status === "heartbeat") {
-      card.dataset.status = baseAttr;
-    }
+    card.dataset.status = node ? getStatusAttr(node.status) : "idle";
   }
 }
 
@@ -892,7 +883,7 @@ export function getCardPosition(name) {
 }
 
 const MAX_STREAM_ENTRIES = 4;
-const STALE_TIMEOUT_MS = 120_000;
+const STALE_TIMEOUT_MS = 600_000;
 let _staleTimerId = null;
 
 export function updateCardActivity(name, data) {
