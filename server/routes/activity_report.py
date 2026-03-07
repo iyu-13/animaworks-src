@@ -176,6 +176,14 @@ def create_activity_report_router() -> APIRouter:
 
         model = req.model or _resolve_model()
 
+        if req.model:
+            allowed = {m["id"] for m in _available_models()}
+            if req.model not in allowed:
+                return JSONResponse(
+                    {"error": t("activity_report.invalid_model")},
+                    status_code=400,
+                )
+
         if not req.force_regenerate:
             cached = _read_cache(req.date, model)
             if cached:
@@ -184,7 +192,7 @@ def create_activity_report_router() -> APIRouter:
 
         from core.audit import collect_org_audit
 
-        report = await collect_org_audit(req.date, days=1)
+        report = await collect_org_audit(req.date)
         structured = report.to_dict()
 
         narrative_md: str | None = None
@@ -213,13 +221,19 @@ def create_activity_report_router() -> APIRouter:
                 status_code=400,
             )
 
+        results: list[tuple[Path, dict]] = []
         for p in _cache_dir().glob(f"{report_date}_*.json"):
             try:
                 data = json.loads(p.read_text(encoding="utf-8"))
-                data["cached"] = True
-                return JSONResponse(data)
+                results.append((p, data))
             except (json.JSONDecodeError, OSError):
                 continue
+
+        if results:
+            results.sort(key=lambda x: x[0].stat().st_mtime, reverse=True)
+            data = results[0][1]
+            data["cached"] = True
+            return JSONResponse(data)
 
         return JSONResponse(
             {"error": t("activity_report.not_found")},

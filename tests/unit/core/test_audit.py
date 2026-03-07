@@ -15,15 +15,25 @@ from core.audit import (
     AnimaAuditEntry,
     OrgAuditReport,
     _collect_single_anima,
+    _load_entries_for_date,
     collect_org_audit,
 )
+
+_DATE = "2026-03-07"
+
 
 # ── Fixtures ──────────────────────────────────────────────────
 
 
+def _write_activity_log(anima_dir: Path, date: str, entries: list[dict]) -> None:
+    log_dir = anima_dir / "activity_log"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    lines = [json.dumps(e, ensure_ascii=False) for e in entries]
+    (log_dir / f"{date}.jsonl").write_text("\n".join(lines), encoding="utf-8")
+
+
 @pytest.fixture()
 def anima_dir(tmp_path: Path) -> Path:
-    """Create a minimal anima directory with status.json and activity log."""
     d = tmp_path / "test-anima"
     d.mkdir()
     (d / "status.json").write_text(
@@ -53,17 +63,6 @@ def disabled_anima_dir(tmp_path: Path) -> Path:
     (d / "state").mkdir(parents=True)
     (d / "activity_log").mkdir()
     return d
-
-
-def _make_entry(entry_type: str, **kwargs):
-    """Create a minimal ActivityEntry-like object."""
-    from core.memory._activity_models import ActivityEntry
-
-    return ActivityEntry(
-        ts="2026-03-07T10:00:00+09:00",
-        type=entry_type,
-        **kwargs,
-    )
 
 
 # ── AnimaAuditEntry ───────────────────────────────────────────
@@ -112,42 +111,62 @@ class TestOrgAuditReport:
         assert d["total_entries"] == 0
 
 
+# ── _load_entries_for_date ────────────────────────────────────
+
+
+class TestLoadEntriesForDate:
+    def test_reads_correct_date_file(self, tmp_path: Path):
+        log_dir = tmp_path / "activity_log"
+        log_dir.mkdir()
+        entries = [
+            {"ts": "2026-03-07T10:00:00+09:00", "type": "heartbeat_start"},
+            {"ts": "2026-03-07T11:00:00+09:00", "type": "message_sent", "to": "bob"},
+        ]
+        (log_dir / "2026-03-07.jsonl").write_text(
+            "\n".join(json.dumps(e) for e in entries),
+            encoding="utf-8",
+        )
+        result = _load_entries_for_date(log_dir, "2026-03-07")
+        assert len(result) == 2
+        assert result[1].get("to_person") == "bob"
+
+    def test_returns_empty_for_missing_file(self, tmp_path: Path):
+        result = _load_entries_for_date(tmp_path, "2026-01-01")
+        assert result == []
+
+
 # ── _collect_single_anima ─────────────────────────────────────
 
 
 class TestCollectSingleAnima:
     def test_reads_status_json(self, anima_dir: Path):
-        with patch("core.memory.activity.ActivityLogger") as MockAL:
-            MockAL.return_value.recent.return_value = []
-            result = _collect_single_anima(anima_dir, days=1)
-
+        result = _collect_single_anima(anima_dir, _DATE)
         assert result is not None
         assert result.name == "test-anima"
         assert result.enabled is True
         assert result.model == "claude-sonnet-4-6"
         assert result.supervisor == "boss"
         assert result.role == "engineer"
+        assert result.total_entries == 0
 
     def test_disabled_anima(self, disabled_anima_dir: Path):
-        with patch("core.memory.activity.ActivityLogger") as MockAL:
-            MockAL.return_value.recent.return_value = []
-            result = _collect_single_anima(disabled_anima_dir, days=1)
-
+        result = _collect_single_anima(disabled_anima_dir, _DATE)
         assert result is not None
         assert result.enabled is False
 
     def test_counts_entry_types(self, anima_dir: Path):
-        entries = [
-            _make_entry("heartbeat_start"),
-            _make_entry("heartbeat_start"),
-            _make_entry("message_sent", to_person="bob"),
-            _make_entry("message_received", from_person="carol"),
-            _make_entry("error", summary="something broke"),
-        ]
-        with patch("core.memory.activity.ActivityLogger") as MockAL:
-            MockAL.return_value.recent.return_value = entries
-            result = _collect_single_anima(anima_dir, days=1)
-
+        _write_activity_log(
+            anima_dir,
+            _DATE,
+            [
+                {"ts": "2026-03-07T10:00:00+09:00", "type": "heartbeat_start"},
+                {"ts": "2026-03-07T10:01:00+09:00", "type": "heartbeat_start"},
+                {"ts": "2026-03-07T10:02:00+09:00", "type": "message_sent", "to": "bob"},
+                {"ts": "2026-03-07T10:03:00+09:00", "type": "message_received", "from": "carol"},
+                {"ts": "2026-03-07T10:04:00+09:00", "type": "error", "summary": "something broke"},
+            ],
+        )
+        result = _collect_single_anima(anima_dir, _DATE)
         assert result is not None
         assert result.total_entries == 5
         assert result.type_counts["heartbeat_start"] == 2
@@ -157,19 +176,15 @@ class TestCollectSingleAnima:
         assert result.peers_sent == {"bob": 1}
         assert result.peers_received == {"carol": 1}
 
-    def test_handles_missing_status_json(self, tmp_path: Path):
+    def test_handles_empty_status_json(self, tmp_path: Path):
         d = tmp_path / "no-status"
         d.mkdir()
         (d / "activity_log").mkdir()
         (d / "state").mkdir()
         (d / "status.json").write_text("{}", encoding="utf-8")
-
-        with patch("core.memory.activity.ActivityLogger") as MockAL:
-            MockAL.return_value.recent.return_value = []
-            result = _collect_single_anima(d, days=1)
-
+        result = _collect_single_anima(d, _DATE)
         assert result is not None
-        assert result.enabled is True  # default
+        assert result.enabled is True
         assert result.model == "unknown"
 
     def test_task_metrics(self, anima_dir: Path):
@@ -178,18 +193,36 @@ class TestCollectSingleAnima:
         mock_pending = MagicMock()
         mock_pending.status = "pending"
 
-        with (
-            patch("core.memory.activity.ActivityLogger") as MockAL,
-            patch("core.memory.task_queue.TaskQueueManager") as MockTQM,
-        ):
-            MockAL.return_value.recent.return_value = []
+        with patch("core.memory.task_queue.TaskQueueManager") as MockTQM:
             MockTQM.return_value.list_tasks.return_value = [mock_task, mock_pending]
-            result = _collect_single_anima(anima_dir, days=1)
+            result = _collect_single_anima(anima_dir, _DATE)
 
         assert result is not None
         assert result.tasks_total == 2
         assert result.tasks_done == 1
         assert result.tasks_pending == 1
+
+    def test_reads_only_target_date(self, anima_dir: Path):
+        """Entries from other dates must not appear in the report."""
+        _write_activity_log(
+            anima_dir,
+            "2026-03-06",
+            [
+                {"ts": "2026-03-06T10:00:00+09:00", "type": "heartbeat_start"},
+            ],
+        )
+        _write_activity_log(
+            anima_dir,
+            "2026-03-07",
+            [
+                {"ts": "2026-03-07T10:00:00+09:00", "type": "message_sent", "to": "x"},
+            ],
+        )
+        result = _collect_single_anima(anima_dir, "2026-03-07")
+        assert result is not None
+        assert result.total_entries == 1
+        assert result.type_counts.get("heartbeat_start", 0) == 0
+        assert result.messages_sent == 1
 
 
 # ── collect_org_audit ─────────────────────────────────────────
@@ -210,7 +243,7 @@ class TestCollectOrgAudit:
         animas_dir = tmp_path / "animas"
         animas_dir.mkdir()
 
-        for name, _entries_count, _errors in [("alice", 100, 2), ("bob", 50, 1)]:
+        for name in ("alice", "bob"):
             d = animas_dir / name
             d.mkdir()
             (d / "status.json").write_text(
@@ -220,7 +253,7 @@ class TestCollectOrgAudit:
             (d / "activity_log").mkdir()
             (d / "state").mkdir()
 
-        def mock_collect(anima_dir, days):
+        def mock_collect(anima_dir, target_date):
             name = anima_dir.name
             if name == "alice":
                 return AnimaAuditEntry(
@@ -283,7 +316,7 @@ class TestCollectOrgAudit:
         d.mkdir()
         (d / "status.json").write_text("{}", encoding="utf-8")
 
-        def mock_collect(anima_dir, days):
+        def mock_collect(anima_dir, target_date):
             raise RuntimeError("disk error")
 
         with (

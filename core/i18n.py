@@ -1906,6 +1906,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         "ja": "未来の日付は指定できません",
         "en": "Future dates are not allowed",
     },
+    "activity_report.invalid_model": {
+        "ja": "指定されたモデルは利用できません",
+        "en": "The specified model is not available",
+    },
     "activity_report.not_found": {
         "ja": "この日付のレポートはキャッシュされていません",
         "en": "No cached report found for this date",

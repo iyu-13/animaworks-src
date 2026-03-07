@@ -76,8 +76,36 @@ class OrgAuditReport:
 # ── Collection logic ─────────────────────────────────────────
 
 
-def _collect_single_anima(anima_dir: Path, days: int) -> AnimaAuditEntry | None:
-    """Collect audit data for one Anima (synchronous, I/O-bound)."""
+def _load_entries_for_date(log_dir: Path, target_date: str) -> list[dict]:
+    """Read activity_log/{target_date}.jsonl directly for the exact date."""
+    path = log_dir / f"{target_date}.jsonl"
+    if not path.exists():
+        return []
+    entries: list[dict] = []
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                raw = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if "timestamp" in raw and "ts" not in raw:
+                raw["ts"] = raw.pop("timestamp")
+            if "from" in raw:
+                raw["from_person"] = raw.pop("from")
+            if "to" in raw:
+                raw["to_person"] = raw.pop("to")
+            entries.append(raw)
+    except OSError:
+        pass
+    entries.sort(key=lambda e: e.get("ts", ""))
+    return entries
+
+
+def _collect_single_anima(anima_dir: Path, target_date: str) -> AnimaAuditEntry | None:
+    """Collect audit data for one Anima on a specific date."""
     name = anima_dir.name
     status_file = anima_dir / "status.json"
 
@@ -96,26 +124,24 @@ def _collect_single_anima(anima_dir: Path, days: int) -> AnimaAuditEntry | None:
         except (json.JSONDecodeError, OSError):
             logger.debug("Failed to read status.json for %s", name)
 
-    from core.memory.activity import ActivityLogger
-
-    al = ActivityLogger(anima_dir)
-    entries = al.recent(days=days, limit=_AUDIT_ENTRY_LIMIT)
+    log_dir = anima_dir / "activity_log"
+    raw_entries = _load_entries_for_date(log_dir, target_date)
 
     type_counts: Counter[str] = Counter()
-    for e in entries:
-        type_counts[e.type] += 1
+    for e in raw_entries:
+        type_counts[e.get("type", "unknown")] += 1
 
-    sent = [e for e in entries if e.type in ("message_sent", "dm_sent")]
-    received = [e for e in entries if e.type in ("message_received", "dm_received")]
-    error_entries = [e for e in entries if e.type == "error"]
+    sent = [e for e in raw_entries if e.get("type") in ("message_sent", "dm_sent")]
+    received = [e for e in raw_entries if e.get("type") in ("message_received", "dm_received")]
+    error_entries = [e for e in raw_entries if e.get("type") == "error"]
 
     peer_sent: dict[str, int] = {}
     peer_recv: dict[str, int] = {}
     for e in sent:
-        peer = e.to_person or "unknown"
+        peer = e.get("to_person") or "unknown"
         peer_sent[peer] = peer_sent.get(peer, 0) + 1
     for e in received:
-        peer = e.from_person or "unknown"
+        peer = e.get("from_person") or "unknown"
         peer_recv[peer] = peer_recv.get(peer, 0) + 1
 
     tasks_total = 0
@@ -132,8 +158,8 @@ def _collect_single_anima(anima_dir: Path, days: int) -> AnimaAuditEntry | None:
     except Exception:
         logger.debug("Failed to read task queue for %s", name, exc_info=True)
 
-    first_activity = entries[0].ts if entries else None
-    last_activity = entries[-1].ts if entries else None
+    first_activity = raw_entries[0].get("ts") if raw_entries else None
+    last_activity = raw_entries[-1].get("ts") if raw_entries else None
 
     return AnimaAuditEntry(
         name=name,
@@ -141,7 +167,7 @@ def _collect_single_anima(anima_dir: Path, days: int) -> AnimaAuditEntry | None:
         model=model,
         supervisor=supervisor,
         role=role,
-        total_entries=len(entries),
+        total_entries=len(raw_entries),
         type_counts=dict(type_counts),
         messages_sent=len(sent),
         messages_received=len(received),
@@ -158,16 +184,14 @@ def _collect_single_anima(anima_dir: Path, days: int) -> AnimaAuditEntry | None:
 
 async def collect_org_audit(
     date: str,
-    *,
-    days: int = 1,
 ) -> OrgAuditReport:
-    """Collect audit data for all Animas.
+    """Collect audit data for all Animas on the specified date.
 
-    Runs I/O-bound collection in a thread pool via asyncio for parallelism.
+    Reads activity_log/{date}.jsonl for each Anima, ensuring historical
+    reports reflect the requested date rather than today.
 
     Args:
         date: Report date string (YYYY-MM-DD).
-        days: Number of days to scan (default 1).
 
     Returns:
         OrgAuditReport with per-anima metrics and org-level aggregates.
@@ -179,7 +203,7 @@ async def collect_org_audit(
     anima_dirs = sorted([d for d in animas_dir.iterdir() if d.is_dir() and (d / "status.json").exists()])
 
     loop = asyncio.get_event_loop()
-    tasks = [loop.run_in_executor(None, _collect_single_anima, d, days) for d in anima_dirs]
+    tasks = [loop.run_in_executor(None, _collect_single_anima, d, date) for d in anima_dirs]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     animas: list[AnimaAuditEntry] = []

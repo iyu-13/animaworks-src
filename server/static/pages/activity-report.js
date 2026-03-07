@@ -79,10 +79,12 @@ async function _loadModels(container) {
     const data = await api("/api/activity-report/models");
     const sel = container.querySelector("#reportModel");
     if (!sel) return;
+    const defaultModel = data.default_model || "";
     for (const m of data.available_models || []) {
       const opt = document.createElement("option");
       opt.value = m.id;
       opt.textContent = m.label;
+      if (m.id === defaultModel) opt.selected = true;
       sel.appendChild(opt);
     }
   } catch {
@@ -105,6 +107,7 @@ async function _onGenerate(container, forceRegenerate) {
   const model = modelSelect ? modelSelect.value : "";
 
   genBtn.disabled = true;
+  regenBtn.disabled = true;
   regenBtn.style.display = "none";
   statusEl.style.display = "block";
   statusEl.className = "report-status report-status-loading";
@@ -113,10 +116,9 @@ async function _onGenerate(container, forceRegenerate) {
   _abortCtrl = new AbortController();
 
   try {
-    const res = await fetch("/api/activity-report/generate", {
+    const data = await api("/api/activity-report/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      credentials: "same-origin",
       body: JSON.stringify({
         date: reportDate,
         model: model,
@@ -125,12 +127,6 @@ async function _onGenerate(container, forceRegenerate) {
       signal: _abortCtrl.signal,
     });
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || `HTTP ${res.status}`);
-    }
-
-    const data = await res.json();
     _renderReport(container, data);
 
     statusEl.className = "report-status report-status-success";
@@ -142,9 +138,10 @@ async function _onGenerate(container, forceRegenerate) {
   } catch (err) {
     if (err.name === "AbortError") return;
     statusEl.className = "report-status report-status-error";
-    statusEl.textContent = t("report.generate_failed") + ": " + err.message;
+    statusEl.textContent = t("report.generate_failed") + ": " + (err.message || err);
   } finally {
     genBtn.disabled = false;
+    regenBtn.disabled = false;
     _abortCtrl = null;
   }
 }
