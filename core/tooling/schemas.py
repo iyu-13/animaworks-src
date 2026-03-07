@@ -745,12 +745,20 @@ def _supervisor_tools() -> list[dict[str, Any]]:
                         "type": "string",
                         "description": _t("schema.audit_subordinate.name"),
                     },
-                    "days": {
+                    "mode": {
+                        "type": "string",
+                        "enum": ["summary", "report"],
+                        "description": _t("schema.audit_subordinate.mode"),
+                    },
+                    "hours": {
                         "type": "integer",
-                        "description": _t("schema.audit_subordinate.days"),
+                        "description": _t("schema.audit_subordinate.hours"),
+                    },
+                    "direct_only": {
+                        "type": "boolean",
+                        "description": _t("schema.audit_subordinate.direct_only"),
                     },
                 },
-                "required": ["name"],
             },
         },
     ]
