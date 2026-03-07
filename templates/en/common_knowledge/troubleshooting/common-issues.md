@@ -23,7 +23,7 @@ If it doesn't help, see `troubleshooting/escalation-flowchart.md` and escalate a
 3. Recipient is between Heartbeat intervals (message remains unread until next run)
 4. Send operation failed with an error
 5. `intent` is unspecified or invalid (only report / delegation / question allowed)
-6. Session DM limit exceeded (one send per recipient, max 2 recipients per session)
+6. Session DM limit exceeded (one send per recipient per session; max recipients per session varies by role, e.g. general: 2)
 
 ### Steps
 
@@ -59,7 +59,7 @@ send_message(to="Aoi", content="...", intent="report")   # OK
 send_message(to="aoi", content="...", intent="report")  # May fail if name differs
 
 # DM requires intent (report / delegation / question only)
-# Max 2 recipients per session, 1 send per recipient
+# Max recipients per session varies by role (general: 2). One send per recipient
 send_message(
     to="aoi",
     content="Understood. Starting work.",
@@ -157,7 +157,7 @@ send_message(
      ```
      search_memory(query="Slack setup", scope="procedures")    # Procedures only
      search_memory(query="Slack incident", scope="episodes")   # Past events only
-     search_memory(query="Slack", scope="knowledge")            # Learned knowledge only
+     search_memory(query="Slack", scope="knowledge")          # Learned knowledge only
      ```
 
 2. **Try different keywords**
@@ -176,15 +176,11 @@ send_message(
      ```
 
 4. **Check directories directly**
-   - If search fails, list directory contents:
-     ```
-     list_directory(path="knowledge/")
-     list_directory(path="procedures/")
-     list_directory(path="episodes/")
-     ```
+   - If search fails, use `list_directory` to list directory contents. Omitting `path` shows the anima_dir root and subdirectories such as knowledge/, procedures/, episodes/
    - Find the file by name and read directly:
      ```
      read_memory_file(path="procedures/slack-setup.md")
+     read_memory_file(path="knowledge/xxx-findings.md")
      ```
 
 5. **If memory does not exist**
@@ -289,10 +285,13 @@ send_message(
 
 4. **S-mode (Claude Agent SDK / MCP)**
    - Built-in tools are available with `mcp__aw__*` prefix (e.g. `mcp__aw__send_message`). Restart process if not found
-   - External tools: look up usage via `skill` tool and execute via `execute_command` with `animaworks-tool <tool> <subcommand>`
+   - External tools: look up usage via `skill` tool and execute via **Bash** with `animaworks-tool <tool> <subcommand>` (use Claude Code's Bash tool, not `execute_command`)
    - Long-running tools (image gen, local LLM, etc.) run asynchronously via `animaworks-tool submit`
 
-5. **If tool returns an error**
+5. **A-mode (LiteLLM)**
+   - External tools: look up usage via `skill` and execute via `execute_command` with `animaworks-tool <tool> <subcommand>`
+
+6. **If tool returns an error**
    - Record the error message accurately
    - Report to supervisor for auth errors (credential setup is admin responsibility)
    - Retry on timeout (up to 3 times)
@@ -365,13 +364,13 @@ See `operations/tool-usage-overview.md` for the full tool overview.
 ### Symptoms
 
 - `send_message` or `post_channel` returns an error
-- Message like `GlobalOutboundLimitExceeded: Hourly send limit (30) reached...` is shown
+- Message like `GlobalOutboundLimitExceeded: Hourly send limit (N) reached...` is shown
 - `ConversationDepthExceeded: Conversation with {recipient} reached 6 turns in 10 minutes...` is shown
 
 ### Causes
 
-- Reached 30/hour or 100/day send limit (config.json `heartbeat.max_messages_per_hour` / `max_messages_per_day`)
-- Repeated post to same channel within cooldown period (`heartbeat.channel_post_cooldown_s`, default 300 seconds)
+- **Role-based limits**: Hourly and daily send limits are applied based on default values for `role` in `status.json` (e.g. general: 15/50, manager: 60/300). Can be overridden per-anima with `max_outbound_per_hour` / `max_outbound_per_day` in `status.json`
+- Repeated post to same channel within cooldown period (`heartbeat.channel_post_cooldown_s` in config.json, default 300 seconds)
 - DM exchange between two parties exceeded depth limit (6 turns in 10 minutes) (`heartbeat.depth_window_s` / `heartbeat.max_depth`)
 
 ### Steps
@@ -428,7 +427,7 @@ See `communication/sending-limits.md` for details.
 ### Causes
 
 When using a model with a small context window, the system prompt is reduced in stages (Tiered System Prompt).
-Context window is inferred from model name in `status.json`; can be overridden in config.json `model_context_windows`.
+Context window is inferred from model name in `status.json`; can be overridden in `~/.animaworks/models.json` or `model_context_windows` in config.json.
 
 | Tier | Context Window | Omitted Information |
 |------|----------------|----------------------|

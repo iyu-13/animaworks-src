@@ -11,7 +11,7 @@ An Anima's role is determined automatically by the `supervisor` field and whethe
 |-----------|------|---------|
 | supervisor = null, has subordinates | Top-level | CEO, representative |
 | supervisor = null, no subordinates | Independent Anima | Solo specialist |
-| Has supervisor, has subordinates | Mid-level | Department head, team lead |
+| Has supervisor, has subordinates | Mid-level management | Department head, team lead |
 | Has supervisor, no subordinates | Worker | Developer, operator |
 
 ## Top-Level Anima (supervisor = null)
@@ -54,7 +54,7 @@ Located at the top of the organization; responsible for overall direction and fi
 4. Record the decision in knowledge/ (for future reference)
 ```
 
-## Mid-Level Anima (has supervisor and subordinates)
+## Mid-Level Management Anima (has supervisor and subordinates)
 
 Between supervisor and subordinates; responsible for task decomposition, delegation, and progress management.
 
@@ -219,30 +219,34 @@ Role templates are organized across `templates/_shared` and locale-specific path
 | `max_turns` | Maximum number of turns | All roles |
 | `max_chains` | Maximum number of chains | All roles |
 | `conversation_history_threshold` | Conversation history compression threshold | All roles |
+| `max_outbound_per_hour` | Hourly send limit (DM/Board) | Rate limiting |
+| `max_outbound_per_day` | Daily send limit | Rate limiting |
+| `max_recipients_per_run` | Max recipients per run | Rate limiting |
 
 ### Available Roles
 
-| Role | Summary | Default Model | max_turns | max_chains | context_threshold |
-|------|---------|---------------|-----------|------------|-------------------|
-| manager | Delegation, reporting, escalation decisions | claude-opus-4-6 | 50 | 3 | 0.60 |
-| engineer | Code implementation, technical design, testing | claude-opus-4-6 | 200 | 10 | 0.80 |
-| researcher | Information gathering, analysis, reports | claude-sonnet-4-6 | 30 | 2 | 0.50 |
-| writer | Document creation, communication design | claude-sonnet-4-6 | 80 | 5 | 0.70 |
-| ops | Monitoring, anomaly detection, incident response | ollama/glm-4.7 | 30 | 2 | 0.50 |
-| general | General tasks (default) | claude-sonnet-4-6 | 20 | 2 | 0.50 |
+| Role | Summary | Default Model | max_turns | max_chains | context_threshold | background_model |
+|------|---------|---------------|-----------|------------|-------------------|------------------|
+| manager | Delegation, reporting, escalation decisions | claude-opus-4-6 | 50 | 3 | 0.60 | claude-sonnet-4-6 |
+| engineer | Code implementation, technical design, testing | claude-opus-4-6 | 200 | 10 | 0.80 | claude-sonnet-4-6 |
+| researcher | Information gathering, analysis, reports | claude-sonnet-4-6 | 30 | 2 | 0.50 | — |
+| writer | Document creation, communication design | claude-sonnet-4-6 | 80 | 5 | 0.70 | — |
+| ops | Monitoring, anomaly detection, incident response | ollama/glm-4.7 | 30 | 2 | 0.50 | — |
+| general | General tasks (default) | claude-sonnet-4-6 | 20 | 2 | 0.50 | — |
 
 `general` is applied when unspecified. For ops using vLLM, edit `model` and `credential` in
 `status.json` to specify e.g. `openai/glm-4.7-flash`.
 engineer and manager use `background_model` for Heartbeat and cron with claude-sonnet-4-6.
+Messaging rate limits (`max_outbound_per_hour`, etc.) are defined per role in `defaults.json`.
 
 ### Application Flow
 
 1. **On creation** (`create_from_md`): `_apply_role_defaults()` copies `permissions.md` and
    `specialty_prompt.md` to `animas/{name}/`. `_create_status_json()` merges all fields from
-   `defaults.json` (including `background_model`) into `status.json`.
+   `defaults.json` (including `background_model` and `max_outbound_*`) into `status.json`.
 2. **On role change** (`animaworks anima set-role`): `permissions.md` and `specialty_prompt.md` are recopied.
    Only `model`, `context_threshold`, `max_turns`, `max_chains`, and `conversation_history_threshold`
-   are merged into `status.json` (`background_model` is not applied on set-role).
+   are merged into `status.json`; `background_model` and `max_outbound_*` are not applied on set-role.
    Use `--status-only` to update only status.json, `--no-restart` to skip auto-restart.
 
 ### Prompt Injection

@@ -11,7 +11,7 @@ Task state is managed by files in the `state/` directory and the task queue.
 |----------|------|
 | `state/current_task.md` | Current task being worked on (one at a time) |
 | `state/pending.md` | Manual backlog (free-form) |
-| `state/pending/` directory | LLM tasks (JSON format). Written by Heartbeat, plan_tasks, and Task tool. TaskExec path automatically picks them up and runs them |
+| `state/pending/` directory | LLM tasks (JSON format). Written by Heartbeat, plan_tasks, Task tool, and Agent tool. TaskExec path automatically picks them up and runs them |
 | `state/task_queue.jsonl` | Persistent task queue (append-only JSONL). Tracks requests from humans and Anima |
 
 `state/current_task.md` MUST always reflect the latest state. Update it whenever the task state changes.
@@ -48,7 +48,7 @@ add_task(source="human", original_instruction="Create the monthly sales report a
 |-----------|----------|-------------|
 | `source` | MUST | `human` (request from human) / `anima` (delegation from Anima) |
 | `original_instruction` | MUST | Original instruction text (include quoted text when delegating. Max 10,000 characters) |
-| `assignee` | MUST | Assignee name (your own name or delegated Anima name) |
+| `assignee` | MUST | Assignee name (your own name or delegatee Anima name) |
 | `summary` | MUST | One-line task summary (defaults to first 100 chars of original_instruction if empty) |
 | `deadline` | MUST | Deadline. Relative format `30m` / `2h` / `1d` or ISO8601 |
 | `relay_chain` | MAY | Delegation chain (e.g. `["aoi", "taro"]`) |
@@ -396,11 +396,12 @@ plan_tasks(batch_id="build-20260301", tasks=[
 
 1. `plan_tasks` validates (unique IDs, valid dependencies, cycle detection)
 2. Task files are written to `state/pending/` with `batch_id`
-3. TaskExec (PendingTaskExecutor) detects the batch and determines execution order via topological sort
-4. `parallel: true` tasks with no pending dependencies run concurrently within semaphore limit
-5. Predecessor results are automatically injected into dependent task context
-6. If a predecessor fails, dependent tasks are skipped
-7. Tasks not executed within 24 hours of submit are skipped (TTL)
+3. After plan_tasks runs, TaskExec (PendingTaskExecutor) detects tasks immediately (wake — no polling wait)
+4. TaskExec detects the batch and determines execution order via topological sort
+5. `parallel: true` tasks with no pending dependencies run concurrently within semaphore limit
+6. Predecessor results are automatically injected into dependent task context
+7. If a predecessor fails, dependent tasks are skipped
+8. Tasks not executed within 24 hours of submit are skipped (TTL)
 
 ### Concurrency Limit
 
@@ -410,6 +411,7 @@ Max parallel tasks is controlled by `config.json` `background_task.max_parallel_
 
 Completed task result summaries are saved to `state/task_results/{task_id}.md` (max 2,000 characters).
 Dependent tasks automatically receive these results as context. If a predecessor fails, dependent tasks are skipped and `FAILED: {reason}` is recorded.
+When each task completes, a completion notification is sent via DM to the Anima that executed plan_tasks.
 
 ### When to Use plan_tasks vs Direct Write
 

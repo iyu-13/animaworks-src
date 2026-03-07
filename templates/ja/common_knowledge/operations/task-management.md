@@ -11,7 +11,7 @@ Digital Anima がタスクを受け取り、追跡し、完了させるための
 |---------|------|
 | `state/current_task.md` | 今取り組んでいるタスク（1つ） |
 | `state/pending.md` | 手動メモ用のバックログ（自由形式） |
-| `state/pending/` ディレクトリ | LLM タスク（JSON 形式）。Heartbeat・plan_tasks・Task tool が書き出す。TaskExec パスが自動取得・実行する |
+| `state/pending/` ディレクトリ | LLM タスク（JSON 形式）。Heartbeat・plan_tasks・Task tool・Agent tool が書き出す。TaskExec パスが自動取得・実行する |
 | `state/task_queue.jsonl` | 永続タスクキュー（append-only JSONL）。人間やAnimaからの依頼を追跡する |
 
 `state/current_task.md` は常に最新の状態を保たなければならない（MUST）。
@@ -50,7 +50,7 @@ add_task(source="human", original_instruction="月次売上レポートを作成
 | `source` | MUST | `human`（人間からの依頼）/ `anima`（Animaからの委譲） |
 | `original_instruction` | MUST | 元の指示文（委任時は原文引用を含める。最大10,000文字） |
 | `assignee` | MUST | 担当者名（自分自身または委任先のAnima名） |
-| `summary` | MUST | タスクの1行要約（空の場合は original_instruction の先頭100文字が使用される） |
+| `summary` | MUST | タスクの1行要約（省略時または空の場合は original_instruction の先頭100文字が使用される） |
 | `deadline` | MUST | 期限。相対形式 `30m` / `2h` / `1d` または ISO8601 |
 | `relay_chain` | MAY | 委任経路（例: `["aoi", "taro"]`） |
 
@@ -399,11 +399,12 @@ plan_tasks(batch_id="build-20260301", tasks=[
 
 1. `plan_tasks` がバリデーション（ID一意性、依存先存在、循環検出）を行う
 2. タスクファイルが `state/pending/` に `batch_id` 付きで書き出される
-3. TaskExec（PendingTaskExecutor）がバッチを検出し、トポロジカルソートで実行順を決定する
-4. 依存なしの `parallel: true` タスクはセマフォ上限内で同時実行される
-5. 先行タスクの結果は依存タスクのコンテキストに自動注入される
-6. 先行タスクが失敗した場合、依存タスクはスキップされる
-7. タスクは submit から24時間以内に実行されないとスキップされる（TTL）
+3. plan_tasks 実行後、TaskExec（PendingTaskExecutor）は即座にタスクを検出する（wake によりポーリングを待たない）
+4. TaskExec がバッチを検出し、トポロジカルソートで実行順を決定する
+5. 依存なしの `parallel: true` タスクはセマフォ上限内で同時実行される
+6. 先行タスクの結果は依存タスクのコンテキストに自動注入される
+7. 先行タスクが失敗した場合、依存タスクはスキップされる
+8. タスクは書き出しから24時間以内に実行されないとスキップされる（TTL）
 
 ### 並列実行の上限
 
@@ -413,6 +414,7 @@ plan_tasks(batch_id="build-20260301", tasks=[
 
 完了タスクの結果要約は `state/task_results/{task_id}.md` に保存される（最大2,000文字）。
 依存タスクはこの結果をコンテキストとして自動的に受け取る。先行タスクが失敗した場合、依存タスクはスキップされ `FAILED: {理由}` が記録される。
+各タスク完了時、plan_tasks を実行した Anima に完了通知が DM で送られる。
 
 ### plan_tasks と直接書き出しの使い分け
 

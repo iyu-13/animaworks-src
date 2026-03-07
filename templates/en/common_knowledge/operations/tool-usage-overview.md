@@ -11,6 +11,7 @@ Your mode is determined automatically from your model name in `status.json`.
 | Mode | Target Models | How tools are called |
 |------|---------------|----------------------|
 | S (SDK) | `claude-*` | MCP tools (`mcp__aw__*`) + Claude Code built-ins + external tools via Bash |
+| C (Codex) | `codex/*` | Via Codex CLI. Same tool system as S-mode |
 | A (Autonomous) | `openai/*`, `google/*`, `vertex_ai/*`, etc. | LiteLLM function calling (tool name as-is) |
 | B (Basic) | Small models like `ollama/*` | JSON text format (`{"tool": "name", "arguments": {...}}`) |
 
@@ -20,15 +21,26 @@ Three tool families:
 
 1. **Claude Code built-ins**: Read, Write, Edit, Grep, Glob, Bash, git, etc. For file operations and command execution
 2. **MCP tools (`mcp__aw__*`)**: AnimaWorks-specific internal features
-   - `send_message`, `post_channel`, `read_channel`, `read_dm_history`, `add_task`, `update_task`, `list_tasks`, `call_human`, `search_memory`, `report_procedure_outcome`, `report_knowledge_outcome`, `skill`, `disable_subordinate`, `enable_subordinate`, `set_subordinate_model`, `restart_subordinate`, `org_dashboard`, `ping_subordinate`, `read_subordinate_state`, `delegate_task`, `task_tracker`, `audit_subordinate`
-3. **Bash + animaworks-tool**: External tools (chatwork, slack, gmail, web_search, etc.) are accessed via `skill` to check CLI usage, then executed with `animaworks-tool <tool> <subcommand>`. Long-running tools use `animaworks-tool submit` for async execution
+   - Memory & communication: `send_message`, `post_channel`, `read_channel`, `manage_channel`, `read_dm_history`
+   - Tasks: `add_task`, `update_task`, `list_tasks`, `plan_tasks`
+   - Notification & permissions: `call_human`, `search_memory`, `check_permissions`
+   - Outcome tracking: `report_procedure_outcome`, `report_knowledge_outcome`
+   - Skills: `skill`, `create_skill`
+   - Supervisor: `disable_subordinate`, `enable_subordinate`, `set_subordinate_model`, `set_subordinate_background_model`, `restart_subordinate`, `org_dashboard`, `ping_subordinate`, `read_subordinate_state`, `delegate_task`, `task_tracker`, `audit_subordinate`
+   - Background: `check_background_task`, `list_background_tasks`
+   - Credentials: `vault_get`, `vault_store`, `vault_list`
+3. **Bash + animaworks-tool**: External tools (chatwork, slack, gmail, web_search, etc.) — use `skill` to check CLI usage, then run with `animaworks-tool <tool> <subcommand>`. Long-running tools use `animaworks-tool submit` for async execution
+
+### C-mode (Codex CLI)
+
+Same tool system as S-mode. Executed via Codex CLI. Falls back to LiteLLM (Mode A) when not installed.
 
 ### A-mode (LiteLLM)
 
 Two tool families:
 
-1. **Internal tools**: `send_message`, `search_memory`, `read_file`, `execute_command`, `add_task`, etc. Call by name using function calling
-2. **External tools**: Look up usage via the `skill` tool and execute with CLI (`animaworks-tool <tool> <subcommand>`)
+1. **Internal tools**: `send_message`, `search_memory`, `read_file`, `execute_command`, `add_task`, `plan_tasks`, etc. Call by name using function calling. `refresh_tools` and `share_tool` can rescan personal and common tools
+2. **External tools**: Look up usage via the `skill` tool and execute with `execute_command` running `animaworks-tool <tool> <subcommand>`
 
 ### B-mode (Basic)
 
@@ -39,10 +51,13 @@ Tools are invoked in JSON text format. Available tools:
 - **File & search**: read_file, write_file, edit_file, execute_command, web_fetch, search_code, list_directory
 - **Skill**: skill, create_skill
 - **Outcome tracking**: report_procedure_outcome, report_knowledge_outcome
+- **Tasks**: add_task, update_task, list_tasks, plan_tasks
+- **Background**: check_background_task, list_background_tasks (when BackgroundTaskManager is configured)
+- **Credentials**: vault_get, vault_store, vault_list
 - **Notification**: call_human (when notification channels are configured)
-- **External tools**: Tools in categories permitted in permissions.md (when permitted)
+- **External tools**: Categories permitted in permissions.md can be called via `use_tool` for structured invocation
 
-Task management, supervisor tools, refresh_tools, share_tool, and create_anima are not available. External tools can be called via `use_tool` for structured invocation.
+refresh_tools, share_tool, and create_anima are not available (A/S-mode only).
 
 ---
 
@@ -59,8 +74,9 @@ AnimaWorks internal features available in all modes (some may be omitted dependi
 | Memory | `write_memory_file` | Write to a memory file |
 | Memory | `archive_memory_file` | Move unused memory files to archive/ |
 | Communication | `send_message` | Send DM (intent required: report / delegation / question) |
-| Communication | `post_channel` | Post to Board channel |
+| Communication | `post_channel` | Post to Board channel (channel, text) |
 | Communication | `read_channel` | Read Board channel |
+| Communication | `manage_channel` | Create channel, add/remove members, get channel info |
 | Communication | `read_dm_history` | Read DM history |
 | Skill | `skill` | Fetch full text of skill/procedure |
 | Skill | `create_skill` | Create skill in directory structure (A/B-mode) |
@@ -68,8 +84,9 @@ AnimaWorks internal features available in all modes (some may be omitted dependi
 | Outcome tracking | `report_knowledge_outcome` | Report usefulness of knowledge |
 | Notification | `call_human` | Notify human admin |
 | Permission check | `check_permissions` | View your permission list (A/B-mode) |
+| Credentials | `vault_get`, `vault_store`, `vault_list` | Get, store, list credentials (A/B-mode) |
 
-In S-mode, the tools exposed via MCP have the `mcp__aw__` prefix.
+In S-mode, tools exposed via MCP have the `mcp__aw__` prefix.
 
 ### File & Search Tools (A/B-mode)
 
@@ -85,19 +102,30 @@ In S-mode, the tools exposed via MCP have the `mcp__aw__` prefix.
 
 In S-mode, use Claude Code's Read / Write / Edit / Grep / Glob / Bash for equivalent operations.
 
-### Task Management Tools (A/S-mode only)
+### Task Management Tools (A/S-mode)
 
 | Tool | Description |
 |------|-------------|
 | `add_task` | Add task to task queue |
 | `update_task` | Update task status |
 | `list_tasks` | List tasks |
+| `plan_tasks` | Submit multiple tasks as DAG for parallel/sequential execution |
+
+add_task, update_task, list_tasks, and plan_tasks are also available in B-mode.
+
+### Background Task Tools (A/B/S-mode, when BackgroundTaskManager is configured)
+
+| Tool | Description |
+|------|-------------|
+| `check_background_task` | Check execution status of specified task_id |
+| `list_background_tasks` | List tasks that are running, completed, failed, or pending |
+
+Use these to check status of long-running tools submitted via `animaworks-tool submit`.
 
 ### Tool Management Tools (A-mode only)
 
 | Tool | Description |
 |------|-------------|
-| `skill` | Get full text of skills, common skills, and procedures (use for tool usage lookup) |
 | `refresh_tools` | Rescan personal and common tools |
 | `share_tool` | Share personal tool to common_tools/ |
 
@@ -107,9 +135,10 @@ Organizational tools automatically enabled for Anima with subordinates. See `org
 
 | Tool | Description | S-mode MCP |
 |------|-------------|------------|
-| `disable_subordinate` | Disable subordinate | ○ |
-| `enable_subordinate` | Re-enable subordinate | ○ |
+| `disable_subordinate` | Suspend subordinate | ○ |
+| `enable_subordinate` | Resume subordinate | ○ |
 | `set_subordinate_model` | Change subordinate model | ○ |
+| `set_subordinate_background_model` | Change subordinate background model | ○ |
 | `restart_subordinate` | Restart subordinate process | ○ |
 | `delegate_task` | Delegate task to subordinate | ○ |
 | `org_dashboard` | Show process status of all subordinates in a tree | ○ |
@@ -130,7 +159,7 @@ All supervisor tools are available via MCP in S-mode. Audit is also available vi
 
 Tools for external services. Only categories permitted in the "External tools" section of `permissions.md` are available.
 
-Main categories: `slack`, `chatwork`, `gmail`, `github`, `aws_collector`, `web_search`, `x_search`, `image_gen`, `local_llm`, `transcribe`
+Main categories: `slack`, `chatwork`, `gmail`, `github`, `aws_collector`, `web_search`, `x_search`, `image_gen`, `local_llm`, `transcribe`, `google_calendar`, `notion`
 
 ---
 
@@ -140,8 +169,8 @@ Main categories: `slack`, `chatwork`, `gmail`, `github`, `aws_collector`, `web_s
 
 1. **Check skill**: Use `skill` tool to check CLI usage (e.g. `skill("chatwork-tool")`)
 2. **Execute**: Run `animaworks-tool <tool> <subcommand> [args...]` via Bash (e.g. `animaworks-tool chatwork send 123 "message"`)
-3. **Long-running tools**: Execute asynchronously with `animaworks-tool submit <tool_name> <subcommand> [args...]`
-4. **Help**: `animaworks-tool <tool_name> --help` for subcommands and arguments
+3. **Long-running tools**: Execute asynchronously with `animaworks-tool submit <tool> <subcommand> [args...]`. Tasks are queued to `state/background_tasks/pending/`; on completion, notifications are written to `state/background_notifications/` and can be checked on the next heartbeat
+4. **Help**: `animaworks-tool <tool> --help` for subcommands and arguments
 
 Long-running tools (image generation, local LLM, speech transcription, etc.) must always be executed with `submit`. See `operations/background-tasks.md` for details.
 
@@ -149,12 +178,12 @@ Long-running tools (image generation, local LLM, speech transcription, etc.) mus
 
 1. **Look up skill**: `skill("slack-tool")` to get CLI usage
 2. **Execute**: `execute_command("animaworks-tool slack post ...")` to run via CLI
-3. **Long-running tools**: Automatically run in background (equivalent to `submit`)
+3. **Long-running tools**: Submit with `animaworks-tool submit`, then use `check_background_task` / `list_background_tasks` to check status
 
 ### B-mode
 
 1. **Check permissions**: Use `check_permissions` to see permitted categories
-2. **Execute**: Permitted external tools can be called in JSON text format
+2. **Execute**: Permitted external tools can be called via `use_tool(tool_name="...", action="...", args={...})` for structured invocation
 3. **Long-running tools**: Ask your supervisor (A/S-mode) or call them the same way if permitted
 
 ---

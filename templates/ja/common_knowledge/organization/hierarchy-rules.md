@@ -68,6 +68,7 @@ alice宛: キャッシュ戦略について判断をお願いしたいです。
 | `read_subordinate_state` | 全配下（再帰） | 配下の `state/current_task.md` と `state/pending.md` を読み取り | `name`（必須） |
 | `delegate_task` | 直属部下のみ | タスク委譲（部下キュー追加 + DM送信 + 自分側追跡エントリ作成） | `name`, `instruction`, `deadline`（必須）, `summary`（任意） |
 | `task_tracker` | 自分の委譲タスク | `delegate_task` で委譲したタスクの進捗を部下側キューから追跡 | `status`（任意: "all"/"active"/"completed", デフォルト "active"） |
+| `audit_subordinate` | 全配下（再帰） | 活動サマリー・エラー頻度・ツール使用統計・コミュニケーションパターンを含む包括的な監査レポートを生成 | `name`（必須）, `days`（任意: 1〜30、デフォルト 1） |
 | `disable_subordinate` | 直属部下 | 部下を休止（status.json enabled=false、約30秒でプロセス停止） | `name`（必須）, `reason`（任意） |
 | `enable_subordinate` | 直属部下 | 休止した部下を再開 | `name`（必須） |
 | `set_subordinate_model` | 直属部下 | 部下のモデルを変更（status.json 更新。反映には `restart_subordinate` が必要） | `name`, `model`（必須）, `reason`（任意） |
@@ -92,6 +93,7 @@ alice宛: キャッシュ戦略について判断をお願いしたいです。
 org_dashboard()                        # 配下全体の状態をツリー表示
 read_subordinate_state(name="dave")    # dave の現在タスクと保留タスクを確認
 ping_subordinate()                     # 全員の生存確認
+audit_subordinate(name="dave", days=7)  # dave の直近7日間の活動・エラー・ツール使用・通信パターンを監査
 ```
 
 ### 組織の拡張（新規 Anima 作成）

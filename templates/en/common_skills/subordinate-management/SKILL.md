@@ -1,16 +1,16 @@
 ---
 name: subordinate-management
 description: >-
-  Process management for subordinate Anima: pause, resume, model change, restart,
+  Process management for subordinate Anima: pause, resume, model change, background model change, restart,
   task delegation, status confirmation, and auditing.
   "pause", "stop", "resume", "wake", "disable", "enable",
-  "change model", "restart", "delegate task", "check subordinate status",
+  "change model", "background model", "restart", "delegate task", "check subordinate status",
   "pause", "resume", "process management", "stop subordinate", "dashboard", "audit"
 ---
 
 # Skill: Subordinate Management (Supervisor Tools)
 
-Supervisor tools automatically enabled for Anima that have subordinates. Manages pause, resume, model change, and restart of direct subordinates; status confirmation across all subordinates; and task delegation with progress tracking.
+Supervisor tools automatically enabled for Anima that have subordinates. Manages pause, resume, model change, background model change, and restart of direct subordinates; status confirmation across all subordinates; and task delegation with progress tracking.
 
 ## Available Tools
 
@@ -20,8 +20,9 @@ Supervisor tools automatically enabled for Anima that have subordinates. Manages
 |------|---------|
 | `disable_subordinate` | Pause subordinate (status.json `enabled: false` → process stop + prevent auto-resume) |
 | `enable_subordinate` | Resume paused subordinate |
-| `set_subordinate_model` | Change subordinate's LLM model (updates status.json; requires `restart_subordinate` to take effect) |
-| `restart_subordinate` | Restart subordinate process (Reconciliation restarts within ~30 seconds) |
+| `set_subordinate_model` | Change subordinate's main LLM model (updates status.json; requires `restart_subordinate` to take effect) |
+| `set_subordinate_background_model` | Change subordinate's background model (for heartbeat/cron; updates status.json; requires `restart_subordinate` to take effect; empty string to clear) |
+| `restart_subordinate` | Restart subordinate process (status.json `restart_requested` flag; Reconciliation restarts within ~30 seconds) |
 | `delegate_task` | Delegate task to direct subordinate (queue add + DM send + tracking entry on your side) |
 
 ### All Subordinates (Including Grandchildren)
@@ -37,7 +38,7 @@ Supervisor tools automatically enabled for Anima that have subordinates. Manages
 
 | Tool | Purpose |
 |------|---------|
-| `task_tracker` | Track progress of tasks delegated via `delegate_task` from the subordinate's queue (`status`: all / active / completed) |
+| `task_tracker` | Track progress of tasks delegated via `delegate_task` from the subordinate's queue (`status`: all / active / completed; default: active) |
 
 ## Important: disable_subordinate vs send_message
 
@@ -65,6 +66,20 @@ set_subordinate_model(name="aoi", model="claude-sonnet-4-6", reason="Load balanc
 restart_subordinate(name="aoi", reason="Apply model change")
 ```
 
+To change the background model (for heartbeat/cron):
+
+```
+set_subordinate_background_model(name="aoi", model="claude-sonnet-4-6", reason="Reduce heartbeat load")
+restart_subordinate(name="aoi", reason="Apply background model change")
+```
+
+To clear the background model and revert to the main model:
+
+```
+set_subordinate_background_model(name="aoi", model="", reason="Unify to main model")
+restart_subordinate(name="aoi")
+```
+
 ### Status Confirmation and Audit
 
 ```
@@ -73,7 +88,7 @@ ping_subordinate()                      # Liveness check for all subordinates
 ping_subordinate(name="aoi")            # Liveness check for single subordinate
 read_subordinate_state(name="aoi")      # Current task and pending task content
 audit_subordinate(name="aoi")           # Comprehensive audit of last 1 day
-audit_subordinate(name="aoi", days=7)   # Audit last 7 days
+audit_subordinate(name="aoi", days=7)   # Audit last 7 days (days: 1–30)
 ```
 
 Also available via CLI (useful for S-mode via Bash):
@@ -87,12 +102,13 @@ animaworks anima audit aoi --days 7     # Audit last 7 days
 
 ```
 delegate_task(name="aoi", instruction="Summarize weekly report", deadline="1d", summary="Weekly report creation")
-task_tracker(status="active")      # Check progress of delegated tasks
+# name, instruction, deadline are required. summary is optional (defaults to first 100 chars of instruction)
+task_tracker(status="active")      # Check progress of delegated tasks (status: all / active / completed)
 ```
 
 ## Permissions
 
-- **Direct subordinates only**: disable, enable, set_subordinate_model, restart_subordinate, delegate_task
+- **Direct subordinates only**: disable_subordinate, enable_subordinate, set_subordinate_model, set_subordinate_background_model, restart_subordinate, delegate_task
 - **All subordinates (recursive)**: org_dashboard, ping_subordinate, read_subordinate_state, audit_subordinate
 - You cannot pause, resume, change model, or delegate to subordinates of subordinates (grandchildren). Ask their supervisor
 - You cannot operate on yourself

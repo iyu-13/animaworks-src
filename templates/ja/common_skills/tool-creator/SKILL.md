@@ -4,7 +4,7 @@ description: >-
   AnimaWorks用のPythonツールモジュールを正しいインターフェースで作成するメタスキル。
   個人ツール（animas/{name}/tools/）・共有ツール（common_tools/）の作成手順、
   ExternalToolDispatcher連携、use_tool経由の呼び出し、get_credentialによるAPIキー管理、
-  permissions.md許可設定を提供。
+  permissions.md許可設定、EXECUTION_PROFILEによる長時間実行対応を提供。
   Web API連携・外部サービス統合のカスタムツール開発時に使用。
   「ツールを作成」「ツール化」「新しいツール」「カスタムツール」「Python ツール」
 ---
@@ -21,7 +21,7 @@ AnimaWorksのツールは3種類に分かれる:
 | **共有ツール** | `{data_dir}/common_tools/*.py` | `discover_common_tools()` |
 | **個人ツール** | `{anima_dir}/tools/*.py` | `discover_personal_tools()` |
 
-`{data_dir}` は通常 `~/.animaworks/`。個人ツール・共有ツールは `ExternalToolDispatcher` が `refresh_tools` で再スキャンし、ホットリロード可能。ToolHandler は `write_memory_file` で `tools/*.py` への書き込み時に permissions.md の「ツール作成」セクションで許可をチェックする。
+`{data_dir}` は通常 `~/.animaworks/`。個人ツール・共有ツールは `ExternalToolDispatcher` が `refresh_tools` で再スキャンし、ホットリロード可能。同一ツール名の場合、個人ツールが共有ツールを上書きする（`{**common, **personal}`）。ToolHandler は `write_memory_file` で `tools/*.py` への書き込み時に permissions.md の「ツール作成」セクションで許可をチェックする。
 
 個人ツール・共有ツールは `use_tool(tool_name="...", action="...", args={...})` 経由で呼び出される。スキーマ名は `{tool_name}_{action}` 形式（例: `my_tool` + `query` → `my_tool_query`）。
 
@@ -196,7 +196,7 @@ write_memory_file(path="tools/my_tool.py", content=<コード>)
 refresh_tools()
 ```
 
-これにより、セッションを再起動せずに即座にツールが使えるようになる。個人ツールは permissions.md の external_tools に登録不要。`refresh_tools` で発見されれば `use_tool` から呼び出し可能。
+これにより、セッションを再起動せずに即座にツールが使えるようになる。個人ツール・共有ツールは permissions.md の「外部ツール」セクションに登録不要。`refresh_tools` で発見されれば `use_tool` から呼び出し可能。
 
 ### Step 5: 共有（任意）
 
@@ -214,9 +214,9 @@ share_tool(tool_name="my_tool")
 |------|------|------|
 | `get_tool_schemas()` | ✅ 必須 | ツールスキーマのリストを返す。`name`, `description`, `input_schema`（または `parameters`）を含む |
 | `dispatch(name, args)` | 🔵 推奨 | スキーマ名に基づくディスパッチ。ExternalToolDispatcher が優先して呼ぶ。`args` に `anima_dir` が注入される場合は `args.pop("anima_dir", None)` で除去 |
-| スキーマ名と同名の関数 | 🟡 代替 | `dispatch()` の代わりに使用可能 |
+| スキーマ名と同名の関数 | 🟡 代替 | `dispatch()` の代わりに使用可能（`_call_module` が `getattr(mod, name)(**args)` で呼ぶ） |
 | `cli_main(argv)` | ⚪ 任意 | `animaworks-tool <tool_name>` での単体実行用 |
-| `EXECUTION_PROFILE` | ⚪ 任意 | 長時間実行ツール向け。`animaworks-tool submit` でバックグラウンド投入可能にする |
+| `EXECUTION_PROFILE` | ⚪ 任意 | 長時間実行ツール向け。`animaworks-tool submit` で `state/background_tasks/pending/` に投入可能にする |
 
 ## use_tool 経由の呼び出し
 
@@ -230,7 +230,7 @@ use_tool(tool_name="myapi", action="query", args={"query": "検索語", "limit":
 
 ## スキーマ定義の規約
 
-`input_schema` と `parameters` の両方がサポートされ、正規化される（`core/tooling/schemas._normalise_schema`）。
+`input_schema` と `parameters` の両方がサポートされ、`core.tooling.schemas._normalise_schema` で正規化される（内部では `parameters` に統一）。
 
 ```python
 {
@@ -252,18 +252,18 @@ APIキー等は `get_credential()` 経由で取得する。ハードコードし
 from core.tools._base import get_credential
 
 api_key = get_credential(
-    credential_name="myapi",   # config.json credentials のキー
+    credential_name="myapi",   # config.json の credentials.{credential_name} キー
     tool_name="myapi_tool",    # エラーメッセージ用
     key_name="api_key",        # デフォルト。keys 内の別キーも指定可
-    env_var="MYAPI_KEY",       # フォールバック用環境変数
+    env_var="MYAPI_KEY",       # vault.json / shared/credentials.json / 環境変数 のフォールバック用キー
 )
 ```
 
-**解決順序**: config.json → vault.json（暗号化vault）→ shared/credentials.json → 環境変数。いずれにもない場合は ToolConfigError。
+**解決順序**: 1) config.json の `credentials.{credential_name}` → 2) vault.json の `shared` セクション（`env_var` をキーに検索）→ 3) shared/credentials.json（`env_var` をキーに検索）→ 4) 環境変数 `env_var`。いずれにもない場合は ToolConfigError。
 
 ## permissions.md のツール作成許可
 
-ツール作成・共有には permissions.md に以下を追加:
+ツール作成・共有には permissions.md に「ツール作成」セクションを追加し、以下を記述:
 
 ```markdown
 ## ツール作成
@@ -271,7 +271,21 @@ api_key = get_credential(
 - 共有ツール: yes
 ```
 
-`yes` の代わりに `OK`, `enabled`, `true` も有効。
+`yes` の代わりに `OK`, `enabled`, `true` も有効。`_check_tool_creation_permission` が行単位で `{kind}: yes` 形式を検証する。
+
+- **個人ツール**: `write_memory_file` で `tools/*.py` に書き込む際に必要
+- **共有ツール**: `share_tool` で common_tools にコピーする際に必要
+
+## EXECUTION_PROFILE（長時間実行ツール向け）
+
+`background_eligible: True` のサブコマンドは `animaworks-tool submit <tool_name> <subcommand> [args...]` でバックグラウンド投入可能。タスクは `state/background_tasks/pending/` に書き出され、PendingTaskExecutor が実行する。
+
+```python
+EXECUTION_PROFILE: dict[str, dict[str, object]] = {
+    "pipeline": {"expected_seconds": 1800, "background_eligible": True},
+    "query": {"expected_seconds": 10, "background_eligible": False},
+}
+```
 
 ## バリデーションチェックリスト
 
@@ -280,11 +294,11 @@ api_key = get_credential(
 - [ ] `get_tool_schemas()` が存在し、リストを返すか
 - [ ] スキーマ名が `{tool_name}_{action}` 形式か（use_tool 連携）
 - [ ] スキーマに `name`, `description`, `input_schema`（または `parameters`）があるか
-- [ ] `dispatch()` または同名関数が存在するか
+- [ ] `dispatch()` またはスキーマ名と同名の関数が存在するか
 - [ ] `dispatch()` で `args.pop("anima_dir", None)` しているか（args を他関数に渡す場合）
 - [ ] 全スキーマに対応するハンドラがあるか
 - [ ] エラー時に適切な例外を発生させるか
-- [ ] 外部APIにタイムアウトを設定しているか
+- [ ] 外部APIにタイムアウトを設定しているか（推奨: 30秒）
 
 ## セキュリティガイドライン
 
@@ -304,6 +318,7 @@ api_key = get_credential(
 - ツール作成には permissions.md の「ツール作成」セクションで **個人ツール: yes** の許可が必要です
 - 共有ツール化には **共有ツール: yes** の許可が必要です
 - 作成したツールは `refresh_tools` 呼び出しで即座に発見されます（ホットリロード）
-- 個人ツールは permissions.md の external_tools に登録不要。`refresh_tools` で発見されれば `use_tool` から利用可能
+- 個人ツール・共有ツールは permissions.md の「外部ツール」セクションに登録不要。`refresh_tools` で発見されれば `use_tool` から利用可能（コアツールのみ外部ツールで許可制御）
 - スキーマ名は `{tool_name}_{action}` 形式。他ツールと衝突しないよう一意にすること
-- コアツールと同名の個人・共有ツールはシャドウされるためスキップされます（`core/tools/__init__.py`）
+- コアツールと同名の個人・共有ツールはシャドウされるためスキップされます（`discover_common_tools` / `discover_personal_tools`）
+- 参考実装: `core/tools/web_search.py`, `core/tools/chatwork.py`, `core/tools/image_gen.py`

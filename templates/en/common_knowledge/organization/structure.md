@@ -6,7 +6,7 @@ This document explains how organization structure is defined, interpreted, and d
 
 ## Data Sources and Priority
 
-### supervisor
+### supervisor (Supervisor)
 
 Hierarchy is defined by each Anima's `supervisor`. Read order:
 
@@ -16,19 +16,19 @@ Hierarchy is defined by each Anima's `supervisor`. Read order:
 If `supervisor` is unset, empty, or one of "なし", "(なし)", "（なし）", "-", "---", the Anima is top-level.
 `config.json` `animas.<name>.supervisor` is **synced from disk** by org_sync; manual edits are overwritten.
 
-### speciality
+### speciality (Specialty)
 
-Speciality is resolved by `_scan_all_animas()` in `core/prompt/builder.py` in this order:
+Specialty is resolved by `_scan_all_animas()` in `core/prompt/builder.py` in this order:
 
 1. **status.json** — `"speciality"` key (free text)
-2. **status.json** — `"role"` key (fallback when `speciality` is absent; role names: engineer, manager, general, etc.)
-3. **config.json** — `animas.<name>.speciality` (fallback when neither exists in status.json)
+2. **config.json** — `animas.<name>.speciality` (fallback when `speciality` key is absent in status.json)
+3. **status.json** — `"role"` key (final fallback when above do not resolve; role names: engineer, researcher, manager, writer, ops, general)
 
 **Note:** org_sync does **not** sync speciality. Speciality is resolved on each prompt build from disk and config.
 Anima created with `animaworks anima create --from-md` get `role` in `status.json` but not `speciality`.
 For custom display (e.g. "Development lead"), add `"speciality": "Development lead"` manually to `status.json`.
 
-## org_sync and config.json
+## Syncing config.json via org_sync
 
 `sync_org_structure()` in `core/org_sync.py`:
 
@@ -202,9 +202,11 @@ Characteristics:
 - Unset shows as "(unset)"
 
 **Behavior when creating Anima (`core/anima_factory.py`):**
-- `animaworks anima create --from-md PATH [--role ROLE] [--supervisor NAME]` writes `supervisor` and `role` to `status.json`
-- `speciality` is not in the character sheet basic info table and is not set automatically on creation
-- For custom speciality display, add `"speciality": "Development lead"` etc. manually to `status.json` after creation
+- `animaworks anima create --from-md PATH [--role ROLE] [--supervisor NAME] [--name NAME]` writes `supervisor` and `role` to `status.json`
+- **supervisor**: Uses `--supervisor` option if specified; otherwise parses from character sheet basic info table (`| 上司 | name |`)
+- **speciality**: Not included in character sheet basic info table; `_create_status_json` does not write speciality, so it is not set automatically on creation
+- For custom specialty display, add `"speciality": "Development lead"` etc. manually to `status.json` after creation
+- Same for `create_from_template` / `create_blank`: speciality is not auto-set in status.json (if template includes status.json, its contents are copied)
 
 Effective speciality guidelines:
 - Concrete and short: `Backend development`, `Customer support`, `Data analysis`

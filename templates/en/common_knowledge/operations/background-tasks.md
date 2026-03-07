@@ -52,7 +52,7 @@ animaworks-tool submit image_gen pipeline "1girl, black hair, ..." --negative "l
 # Local LLM inference (Ollama, up to 5 min)
 animaworks-tool submit local_llm generate "Please summarize: ..."
 
-# Audio transcription (Whisper + Ollama cleanup, up to 2 min)
+# Audio transcription (Whisper + Ollama post-processing, up to 2 min)
 animaworks-tool submit transcribe "/path/to/audio.wav" --language ja
 ```
 
@@ -66,7 +66,7 @@ submit returns immediately with the following JSON and exits:
   "status": "submitted",
   "tool": "image_gen",
   "subcommand": "3d",
-  "message": "Task submitted. You will be notified in inbox when complete."
+  "message": "Background task submitted. You will be notified in inbox when complete."
 }
 ```
 
@@ -79,13 +79,13 @@ submit returns immediately with the following JSON and exits:
 
 ## Handling Failures
 
-- When the notification says "failed":
+- When the notification indicates "failed":
   1. Check the error details
   2. Identify the cause (missing API key, timeout, incorrect arguments, etc.)
   3. Fix and resubmit
   4. If you cannot resolve, report to your supervisor
 
-- If the process crashes during execution, tasks left in `state/background_tasks/pending/processing/` are automatically moved to `pending/failed/` on the next startup for recovery
+- If the process crashes during execution, tasks left in `state/background_tasks/pending/processing/` or `state/pending/processing/` are automatically moved to `pending/failed/` on the next startup for recovery
 
 ## Common Mistakes
 
@@ -109,26 +109,48 @@ Results are delivered automatically, so polling or waiting is unnecessary.
 
 ## Technical Mechanism (Reference)
 
+PendingTaskExecutor monitors and executes two types of tasks.
+
 ### Command-type tasks (animaworks-tool submit)
 
-1. `animaworks-tool submit` writes a task JSON under `state/background_tasks/pending/`
-2. PendingTaskExecutor's watcher monitors this directory every 3 seconds (`wake` can trigger an immediate check)
-3. On detection, the task is moved from `pending/` to `pending/processing/` and execution starts
-4. The task is enqueued in BackgroundTaskManager and runs as a subprocess outside the Anima lock (30 min timeout)
-5. On success: the file in processing is deleted. On failure: moved to `pending/failed/`
+1. `animaworks-tool submit` writes a task descriptor to `state/background_tasks/pending/*.json`
+2. PendingTaskExecutor's watcher monitors `state/background_tasks/pending/` every 3 seconds (`wake()` can trigger an immediate check)
+3. On detection, the task is moved from `pending/*.json` to `pending/processing/` and execution starts
+4. `execute_pending_task` enqueues the task in BackgroundTaskManager.submit. It runs as a subprocess outside the Anima lock (30 min timeout)
+5. On submit success: the file in processing is deleted. On submit failure: moved to `pending/failed/`
 6. On completion, the `_on_background_task_complete` callback writes the notification to `state/background_notifications/{task_id}.md`
 7. On the next heartbeat, `drain_background_notifications()` reads the notification and injects it into the context
 
+### LLM-type tasks (state/pending/)
+
+LLM tasks written by Heartbeat or the `plan_tasks` tool are enqueued in a **different directory** `state/pending/`.
+
+1. `plan_tasks` writes task descriptors to `state/pending/{task_id}.json` (with `task_type: "llm"`, `batch_id`, etc.)
+2. The watcher monitors `state/pending/` every 3 seconds in the same way
+3. Tasks with `batch_id` are accumulated and dispatched via `_dispatch_batch` based on the DAG
+4. Tasks with `parallel: true` run concurrently under a semaphore (`config.json` `background_task.max_parallel_llm_tasks`, default 3)
+5. Tasks with `depends_on` run after their dependencies complete
+6. Results are saved to `state/task_results/{task_id}.md`. Completion/failure notifications are sent via DM to `reply_to`
+7. Tasks older than 24 hours (TTL) are skipped
+
+The entry point and directory differ from `animaworks-tool submit` described in this guide.
+
 ### File Lifecycle
 
+**Command-type** (animaworks-tool submit):
+
 ```
-pending/*.json → pending/processing/*.json → success: deleted | failure: pending/failed/*.json
+state/background_tasks/pending/*.json
+  → pending/processing/*.json
+  → success: deleted | failure: pending/failed/*.json
 ```
 
-On startup, orphaned files left in `processing/` (e.g., from a crash) are moved to `failed/` for recovery.
+**LLM-type** (plan_tasks / Heartbeat):
 
-### Relationship with LLM Tasks (state/pending/)
+```
+state/pending/*.json
+  → pending/processing/*.json
+  → success: deleted | failure: pending/failed/*.json
+```
 
-LLM tasks written by Heartbeat or the `plan_tasks` tool are enqueued in `state/pending/` (a different directory).
-These support parallel/sequential execution based on a DAG, and results are saved in `state/task_results/`.
-The entry point differs from the `submit` described in this guide.
+On startup, orphaned files left in either `processing/` (e.g., from a crash) are moved to `failed/` for recovery.

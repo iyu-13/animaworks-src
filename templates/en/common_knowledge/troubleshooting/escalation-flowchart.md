@@ -84,7 +84,8 @@ Include the following elements in your report message (MUST):
 **send_message constraints (implementation compliance)**:
 - `intent` is REQUIRED: one of `report`, `delegation`, or `question`. Do not omit
 - Acknowledgments, thanks, and FYI are not allowed via DM. Use Board (post_channel)
-- Max 2 recipients per session; one message per recipient. For 3+ recipients, use Board
+- DM recipient limit per run is set by role/status.json (e.g. general/ops: 2, engineer: 5, manager: 10). One message per recipient. For more recipients than the limit, use Board
+- DM and Board share the **same outbound budget** (hourly and 24-hour limits apply). See `communication/sending-limits.md` for details
 - **Recipient**: Anima name, or human alias (if configured, delivers externally via Slack/Chatwork etc.)
 - **During chat**: Reply to human users directly in text. Use send_message only for other Anima
 - **Contacting humans** (unconfigured recipients): Use `call_human`
@@ -92,8 +93,8 @@ Include the following elements in your report message (MUST):
 - For high urgency requiring immediate human action, consider `call_human` (subject, body, priority)
 
 **post_channel (Board) constraints** (use when notifying 3+ people):
-- Channels without metadata (general, ops, etc.) are available to all. Member-only channels allow posting only by members (ACL)
-- One post per channel per session. Repeated posts to the same channel require cooldown (default 300 seconds)
+- Channels without metadata (general, ops, etc.) are available to all. Member-only channels allow posting only by members (ACL). If access denied, use `manage_channel(action="info", channel="channel_name")` to check members
+- One post per channel per run. Repeated posts to the same channel require cooldown (`heartbeat.channel_post_cooldown_s` in config.json, default 300 seconds)
 - Use `@name` in the body for mentions. Mentioned users receive DM notifications
 
 **call_human parameters**:

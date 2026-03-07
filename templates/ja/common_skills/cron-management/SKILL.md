@@ -185,17 +185,19 @@ args:
 
 ### オプション: skip_pattern
 
-コマンドの標準出力が特定パターンにマッチした場合、LLM分析セッションをスキップする。
+コマンドの標準出力が特定パターンにマッチした場合、cron LLMセッション（フォローアップ分析）をスキップする。
 
 ```markdown
 ## Chatwork未返信チェック
 schedule: */5 * * * *
 type: command
 command: chatwork_cli.py unreplied --json
-skip_pattern: ^\[\]$
+skip_pattern: "^\[\]$"
 ```
 
 - `skip_pattern:` には正規表現を書く
+- 正規表現に `[]` 等のYAML特殊文字を含む場合は引用符（`"..."` または `'...'`）で囲む。パーサーは外側の引用符を自動除去する
+- 無効な正規表現の場合は警告ログが出て、skip_patternは無視され（cron LLMが実行される）
 - 上の例では、未返信が0件（`[]`）の場合にスキップする
 
 ### オプション: trigger_heartbeat
@@ -207,12 +209,12 @@ skip_pattern: ^\[\]$
 schedule: */15 * * * *
 type: command
 command: animaworks-tool chatwork unreplied
-skip_pattern: ^\[\]$
+skip_pattern: "^\[\]$"
 trigger_heartbeat: false
 ```
 
-- `trigger_heartbeat: false` — 出力があってもLLM分析セッションをスキップ
-- `trigger_heartbeat: true`（デフォルト）— 出力があればcron LLMセッションで分析・対応
+- `trigger_heartbeat: false` — コマンド出力があってもcron LLMセッション（フォローアップ分析）をスキップ
+- `trigger_heartbeat: true`（デフォルト）— コマンド出力があればcron LLMセッションで分析・対応
 - `false`, `no`, `0` を指定するとLLM分析抑制。それ以外はtrue扱い
 - `skip_pattern` と併用可能。`trigger_heartbeat: false` は `skip_pattern` より先に評価される
 - LLM分析セッションはheartbeat同等のコンテキスト（記憶・知識・組織情報）を持つ
@@ -307,11 +309,14 @@ cron.mdを更新する前に、以下を**必ず**確認すること:
 書き込み後、以下のコマンドで正しくパースされるか確認できる:
 
 ```bash
+# プロジェクトルートで実行。ANIMAWORKS_ANIMA_DIR 未設定時は ~/.animaworks/animas/default を使用
 python -c "
 from core.schedule_parser import parse_cron_md, parse_schedule
-import pathlib
+import os
+from pathlib import Path
 
-content = pathlib.Path('$ANIMAWORKS_ANIMA_DIR/cron.md').read_text()
+cron_path = Path(os.environ.get('ANIMAWORKS_ANIMA_DIR', '~/.animaworks/animas/default')) / 'cron.md'
+content = cron_path.expanduser().read_text()
 tasks = parse_cron_md(content)
 for t in tasks:
     trigger = parse_schedule(t.schedule)
@@ -340,7 +345,7 @@ type: llm
 schedule: */5 9-18 * * 0-4
 type: command
 command: chatwork-cli unreplied --json > $ANIMAWORKS_ANIMA_DIR/state/chatwork_unreplied.json
-skip_pattern: ^\[\]$
+skip_pattern: "^\[\]$"
 trigger_heartbeat: false
 
 ## Slack朝の挨拶
@@ -379,13 +384,14 @@ type: llm
 | `schedule: 0 9 * * SUN` | `schedule: 0 9 * * 6` | 曜日名は使えない（数字のみ） |
 | `schedule: 0 25 * * *` | `schedule: 0 23 * * *` | 時は0-23の範囲 |
 | `schedule: 60 * * * *` | `schedule: 0 * * * *` | 分は0-59の範囲 |
+| `skip_pattern: ^\[\]$`（引用符なし） | `skip_pattern: "^\[\]$"` | `[]` はYAMLで空リストと解釈される。引用符で囲む |
 
 ---
 
 ## 注意事項
 
-- cron.mdの変更はサーバー再起動またはハートビート時に反映される（即時反映ではない）
-- タイムゾーンはサーバー設定に従う（通常JST）
+- cron.mdの変更は、Animaが `write_memory_file` で保存した場合は即時反映される。外部編集（直接ファイル編集）の場合は、次回heartbeatまたはcron実行時にmtimeを検出して自動リロードされる
+- タイムゾーンは Asia/Tokyo（JST）固定
 - 同時刻に複数タスクが重なった場合は並列実行される
 - command型のタスクが失敗してもサーバーは停止しない（ログに記録される）
 - LLM型タスクの実行には現在のモデル設定（status.json）が使われる

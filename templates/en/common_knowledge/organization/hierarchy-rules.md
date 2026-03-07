@@ -68,6 +68,7 @@ Anima with subordinates have dedicated tools for organizational management autom
 | `read_subordinate_state` | All subordinates (recursive) | Read subordinate's `state/current_task.md` and `state/pending.md` | `name` (required) |
 | `delegate_task` | Direct subordinates only | Delegate task (add to subordinate queue + send DM + create tracking entry on your side) | `name`, `instruction`, `deadline` (required), `summary` (optional) |
 | `task_tracker` | Your delegated tasks | Track progress of tasks delegated via `delegate_task` from subordinate queue | `status` (optional: "all"/"active"/"completed", default "active") |
+| `audit_subordinate` | All subordinates (recursive) | Generate comprehensive audit report including activity summary, error frequency, tool usage statistics, and communication patterns | `name` (required), `days` (optional: 1–30, default 1) |
 | `disable_subordinate` | Direct subordinates | Disable subordinate (status.json enabled=false, process stops in ~30 seconds) | `name` (required), `reason` (optional) |
 | `enable_subordinate` | Direct subordinates | Re-enable a disabled subordinate | `name` (required) |
 | `set_subordinate_model` | Direct subordinates | Change subordinate's model (updates status.json; `restart_subordinate` required to apply) | `name`, `model` (required), `reason` (optional) |
@@ -92,6 +93,7 @@ Anima with subordinates have dedicated tools for organizational management autom
 org_dashboard()                        # Display subordinate status in tree
 read_subordinate_state(name="dave")    # Check dave's current and pending tasks
 ping_subordinate()                     # Liveness check for all
+audit_subordinate(name="dave", days=7)  # Audit dave's activity, errors, tool usage, and communication patterns over the last 7 days
 ```
 
 ### Organization Expansion (Creating New Anima)

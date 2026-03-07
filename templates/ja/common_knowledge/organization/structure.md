@@ -21,8 +21,8 @@ AnimaWorks における組織構造は、各 Anima の `status.json`（または
 専門領域は `core/prompt/builder.py` の `_scan_all_animas()` により以下の優先順位で解決される:
 
 1. **status.json** — `"speciality"` キー（自由テキスト）
-2. **status.json** — `"role"` キー（`speciality` がない場合のフォールバック。ロール名: engineer, manager, general 等）
-3. **config.json** — `animas.<name>.speciality`（status.json に両方ない場合のフォールバック）
+2. **config.json** — `animas.<name>.speciality`（status.json に `speciality` キーがない場合のフォールバック）
+3. **status.json** — `"role"` キー（上記で解決されない場合の最終フォールバック。ロール名: engineer, researcher, manager, writer, ops, general）
 
 **注意:** org_sync は **speciality を同期しない**。speciality はプロンプト構築時にディスクと config から都度解決される。
 `animaworks anima create --from-md` で作成した Anima は `status.json` に `role` が入るが `speciality` は入らない。
@@ -202,9 +202,11 @@ manager（プロジェクト管理）
 - 未設定の場合は「(未設定)」と表示される
 
 **Anima 作成時の挙動（`core/anima_factory.py`）:**
-- `animaworks anima create --from-md PATH [--role ROLE] [--supervisor NAME]` で作成すると、`status.json` に `supervisor` と `role` が書き込まれる
-- `speciality` はキャラクターシートの基本情報テーブルには含まれず、作成時に自動設定されない
+- `animaworks anima create --from-md PATH [--role ROLE] [--supervisor NAME] [--name NAME]` で作成すると、`status.json` に `supervisor` と `role` が書き込まれる
+- **supervisor**: `--supervisor` オプションが指定されていればそれを優先。未指定の場合はキャラクターシートの基本情報テーブル（`| 上司 | name |`）から解析
+- **speciality**: キャラクターシートの基本情報テーブルには含まれず、`_create_status_json` も speciality を書き込まないため、作成時に自動設定されない
 - カスタム専門表示が必要な場合は、作成後に `status.json` に `"speciality": "開発リード"` 等を手動で追加する
+- `create_from_template` / `create_blank` で作成した場合も同様に、speciality は status.json に自動設定されない（テンプレートに status.json が含まれる場合はその内容がコピーされる）
 
 効果的な speciality の書き方:
 - 具体的で短い: `バックエンド開発` `顧客サポート` `データ分析`

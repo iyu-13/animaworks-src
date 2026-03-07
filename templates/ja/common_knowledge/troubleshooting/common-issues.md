@@ -23,7 +23,7 @@
 3. 相手がハートビート間隔の合間にいる（次の起動まで未読のまま）
 4. 送信処理自体がエラーで失敗していた
 5. `intent` が未指定または不正（report / delegation / question のみ許可）
-6. セッション内DM制限超過（同一宛先へは1回のみ、1セッションあたり最大2人まで）
+6. セッション内DM制限超過（同一宛先へは1回のみ、1セッションあたりの宛先数上限。ロールにより異なり、general は2人まで）
 
 ### 対処手順
 
@@ -59,7 +59,7 @@ send_message(to="Aoi", content="...", intent="report")   # OK
 send_message(to="aoi", content="...", intent="report")  # 名前が異なればエラーになる可能性あり
 
 # DM は intent 必須（report / delegation / question のみ）
-# 1セッションあたり最大2人まで、同一宛先へは1回のみ
+# 1セッションあたりの宛先数はロールにより異なる（general は2人まで）。同一宛先へは1回のみ
 send_message(
     to="aoi",
     content="了解しました。作業を開始します。",
@@ -176,15 +176,11 @@ send_message(
      ```
 
 4. **ディレクトリを直接確認する**
-   - 検索でヒットしない場合はディレクトリの内容を一覧する:
-     ```
-     list_directory(path="knowledge/")
-     list_directory(path="procedures/")
-     list_directory(path="episodes/")
-     ```
+   - 検索でヒットしない場合は `list_directory` でディレクトリの内容を一覧する。`path` を省略すると anima_dir のルートが表示され、knowledge/, procedures/, episodes/ 等のサブディレクトリが確認できる
    - ファイル名から目的のファイルを見つけて直接読む:
      ```
      read_memory_file(path="procedures/slack-setup.md")
+     read_memory_file(path="knowledge/xxx-findings.md")
      ```
 
 5. **記憶が存在しない場合**
@@ -289,10 +285,13 @@ send_message(
 
 4. **S-mode（Claude Agent SDK / MCP）の場合**
    - 組み込みツールは `mcp__aw__*` プレフィックスで利用可能（例: `mcp__aw__send_message`）。見つからない場合はプロセス再起動が必要
-   - 外部ツールは `skill` ツールで使い方を確認し、`execute_command` 経由で `animaworks-tool <ツール> <サブコマンド>` を実行
+   - 外部ツールは `skill` ツールでCLI使用法を確認し、**Bash** 経由で `animaworks-tool <ツール> <サブコマンド>` を実行する（`execute_command` ではなく Claude Code の Bash ツールを使用）
    - 長時間ツール（画像生成、ローカルLLM等）は `animaworks-tool submit` で非同期実行
 
-5. **ツールがエラーを返す場合**
+5. **A-mode（LiteLLM）の場合**
+   - 外部ツールは `skill` で使い方を確認し、`execute_command` 経由で `animaworks-tool <ツール> <サブコマンド>` を実行する
+
+6. **ツールがエラーを返す場合**
    - エラーメッセージを正確に記録する
    - 認証エラーの場合は上司に報告する（認証情報の設定は管理者の責務）
    - タイムアウトの場合はリトライする（最大3回まで）
@@ -365,13 +364,13 @@ send_message(
 ### 症状
 
 - `send_message` や `post_channel` を実行したらエラーが返された
-- `GlobalOutboundLimitExceeded: 1時間あたりの送信上限（30通）に到達しています...` 等のメッセージが表示された
+- `GlobalOutboundLimitExceeded: 1時間あたりの送信上限（N通）に到達しています...` 等のメッセージが表示された
 - `ConversationDepthExceeded: {相手}との会話が10分間に6ターンに達しました...` と表示された
 
 ### 原因
 
-- 1時間あたり30通、または24時間あたり100通の送信上限に達した（config.json `heartbeat.max_messages_per_hour` / `max_messages_per_day`）
-- 同一チャネルへの連続投稿がクールダウン期間内だった（`heartbeat.channel_post_cooldown_s`、デフォルト300秒）
+- **ロール別制限**: 1時間あたり・24時間あたりの送信上限は `status.json` の `role` に応じたデフォルト値が適用される（例: general 15/50通、manager 60/300通）。`status.json` の `max_outbound_per_hour` / `max_outbound_per_day` で個別に上書き可能
+- 同一チャネルへの連続投稿がクールダウン期間内だった（`config.json` の `heartbeat.channel_post_cooldown_s`、デフォルト300秒）
 - 2者間のDM往復が深度制限（10分間に6ターン）を超えた（`heartbeat.depth_window_s` / `heartbeat.max_depth`）
 
 ### 対処手順
@@ -428,7 +427,7 @@ send_message(
 ### 原因
 
 コンテキストウィンドウが小さいモデルを使用している場合、システムプロンプトが段階的に縮小される（Tiered System Prompt）。
-`status.json` のモデル名からコンテキストウィンドウを推定し、config.json `model_context_windows` でオーバーライド可能。
+`status.json` のモデル名からコンテキストウィンドウを推定し、`~/.animaworks/models.json` または `config.json` の `model_context_windows` でオーバーライド可能。
 
 | ティア | コンテキストウィンドウ | 省略される情報 |
 |--------|----------------------|--------------|

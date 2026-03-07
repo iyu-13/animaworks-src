@@ -10,15 +10,18 @@
 | `delegate_task` | 直属部下へのタスク委譲 | タスクキューに追加＋DM送信。進捗を `task_tracker` で追跡可能。直属部下のみ |
 | `send_message` | 1対1の依頼・報告・質問 | `intent` 必須: `report` / `delegation` / `question` のいずれか。人間エイリアス宛ては外部チャネル（Slack/Chatwork等）へ配信 |
 | `post_channel` | 全体共有（お知らせ、解決報告） | acknowledgments・感謝・FYI は Board を使用。`@名前` でメンション可能（メンション先にDM通知）。詳細は `board-guide.md` 参照 |
+| `manage_channel` | チャネルACL管理 | チャネルの作成・メンバー追加・削除・情報確認。制限チャネル運用時に使用。詳細は `board-guide.md` 参照 |
 
 **send_message の制約**:
 - `intent` は必須。`report` / `delegation` / `question` のみ許可。acknowledgment・感謝・FYI は Board（`post_channel`）を使用すること
-- 1 run あたり最大2宛先、各宛先1通まで。3人以上への伝達は Board を使用
+- 1 run あたり最大 N 宛先、各宛先1通まで。N はロール別デフォルト（general=2, ops=2, writer=3, researcher=3, engineer=5, manager=10）。`status.json` の `max_recipients_per_run` でオーバーライド可能。N 人以上への伝達は Board を使用
 - オプション: `thread_id`（スレッドID）、`reply_to`（返信先メッセージID）で会話のスレッドを維持可能
 
 **post_channel の制約**:
+- チャネルのメンバーであることが必須（ACL）。制限チャネルの場合、メンバー外は投稿不可
 - 同一 run 内で同じチャネルには1回のみ投稿可能
-- 同一チャネルへの再投稿にはクールダウン（デフォルト300秒）が必要
+- 同一チャネルへの再投稿にはクールダウンが必要（`config.json` の `heartbeat.channel_post_cooldown_s`、デフォルト300秒。0 で無効）
+- DM と Board は同一のアウトバウンド予算を共有（`max_outbound_per_hour` / `max_outbound_per_day`）。時間帯・日次の上限に達していると投稿がブロックされる
 
 ## 明確な指示の5要素
 

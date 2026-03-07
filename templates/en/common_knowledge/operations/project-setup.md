@@ -86,20 +86,20 @@ Role of each section:
 | `image_gen` | Image generation style settings |
 
 <!-- AUTO-GENERATED:START config_fields -->
-### Config Field Reference (auto-generated)
+### 設定項目リファレンス（自動生成）
 
-#### Anima Settings (per-anima overrides)
+#### Anima設定 (per-anima overrides)
 
-| Field | Type | Default | Description |
-|-------|------|---------|------|
+| フィールド | 型 | デフォルト | 説明 |
+|-----------|-----|----------|------|
 | `supervisor` | `str | None` | None |  |
 | `speciality` | `str | None` | None |  |
 | `model` | `str | None` | None |  |
 
-#### Default Values (anima_defaults)
+#### デフォルト値 (anima_defaults)
 
-| Field | Type | Default | Description |
-|-------|------|---------|------|
+| フィールド | 型 | デフォルト | 説明 |
+|-----------|-----|----------|------|
 | `model` | `str` | `"claude-sonnet-4-6"` |  |
 | `fallback_model` | `str | None` | None |  |
 | `background_model` | `str | None` | None |  |
@@ -117,25 +117,28 @@ Role of each section:
 | `thinking_effort` | `str | None` | None |  |
 | `llm_timeout` | `int` | `600` |  |
 | `mode_s_auth` | `str | None` | None |  |
+| `max_outbound_per_hour` | `int | None` | None |  |
+| `max_outbound_per_day` | `int | None` | None |  |
+| `max_recipients_per_run` | `int | None` | None |  |
 
-#### AnimaWorksConfig Top Level
+#### AnimaWorksConfig トップレベル
 
-| Section | Description |
-|---------|------|
-| `version` | Config file version |
-| `setup_complete` | Setup complete flag |
-| `locale` | Locale setting |
-| `system` | System settings (mode, log level) |
-| `credentials` | API credentials |
-| `model_modes` | Model name → execution mode mapping |
+| セクション | 説明 |
+|-----------|------|
+| `version` | 設定ファイルバージョン |
+| `setup_complete` | セットアップ完了フラグ |
+| `locale` | ロケール設定 |
+| `system` | システム設定（モード、ログレベル） |
+| `credentials` | API認証情報 |
+| `model_modes` | モデル名→実行モードマッピング |
 | `model_context_windows` |  |
 | `model_max_tokens` |  |
-| `anima_defaults` | Anima default settings |
-| `animas` | Per-Anima overrides |
-| `consolidation` | Memory consolidation settings |
-| `rag` | RAG (retrieval-augmented generation) settings |
-| `priming` | Priming (automatic memory recall) settings |
-| `image_gen` | Image generation settings |
+| `anima_defaults` | Anima設定デフォルト値 |
+| `animas` | Anima別設定オーバーライド |
+| `consolidation` | 記憶統合設定 |
+| `rag` | RAG（検索拡張生成）設定 |
+| `priming` | プライミング（自動記憶想起）設定 |
+| `image_gen` | 画像生成設定 |
 | `human_notification` |  |
 | `server` |  |
 | `external_messaging` |  |
@@ -144,6 +147,8 @@ Role of each section:
 | `heartbeat` |  |
 | `voice` |  |
 | `housekeeping` |  |
+| `activity_level` |  |
+| `activity_schedule` |  |
 | `ui` |  |
 
 <!-- AUTO-GENERATED:END -->

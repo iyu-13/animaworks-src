@@ -7,11 +7,21 @@ Vague instructions cause rework and confusion. Follow this guide to give instruc
 
 | Tool | Use Case | Notes |
 |------|----------|-------|
-| `delegate_task` | Task delegation to direct subordinates | Adds to task queue + sends DM. Progress trackable. Direct subordinates only |
-| `send_message` | One-on-one requests, reports, questions | `intent` required: one of `report` / `delegation` / `question` |
-| `post_channel` | Organization-wide sharing (announcements, resolution reports) | Acknowledgments, thanks, FYI use Board. See `board-guide.md` for details |
+| `delegate_task` | Task delegation to direct subordinates | Adds to task queue + sends DM. Progress trackable via `task_tracker`. Direct subordinates only |
+| `send_message` | One-on-one requests, reports, questions | `intent` required: one of `report` / `delegation` / `question`. User aliases are delivered to external channels (Slack, Chatwork, etc.) |
+| `post_channel` | Organization-wide sharing (announcements, resolution reports) | Acknowledgments, thanks, FYI use Board. `@name` for mentions (triggers DM notification to mentioned party). See `board-guide.md` for details |
+| `manage_channel` | Channel ACL management | Create channels, add/remove members, view info. Use for restricted channel operations. See `board-guide.md` for details |
 
-**send_message constraints**: Maximum 2 recipients per session, 1 message per recipient. Omitting `intent` causes an error.
+**send_message constraints**:
+- `intent` is required. Only `report` / `delegation` / `question` are allowed. Use Board (`post_channel`) for acknowledgments, thanks, and FYI
+- Maximum N recipients per run, 1 message per recipient. N is role-based default (general=2, ops=2, writer=3, researcher=3, engineer=5, manager=10). Overridable via `max_recipients_per_run` in `status.json`. Use Board for N+ recipients
+- Optional: `thread_id` (thread ID), `reply_to` (reply-to message ID) to maintain conversation threads
+
+**post_channel constraints**:
+- Must be a member of the channel (ACL). Non-members cannot post to restricted channels
+- One post per channel per run
+- Cooldown required for reposting to the same channel (`heartbeat.channel_post_cooldown_s` in `config.json`, default 300 seconds; 0 to disable)
+- DM and Board share the same outbound budget (`max_outbound_per_hour` / `max_outbound_per_day`). Posts are blocked when hourly or daily limits are reached
 
 ## Five Elements of a Clear Instruction
 
@@ -120,6 +130,8 @@ Report: Reply with "LGTM" if no issues; if changes needed, reply with specific l
 ### Pattern 1: One-Off Task (Delegation to Direct Subordinate)
 
 For a one-time task delegated to a **direct subordinate**, use `delegate_task`. The task is added to the queue and progress can be tracked with `task_tracker`.
+
+Required parameters: `name` (delegatee), `instruction` (instruction content), `deadline` (relative format `30m`/`2h`/`1d` or ISO8601). Optional: `summary` (one-line summary).
 
 ```
 delegate_task(
@@ -283,6 +295,8 @@ When to handle yourself vs escalate to your supervisor.
 ### How to Escalate
 
 Escalation is a report and request for decision to your supervisor; use `intent="report"`. Consider `call_human` for emergencies.
+
+If your supervisor is an Anima, specify the Anima name in `to`. To send to a human administrator, specify the alias name configured in `external_messaging.user_aliases` in `config.json` as `to`; it will be delivered to external channels (Slack, Chatwork, etc.).
 
 ```
 send_message(
