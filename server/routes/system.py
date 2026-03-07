@@ -777,6 +777,11 @@ def create_system_router() -> APIRouter:
                 {"error": "activity_schedule must be a list"},
                 status_code=400,
             )
+        if len(raw_schedule) > 24:
+            return JSONResponse(
+                {"error": "activity_schedule must have at most 24 entries"},
+                status_code=400,
+            )
 
         from core.config.models import ActivityScheduleEntry, load_config, save_config
 
