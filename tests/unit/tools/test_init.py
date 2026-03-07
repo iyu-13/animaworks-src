@@ -33,7 +33,7 @@ class TestToolModules:
         expected = {
             "web_search", "x_search", "chatwork", "slack", "gmail",
             "local_llm", "transcribe", "aws_collector", "github", "image_gen",
-            "call_human", "google_calendar",
+            "call_human", "google_calendar", "notion",
         }
         assert expected == set(TOOL_MODULES.keys())
 

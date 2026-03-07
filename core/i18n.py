@@ -1837,6 +1837,47 @@ _STRINGS: dict[str, dict[str, str]] = {
         "ja": "スキル '{skill_name}' を作成しました: {skill_dir}\n作成ファイル: {files_str}",
         "en": "Skill '{skill_name}' created: {skill_dir}\nCreated files: {files_str}",
     },
+    # ── tools/notion.py ──
+    "notion.config_error": {
+        "ja": "ツール 'notion' には認証情報が必要です。vault.json または shared/credentials.json に NOTION_API_TOKEN を設定してください",
+        "en": "Tool 'notion' requires credential. Set NOTION_API_TOKEN in vault.json or shared/credentials.json",
+    },
+    "notion.rate_limited": {
+        "ja": "Notion API がレート制限されています",
+        "en": "Notion API rate limited",
+    },
+    "notion.server_error": {
+        "ja": "Notion API サーバーエラー {status}: {body}",
+        "en": "Notion API server error {status}: {body}",
+    },
+    "notion.payload_too_large": {
+        "ja": "ペイロードが {max_bytes} バイトを超えています（実際: {actual_bytes}）",
+        "en": "Payload exceeds {max_bytes} bytes (actual: {actual_bytes})",
+    },
+    "notion.unknown_action": {
+        "ja": "不明な notion アクション: {name}",
+        "en": "Unknown notion action: {name}",
+    },
+    "notion.cli_desc": {
+        "ja": "Notion CLI（AnimaWorks 連携）",
+        "en": "Notion CLI (AnimaWorks integration)",
+    },
+    "notion.page_id_required": {
+        "ja": "page_id は必須です",
+        "en": "page_id is required",
+    },
+    "notion.database_id_required": {
+        "ja": "database_id は必須です",
+        "en": "database_id is required",
+    },
+    "notion.parent_required": {
+        "ja": "parent_page_id または parent_database_id のいずれかが必須です",
+        "en": "Either parent_page_id or parent_database_id is required",
+    },
+    "notion.parent_page_id_required": {
+        "ja": "parent_page_id は必須です",
+        "en": "parent_page_id is required",
+    },
 }
 
 
