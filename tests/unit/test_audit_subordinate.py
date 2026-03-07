@@ -53,7 +53,8 @@ def _setup_subordinate(
         "role": "general",
     }
     (anima_dir / "status.json").write_text(
-        json.dumps(status, indent=2), encoding="utf-8",
+        json.dumps(status, indent=2),
+        encoding="utf-8",
     )
     return anima_dir
 
@@ -63,10 +64,7 @@ def _mock_config(animas: dict[str, dict]) -> MagicMock:
     from core.config.models import AnimaModelConfig
 
     config = MagicMock()
-    config.animas = {
-        name: AnimaModelConfig(**fields)
-        for name, fields in animas.items()
-    }
+    config.animas = {name: AnimaModelConfig(**fields) for name, fields in animas.items()}
     return config
 
 
@@ -82,219 +80,360 @@ def _write_activity(anima_dir: Path, entries: list[dict]) -> None:
         for entry in entries:
             if "ts" not in entry:
                 from core.time_utils import now_iso
+
                 entry["ts"] = now_iso()
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
-class TestAuditSubordinate:
-    """Tests for _handle_audit_subordinate."""
+def _patches(tmp_path, animas):
+    """Return context managers for common patches."""
+    mock_cfg = _mock_config(animas)
+    return (
+        patch("core.config.models.load_config", return_value=mock_cfg),
+        patch("core.paths.get_animas_dir", return_value=tmp_path / "animas"),
+        patch("core.paths.get_data_dir", return_value=tmp_path),
+    )
 
-    def test_audit_direct_subordinate(self, tmp_path):
+
+class TestAuditSubordinateSummary:
+    """Tests for audit_subordinate summary mode."""
+
+    def test_summary_direct_subordinate(self, tmp_path):
         handler = _make_handler(tmp_path, "sakura")
         sub_dir = _setup_subordinate(tmp_path, "hinata", supervisor="sakura")
 
         _write_activity(sub_dir, [
-            {"type": "message_received", "from": "user", "content": "hello"},
             {"type": "tool_use", "tool": "read_file", "summary": "read foo.py"},
             {"type": "tool_use", "tool": "read_file", "summary": "read bar.py"},
             {"type": "tool_use", "tool": "execute_command", "summary": "ls"},
             {"type": "message_sent", "to": "sakura", "content": "done"},
         ])
 
-        mock_cfg = _mock_config({
+        p1, p2, p3 = _patches(tmp_path, {
             "sakura": {},
             "hinata": {"supervisor": "sakura"},
         })
-
-        with (
-            patch("core.config.models.load_config", return_value=mock_cfg),
-            patch("core.paths.get_animas_dir", return_value=tmp_path / "animas"),
-            patch("core.paths.get_data_dir", return_value=tmp_path),
-        ):
+        with p1, p2, p3:
             result = handler.handle("audit_subordinate", {"name": "hinata"})
 
         assert "hinata" in result
-        assert "監査レポート" in result or "Audit Report" in result
-        assert "read_file" in result
-        assert "execute_command" in result
+        assert "監査サマリー" in result or "Audit Summary" in result
+        assert "ツール" in result or "Tools" in result
         assert "sakura" in result
 
-    def test_audit_grandchild_allowed(self, tmp_path):
+    def test_summary_shows_model_info(self, tmp_path):
+        handler = _make_handler(tmp_path, "sakura")
+        _setup_subordinate(tmp_path, "hinata", supervisor="sakura", model="openai/gpt-4.1")
+
+        p1, p2, p3 = _patches(tmp_path, {
+            "sakura": {},
+            "hinata": {"supervisor": "sakura"},
+        })
+        with p1, p2, p3:
+            result = handler.handle("audit_subordinate", {"name": "hinata"})
+
+        assert "openai/gpt-4.1" in result
+
+    def test_summary_no_activity_shows_zeros(self, tmp_path):
+        handler = _make_handler(tmp_path, "sakura")
+        _setup_subordinate(tmp_path, "hinata", supervisor="sakura")
+
+        p1, p2, p3 = _patches(tmp_path, {
+            "sakura": {},
+            "hinata": {"supervisor": "sakura"},
+        })
+        with p1, p2, p3:
+            result = handler.handle("audit_subordinate", {"name": "hinata"})
+
+        assert "hinata" in result
+        assert "0" in result
+
+    def test_summary_with_errors(self, tmp_path):
+        handler = _make_handler(tmp_path, "sakura")
+        sub_dir = _setup_subordinate(tmp_path, "hinata", supervisor="sakura")
+
+        _write_activity(sub_dir, [
+            {"type": "error", "summary": "API timeout on tool call", "meta": {"phase": "tool_use"}},
+            {"type": "error", "summary": "Connection refused", "meta": {"phase": "heartbeat"}},
+        ])
+
+        p1, p2, p3 = _patches(tmp_path, {
+            "sakura": {},
+            "hinata": {"supervisor": "sakura"},
+        })
+        with p1, p2, p3:
+            result = handler.handle("audit_subordinate", {"name": "hinata"})
+
+        assert "API timeout" in result
+        assert "Connection refused" in result
+        assert "エラー" in result or "Error" in result
+
+    def test_summary_communication_patterns(self, tmp_path):
+        handler = _make_handler(tmp_path, "sakura")
+        sub_dir = _setup_subordinate(tmp_path, "hinata", supervisor="sakura")
+
+        _write_activity(sub_dir, [
+            {"type": "message_sent", "to": "sakura", "content": "report"},
+            {"type": "message_sent", "to": "rin", "content": "hi"},
+        ])
+
+        p1, p2, p3 = _patches(tmp_path, {
+            "sakura": {},
+            "hinata": {"supervisor": "sakura"},
+        })
+        with p1, p2, p3:
+            result = handler.handle("audit_subordinate", {"name": "hinata"})
+
+        assert "sakura" in result
+        assert "rin" in result
+
+
+class TestAuditSubordinateReport:
+    """Tests for audit_subordinate report mode."""
+
+    def test_report_mode_chronological(self, tmp_path):
+        handler = _make_handler(tmp_path, "sakura")
+        sub_dir = _setup_subordinate(tmp_path, "hinata", supervisor="sakura")
+
+        _write_activity(sub_dir, [
+            {"type": "heartbeat_end", "summary": "Checked pending tasks, all clear"},
+            {"type": "tool_use", "tool": "github_pr_review", "content": "Reviewed PR #42"},
+            {"type": "message_sent", "to": "rin", "content": "Task complete"},
+        ])
+
+        p1, p2, p3 = _patches(tmp_path, {
+            "sakura": {},
+            "hinata": {"supervisor": "sakura"},
+        })
+        with p1, p2, p3:
+            result = handler.handle("audit_subordinate", {"name": "hinata", "mode": "report"})
+
+        assert "行動レポート" in result or "Activity Report" in result
+        assert "🔄" in result
+        assert "🔧" in result
+        assert "📨" in result
+        assert "github_pr_review" in result
+
+    def test_report_mode_footer_stats(self, tmp_path):
+        handler = _make_handler(tmp_path, "sakura")
+        sub_dir = _setup_subordinate(tmp_path, "hinata", supervisor="sakura")
+
+        _write_activity(sub_dir, [
+            {"type": "heartbeat_end", "summary": "check"},
+            {"type": "tool_use", "tool": "web_search", "content": "searching"},
+            {"type": "error", "summary": "timeout", "meta": {"phase": "tool_use"}},
+        ])
+
+        p1, p2, p3 = _patches(tmp_path, {
+            "sakura": {},
+            "hinata": {"supervisor": "sakura"},
+        })
+        with p1, p2, p3:
+            result = handler.handle("audit_subordinate", {"name": "hinata", "mode": "report"})
+
+        assert "統計" in result or "Stats" in result
+
+    def test_report_no_activity(self, tmp_path):
+        handler = _make_handler(tmp_path, "sakura")
+        _setup_subordinate(tmp_path, "hinata", supervisor="sakura")
+
+        p1, p2, p3 = _patches(tmp_path, {
+            "sakura": {},
+            "hinata": {"supervisor": "sakura"},
+        })
+        with p1, p2, p3:
+            result = handler.handle("audit_subordinate", {"name": "hinata", "mode": "report"})
+
+        assert "行動レポート" in result or "Activity Report" in result
+        assert "活動ログはありません" in result or "No activity" in result
+
+    def test_report_thinking_text_excluded(self, tmp_path):
+        handler = _make_handler(tmp_path, "sakura")
+        sub_dir = _setup_subordinate(tmp_path, "hinata", supervisor="sakura")
+
+        _write_activity(sub_dir, [
+            {
+                "type": "response_sent",
+                "content": "Here is my answer",
+                "meta": {"thinking_text": "SECRET_INTERNAL_THOUGHT"},
+            },
+        ])
+
+        p1, p2, p3 = _patches(tmp_path, {
+            "sakura": {},
+            "hinata": {"supervisor": "sakura"},
+        })
+        with p1, p2, p3:
+            result = handler.handle("audit_subordinate", {"name": "hinata", "mode": "report"})
+
+        assert "Here is my answer" in result
+        assert "SECRET_INTERNAL_THOUGHT" not in result
+
+
+class TestAuditSubordinatePermissions:
+    """Tests for permissions and edge cases."""
+
+    def test_grandchild_allowed(self, tmp_path):
         handler = _make_handler(tmp_path, "sakura")
         _setup_subordinate(tmp_path, "hinata", supervisor="sakura")
         _setup_subordinate(tmp_path, "rin", supervisor="hinata")
 
-        mock_cfg = _mock_config({
+        p1, p2, p3 = _patches(tmp_path, {
             "sakura": {},
             "hinata": {"supervisor": "sakura"},
             "rin": {"supervisor": "hinata"},
         })
-
-        with (
-            patch("core.config.models.load_config", return_value=mock_cfg),
-            patch("core.paths.get_animas_dir", return_value=tmp_path / "animas"),
-            patch("core.paths.get_data_dir", return_value=tmp_path),
-        ):
+        with p1, p2, p3:
             result = handler.handle("audit_subordinate", {"name": "rin"})
 
         assert "rin" in result
-        assert "Error" not in result or "エラーなし" in result or "No errors" in result
+        assert "PermissionDenied" not in result
 
-    def test_audit_non_descendant_rejected(self, tmp_path):
+    def test_non_descendant_rejected(self, tmp_path):
         handler = _make_handler(tmp_path, "sakura")
         _setup_subordinate(tmp_path, "mio", supervisor="taka")
 
-        mock_cfg = _mock_config({
+        p1, p2, _ = _patches(tmp_path, {
             "sakura": {},
             "mio": {"supervisor": "taka"},
         })
-
-        with patch("core.config.models.load_config", return_value=mock_cfg):
+        with p1:
             result = handler.handle("audit_subordinate", {"name": "mio"})
 
         assert "PermissionDenied" in result
 
-    def test_audit_self_rejected(self, tmp_path):
+    def test_self_rejected(self, tmp_path):
         handler = _make_handler(tmp_path, "sakura")
 
         result = handler.handle("audit_subordinate", {"name": "sakura"})
 
         assert "自分自身" in result or "yourself" in result.lower()
 
-    def test_audit_missing_name(self, tmp_path):
-        handler = _make_handler(tmp_path, "sakura")
 
-        result = handler.handle("audit_subordinate", {})
+class TestAuditSubordinateBatch:
+    """Tests for name-omit batch audit."""
 
-        assert "InvalidArguments" in result
-
-    def test_audit_no_activity(self, tmp_path):
+    def test_batch_all_direct_subordinates(self, tmp_path):
         handler = _make_handler(tmp_path, "sakura")
         _setup_subordinate(tmp_path, "hinata", supervisor="sakura")
+        _setup_subordinate(tmp_path, "rin", supervisor="sakura")
 
-        mock_cfg = _mock_config({
+        p1, p2, p3 = _patches(tmp_path, {
             "sakura": {},
             "hinata": {"supervisor": "sakura"},
+            "rin": {"supervisor": "sakura"},
         })
-
-        with (
-            patch("core.config.models.load_config", return_value=mock_cfg),
-            patch("core.paths.get_animas_dir", return_value=tmp_path / "animas"),
-            patch("core.paths.get_data_dir", return_value=tmp_path),
-        ):
-            result = handler.handle("audit_subordinate", {"name": "hinata"})
+        with p1, p2, p3:
+            result = handler.handle("audit_subordinate", {})
 
         assert "hinata" in result
-        assert "活動ログはありません" in result or "No activity" in result
-
-    def test_audit_with_errors(self, tmp_path):
-        handler = _make_handler(tmp_path, "sakura")
-        sub_dir = _setup_subordinate(tmp_path, "hinata", supervisor="sakura")
-
-        _write_activity(sub_dir, [
-            {"type": "error", "summary": "API timeout on tool call"},
-            {"type": "error", "summary": "Connection refused"},
-            {"type": "tool_use", "tool": "web_fetch", "summary": "fetch docs"},
-        ])
-
-        mock_cfg = _mock_config({
-            "sakura": {},
-            "hinata": {"supervisor": "sakura"},
-        })
-
-        with (
-            patch("core.config.models.load_config", return_value=mock_cfg),
-            patch("core.paths.get_animas_dir", return_value=tmp_path / "animas"),
-            patch("core.paths.get_data_dir", return_value=tmp_path),
-        ):
-            result = handler.handle("audit_subordinate", {"name": "hinata"})
-
-        assert "2" in result
-        assert "API timeout" in result
-        assert "Connection refused" in result
-
-    def test_audit_shows_model_info(self, tmp_path):
-        handler = _make_handler(tmp_path, "sakura")
-        _setup_subordinate(
-            tmp_path, "hinata", supervisor="sakura",
-            model="openai/gpt-4.1",
-        )
-
-        mock_cfg = _mock_config({
-            "sakura": {},
-            "hinata": {"supervisor": "sakura"},
-        })
-
-        with (
-            patch("core.config.models.load_config", return_value=mock_cfg),
-            patch("core.paths.get_animas_dir", return_value=tmp_path / "animas"),
-            patch("core.paths.get_data_dir", return_value=tmp_path),
-        ):
-            result = handler.handle("audit_subordinate", {"name": "hinata"})
-
-        assert "openai/gpt-4.1" in result
-
-    def test_audit_days_param(self, tmp_path):
-        handler = _make_handler(tmp_path, "sakura")
-        _setup_subordinate(tmp_path, "hinata", supervisor="sakura")
-
-        mock_cfg = _mock_config({
-            "sakura": {},
-            "hinata": {"supervisor": "sakura"},
-        })
-
-        with (
-            patch("core.config.models.load_config", return_value=mock_cfg),
-            patch("core.paths.get_animas_dir", return_value=tmp_path / "animas"),
-            patch("core.paths.get_data_dir", return_value=tmp_path),
-        ):
-            result = handler.handle("audit_subordinate", {"name": "hinata", "days": 7})
-
-        assert "7" in result
-
-    def test_audit_communication_patterns(self, tmp_path):
-        handler = _make_handler(tmp_path, "sakura")
-        sub_dir = _setup_subordinate(tmp_path, "hinata", supervisor="sakura")
-
-        _write_activity(sub_dir, [
-            {"type": "message_sent", "to": "sakura", "content": "report"},
-            {"type": "message_sent", "to": "sakura", "content": "update"},
-            {"type": "message_sent", "to": "rin", "content": "hi"},
-            {"type": "message_received", "from": "sakura", "content": "ok"},
-        ])
-
-        mock_cfg = _mock_config({
-            "sakura": {},
-            "hinata": {"supervisor": "sakura"},
-        })
-
-        with (
-            patch("core.config.models.load_config", return_value=mock_cfg),
-            patch("core.paths.get_animas_dir", return_value=tmp_path / "animas"),
-            patch("core.paths.get_data_dir", return_value=tmp_path),
-        ):
-            result = handler.handle("audit_subordinate", {"name": "hinata"})
-
-        assert "sakura" in result
         assert "rin" in result
 
-    def test_audit_days_clamped(self, tmp_path):
-        """days should be clamped to [1, 30]."""
+    def test_batch_no_subordinates(self, tmp_path):
+        handler = _make_handler(tmp_path, "sakura")
+
+        p1, _, _ = _patches(tmp_path, {"sakura": {}})
+        with p1:
+            result = handler.handle("audit_subordinate", {})
+
+        assert "いません" in result or "No subordinate" in result
+
+    def test_batch_direct_only(self, tmp_path):
+        handler = _make_handler(tmp_path, "sakura")
+        _setup_subordinate(tmp_path, "hinata", supervisor="sakura")
+        _setup_subordinate(tmp_path, "rin", supervisor="hinata")
+
+        p1, p2, p3 = _patches(tmp_path, {
+            "sakura": {},
+            "hinata": {"supervisor": "sakura"},
+            "rin": {"supervisor": "hinata"},
+        })
+        with p1, p2, p3:
+            result = handler.handle("audit_subordinate", {"direct_only": True})
+
+        assert "hinata" in result
+        assert "rin" not in result
+
+
+class TestAuditSubordinateParams:
+    """Tests for hours parameter."""
+
+    def test_hours_default_24(self, tmp_path):
         handler = _make_handler(tmp_path, "sakura")
         _setup_subordinate(tmp_path, "hinata", supervisor="sakura")
 
-        mock_cfg = _mock_config({
+        p1, p2, p3 = _patches(tmp_path, {
             "sakura": {},
             "hinata": {"supervisor": "sakura"},
         })
+        with p1, p2, p3:
+            result = handler.handle("audit_subordinate", {"name": "hinata"})
 
-        with (
-            patch("core.config.models.load_config", return_value=mock_cfg),
-            patch("core.paths.get_animas_dir", return_value=tmp_path / "animas"),
-            patch("core.paths.get_data_dir", return_value=tmp_path),
-        ):
-            result = handler.handle("audit_subordinate", {"name": "hinata", "days": 0})
-            assert "1" in result
+        assert "24h" in result
 
-            result = handler.handle("audit_subordinate", {"name": "hinata", "days": 100})
-            assert "30" in result
+    def test_hours_custom(self, tmp_path):
+        handler = _make_handler(tmp_path, "sakura")
+        _setup_subordinate(tmp_path, "hinata", supervisor="sakura")
+
+        p1, p2, p3 = _patches(tmp_path, {
+            "sakura": {},
+            "hinata": {"supervisor": "sakura"},
+        })
+        with p1, p2, p3:
+            result = handler.handle("audit_subordinate", {"name": "hinata", "hours": 48})
+
+        assert "48h" in result
+
+    def test_hours_clamped_max(self, tmp_path):
+        handler = _make_handler(tmp_path, "sakura")
+        _setup_subordinate(tmp_path, "hinata", supervisor="sakura")
+
+        p1, p2, p3 = _patches(tmp_path, {
+            "sakura": {},
+            "hinata": {"supervisor": "sakura"},
+        })
+        with p1, p2, p3:
+            result = handler.handle("audit_subordinate", {"name": "hinata", "hours": 999})
+
+        assert "168h" in result
+
+    def test_hours_clamped_min(self, tmp_path):
+        handler = _make_handler(tmp_path, "sakura")
+        _setup_subordinate(tmp_path, "hinata", supervisor="sakura")
+
+        p1, p2, p3 = _patches(tmp_path, {
+            "sakura": {},
+            "hinata": {"supervisor": "sakura"},
+        })
+        with p1, p2, p3:
+            result = handler.handle("audit_subordinate", {"name": "hinata", "hours": 0})
+
+        assert "1h" in result
+
+    def test_legacy_days_param_compat(self, tmp_path):
+        """Legacy 'days' param is converted to hours (days * 24)."""
+        handler = _make_handler(tmp_path, "sakura")
+        _setup_subordinate(tmp_path, "hinata", supervisor="sakura")
+
+        p1, p2, p3 = _patches(tmp_path, {
+            "sakura": {},
+            "hinata": {"supervisor": "sakura"},
+        })
+        with p1, p2, p3:
+            result = handler.handle("audit_subordinate", {"name": "hinata", "days": 3})
+
+        assert "72h" in result
+
+    def test_hours_overrides_days(self, tmp_path):
+        """When both hours and days are given, hours takes precedence."""
+        handler = _make_handler(tmp_path, "sakura")
+        _setup_subordinate(tmp_path, "hinata", supervisor="sakura")
+
+        p1, p2, p3 = _patches(tmp_path, {
+            "sakura": {},
+            "hinata": {"supervisor": "sakura"},
+        })
+        with p1, p2, p3:
+            result = handler.handle("audit_subordinate", {"name": "hinata", "hours": 12, "days": 3})
+
+        assert "12h" in result

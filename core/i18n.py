@@ -283,36 +283,51 @@ _STRINGS: dict[str, dict[str, str]] = {
     "handler.none_value": {"ja": "(なし)", "en": "(none)"},
     "handler.reason_prefix": {"ja": "理由: {reason}", "en": "Reason: {reason}"},
     "handler.all_descendants": {"ja": "全配下", "en": "All descendants"},
-    "handler.audit_title": {"ja": "## {target_name} 監査レポート", "en": "## {target_name} Audit Report"},
-    "handler.audit_period": {"ja": "期間: 直近{days}日間", "en": "Period: Last {days} day(s)"},
-    "handler.audit_process_status": {"ja": "プロセス状態: {status}", "en": "Process status: {status}"},
-    "handler.audit_model": {"ja": "モデル: {model}", "en": "Model: {model}"},
-    "handler.audit_activity_header": {"ja": "### 活動サマリー", "en": "### Activity Summary"},
-    "handler.audit_total_events": {"ja": "イベント総数: {count}件", "en": "Total events: {count}"},
-    "handler.audit_event_type": {"ja": "- {event_type}: {count}件", "en": "- {event_type}: {count}"},
-    "handler.audit_no_activity": {"ja": "(この期間の活動ログはありません)", "en": "(No activity log for this period)"},
-    "handler.audit_tasks_header": {"ja": "### タスク状況", "en": "### Task Status"},
-    "handler.audit_current_task": {"ja": "進行中タスク: {task}", "en": "Current task: {task}"},
-    "handler.audit_active_tasks": {"ja": "アクティブタスク: {count}件", "en": "Active tasks: {count}"},
-    "handler.audit_completed_tasks": {"ja": "完了タスク（累計）: {count}件", "en": "Completed tasks (total): {count}"},
-    "handler.audit_errors_header": {"ja": "### エラーサマリー", "en": "### Error Summary"},
-    "handler.audit_error_count": {"ja": "エラー件数: {count}件", "en": "Error count: {count}"},
-    "handler.audit_error_entry": {"ja": "- [{ts}] {summary}", "en": "- [{ts}] {summary}"},
-    "handler.audit_no_errors": {"ja": "(エラーなし)", "en": "(No errors)"},
-    "handler.audit_tools_header": {"ja": "### ツール使用統計", "en": "### Tool Usage Statistics"},
-    "handler.audit_tool_entry": {"ja": "- {tool}: {count}回", "en": "- {tool}: {count} time(s)"},
-    "handler.audit_no_tool_use": {"ja": "(ツール使用なし)", "en": "(No tool usage)"},
-    "handler.audit_comms_header": {"ja": "### 通信パターン", "en": "### Communication Patterns"},
-    "handler.audit_msgs_sent": {"ja": "送信メッセージ: {count}件", "en": "Messages sent: {count}"},
-    "handler.audit_msgs_received": {"ja": "受信メッセージ: {count}件", "en": "Messages received: {count}"},
-    "handler.audit_comms_peer": {
-        "ja": "- {peer}: 送信{sent}件 / 受信{received}件",
-        "en": "- {peer}: sent {sent} / received {received}",
+    "handler.audit_summary_title": {
+        "ja": "═══ {name} — 監査サマリー (直近{hours}h) ═══",
+        "en": "═══ {name} — Audit Summary (last {hours}h) ═══",
     },
-    "handler.audit_no_comms": {"ja": "(通信なし)", "en": "(No communications)"},
+    "handler.audit_report_title": {
+        "ja": "═══ {name} — 行動レポート (直近{hours}h) ═══",
+        "en": "═══ {name} — Activity Report (last {hours}h) ═══",
+    },
+    "handler.audit_status_line": {
+        "ja": "状態: {status} | モデル: {model}",
+        "en": "Status: {status} | Model: {model}",
+    },
+    "handler.audit_section_activity": {"ja": "■ アクティビティ", "en": "■ Activity"},
+    "handler.audit_activity_counts": {
+        "ja": "  受信: {msg_recv} | 応答: {resp_sent} | DM送信: {dm_sent} | ツール: {tool_use} | HB: {hb} | Cron: {cron} | エラー: {errors}",
+        "en": "  Received: {msg_recv} | Responses: {resp_sent} | DM sent: {dm_sent} | Tools: {tool_use} | HB: {hb} | Cron: {cron} | Errors: {errors}",
+    },
+    "handler.audit_section_tasks": {"ja": "■ タスク", "en": "■ Tasks"},
+    "handler.audit_task_counts": {
+        "ja": "  保留中: {pending} | 進行中: {in_progress} | 完了: {done} | 滞留(>30min): {stale}",
+        "en": "  Pending: {pending} | In progress: {in_progress} | Done: {done} | Stale(>30min): {stale}",
+    },
+    "handler.audit_section_comms": {"ja": "■ 通信先", "en": "■ Communications"},
+    "handler.audit_section_errors": {"ja": "■ エラー詳細", "en": "■ Error Details"},
+    "handler.audit_no_activity": {"ja": "(この期間の活動ログはありません)", "en": "(No activity log for this period)"},
+    "handler.audit_report_truncated": {
+        "ja": "  ... 他{remaining}件省略",
+        "en": "  ... {remaining} more entries omitted",
+    },
+    "handler.audit_report_footer": {
+        "ja": "─── 統計: 活動{total}件 | ツール{tools} | HB{hb} | エラー{errors} ───",
+        "en": "─── Stats: {total} events | Tools {tools} | HB {hb} | Errors {errors} ───",
+    },
+    "handler.audit_label_heartbeat": {"ja": "ハートビート完了", "en": "Heartbeat completed"},
+    "handler.audit_label_reflection": {"ja": "振り返り", "en": "Reflection"},
+    "handler.audit_label_response": {"ja": "応答", "en": "Response"},
+    "handler.audit_label_cron": {"ja": "Cron: {task_name}", "en": "Cron: {task_name}"},
+    "handler.audit_label_tool": {"ja": "ツール: {tool}", "en": "Tool: {tool}"},
+    "handler.audit_label_dm": {"ja": "→ {peer}", "en": "→ {peer}"},
+    "handler.audit_label_task_done": {"ja": "タスク完了", "en": "Task completed"},
+    "handler.audit_label_resolved": {"ja": "Issue解決", "en": "Issue resolved"},
+    "handler.audit_label_error": {"ja": "エラー (phase: {phase})", "en": "Error (phase: {phase})"},
     "handler.audit_log_summary": {
-        "ja": "{target_name}の監査レポート生成（{days}日間）",
-        "en": "Generated audit report for {target_name} ({days} day(s))",
+        "ja": "{target_name}の監査レポート生成（{hours}h）",
+        "en": "Generated audit report for {target_name} ({hours}h)",
     },
     "handler.tool_creation_keyword": {"ja": "ツール作成", "en": "Tool Creation"},
     # ── anima.py ──
@@ -1318,15 +1333,36 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Task source (human=instruction from human, anima=inter-Anima delegation)",
     },
     "schema.add_task.summary": {"ja": "タスクの1行要約", "en": "One-line task summary"},
-    "schema.audit_subordinate.days": {
-        "ja": "監査期間（日数、デフォルト: 1）",
-        "en": "Audit period in days (default: 1)",
-    },
     "schema.audit_subordinate.desc": {
-        "ja": "配下のAnimaの直近活動を包括的に監査する。活動サマリー・タスク状況・エラー頻度・ツール使用統計・通信パターンを構造化レポートとして返す。定期的なパフォーマンスレビューに使う。直属部下だけでなく孫以下の配下も指定可能。",
-        "en": "Comprehensively audit a subordinate Anima's recent activity. Returns a structured report covering activity summary, task status, error frequency, tool usage statistics, and communication patterns. Use for periodic performance reviews. Can target any descendant, not just direct subordinates.",
+        "ja": (
+            "配下のAnimaの行動を監査する。ActivityLogから「何を考えて何をやったか」を"
+            "抽出し、統計サマリーまたは日報形式で返す。\n"
+            "name省略で全直属部下を一括監査。name指定で特定の配下（孫含む）を監査。\n"
+            "mode='summary'で統計、mode='report'で時系列の日報形式。"
+        ),
+        "en": (
+            "Audit subordinate Anima behavior. Extracts thoughts and actions from ActivityLog "
+            "and returns statistics summary or chronological report.\n"
+            "Omit name to audit all direct subordinates. Specify name for any descendant.\n"
+            "mode='summary' for stats, mode='report' for chronological daily report."
+        ),
     },
-    "schema.audit_subordinate.name": {"ja": "監査対象の配下Anima名", "en": "Subordinate Anima name to audit"},
+    "schema.audit_subordinate.name": {
+        "ja": "監査対象のAnima名（省略時は全直属部下）",
+        "en": "Target Anima name (omit for all direct subordinates)",
+    },
+    "schema.audit_subordinate.mode": {
+        "ja": "出力モード。summary=統計サマリー、report=日報形式（デフォルト: summary）",
+        "en": "Output mode. summary=statistics, report=chronological daily report (default: summary)",
+    },
+    "schema.audit_subordinate.hours": {
+        "ja": "監査期間（時間単位、デフォルト: 24、最大: 168）",
+        "en": "Audit period in hours (default: 24, max: 168)",
+    },
+    "schema.audit_subordinate.direct_only": {
+        "ja": "trueの場合、直属部下のみ対象（孫以下を除外）。デフォルト: false",
+        "en": "If true, only audit direct subordinates (exclude grandchildren). Default: false",
+    },
     "schema.call_human.body": {
         "ja": "通知の本文（詳細な報告内容）",
         "en": "Notification body (detailed report content)",

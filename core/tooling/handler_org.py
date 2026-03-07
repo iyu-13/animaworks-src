@@ -836,185 +836,69 @@ class OrgToolsMixin:
 
     # ── Audit ─────────────────────────────────────────────────
 
-    def _handle_audit_subordinate(self, args: dict[str, Any]) -> str:
-        """Generate a comprehensive audit report for a descendant Anima."""
-        target_name = args.get("name", "")
-        days = max(1, min(args.get("days", 1), 30))
+    def _get_direct_subordinates(self) -> list[str]:
+        """Return names of direct subordinates (supervisor == self)."""
+        from core.config.models import load_config
 
-        if not target_name:
-            return _error_result("InvalidArguments", "name is required")
-
-        err = self._check_descendant(target_name)
-        if err:
-            return err
-
-        from collections import Counter
-
-        from core.memory.activity import ActivityLogger
-        from core.paths import get_animas_dir
-
-        animas_dir = get_animas_dir()
-        desc_dir = animas_dir / target_name
-
-        lines: list[str] = [
-            t("handler.audit_title", target_name=target_name),
-            "",
-            t("handler.audit_period", days=days),
+        config = load_config()
+        return [
+            name
+            for name, cfg in config.animas.items()
+            if cfg.supervisor == self._anima_name
         ]
 
-        # ── Overview: process status & model ──
-        status_file = desc_dir / "status.json"
-        process_status = "unknown"
-        model_name = "unknown"
-        if status_file.exists():
-            try:
-                sdata = _json.loads(status_file.read_text(encoding="utf-8"))
-                process_status = "enabled" if sdata.get("enabled", True) else "disabled"
-                model_name = sdata.get("model", "unknown")
-            except (_json.JSONDecodeError, OSError):
-                pass
+    def _handle_audit_subordinate(self, args: dict[str, Any]) -> str:
+        """Audit subordinate behavior from activity logs."""
+        from core.memory.audit import AuditAggregator
+        from core.paths import get_animas_dir
 
-        if self._process_supervisor:
-            try:
-                ps = self._process_supervisor.get_process_status(target_name)
-                if isinstance(ps, dict):
-                    process_status = ps.get("status", process_status)
-            except Exception:
-                logger.debug("Failed to get process status for %s", target_name, exc_info=True)
+        target_name = args.get("name")
+        mode = args.get("mode", "summary")
+        # Backward compat: accept legacy "days" param, convert to hours
+        raw_hours = args.get("hours")
+        if raw_hours is None and "days" in args:
+            raw_hours = args["days"] * 24
+        if raw_hours is None:
+            raw_hours = 24
+        hours = min(max(raw_hours, 1), 168)
+        direct_only = args.get("direct_only", False)
 
-        lines.append(t("handler.audit_process_status", status=process_status))
-        lines.append(t("handler.audit_model", model=model_name))
-        lines.append("")
-
-        # ── Activity summary ──
-        al = ActivityLogger(desc_dir)
-        _AUDIT_ENTRY_LIMIT = 10_000
-        entries = al.recent(days=days, limit=_AUDIT_ENTRY_LIMIT)
-
-        lines.append(t("handler.audit_activity_header"))
-        lines.append("")
-
-        if entries:
-            type_counts: Counter[str] = Counter()
-            for e in entries:
-                type_counts[e.type] += 1
-
-            lines.append(t("handler.audit_total_events", count=len(entries)))
-            for etype, count in type_counts.most_common():
-                lines.append(t("handler.audit_event_type", event_type=etype, count=count))
+        if target_name:
+            err = self._check_descendant(target_name)
+            if err:
+                return err
+            targets = [target_name]
         else:
-            lines.append(t("handler.audit_no_activity"))
+            if direct_only:
+                targets = self._get_direct_subordinates()
+            else:
+                targets = self._get_all_descendants()
+            if not targets:
+                return t("handler.no_subordinates")
 
-        lines.append("")
+        animas_dir = get_animas_dir()
+        results: list[str] = []
+        is_batch = len(targets) > 1
 
-        # ── Task status ──
-        lines.append(t("handler.audit_tasks_header"))
-        lines.append("")
-
-        task_file = desc_dir / "state" / "current_task.md"
-        if task_file.exists():
-            try:
-                task_text = task_file.read_text(encoding="utf-8").strip()
-                lines.append(
-                    t(
-                        "handler.audit_current_task",
-                        task=task_text[:150] if task_text else t("handler.state_none"),
-                    )
-                )
-            except Exception:
-                lines.append(t("handler.audit_current_task", task=t("handler.state_unreadable")))
-        else:
-            lines.append(t("handler.audit_current_task", task=t("handler.state_none")))
-
-        try:
-            from core.memory.task_queue import TaskQueueManager
-
-            tqm = TaskQueueManager(desc_dir)
-            active = tqm.get_all_active()
-            lines.append(t("handler.audit_active_tasks", count=len(active)))
-
-            done_tasks = tqm.list_tasks(status="done")
-            done_count = len(done_tasks)
-            lines.append(t("handler.audit_completed_tasks", count=done_count))
-        except Exception:
-            lines.append(t("handler.audit_active_tasks", count=0))
-            lines.append(t("handler.audit_completed_tasks", count=0))
-
-        lines.append("")
-
-        # ── Error summary ──
-        lines.append(t("handler.audit_errors_header"))
-        lines.append("")
-
-        error_entries = [e for e in entries if e.type == "error"]
-        lines.append(t("handler.audit_error_count", count=len(error_entries)))
-
-        if error_entries:
-            for e in error_entries[-5:]:
-                summary = e.summary or e.content[:100]
-                lines.append(t("handler.audit_error_entry", ts=e.ts[:16], summary=summary))
-        else:
-            lines.append(t("handler.audit_no_errors"))
-
-        lines.append("")
-
-        # ── Tool usage statistics ──
-        lines.append(t("handler.audit_tools_header"))
-        lines.append("")
-
-        tool_entries = [e for e in entries if e.type == "tool_use" and e.tool]
-        if tool_entries:
-            tool_counts: Counter[str] = Counter()
-            for e in tool_entries:
-                tool_counts[e.tool] += 1
-            for tool, count in tool_counts.most_common(10):
-                lines.append(t("handler.audit_tool_entry", tool=tool, count=count))
-        else:
-            lines.append(t("handler.audit_no_tool_use"))
-
-        lines.append("")
-
-        # ── Communication patterns ──
-        lines.append(t("handler.audit_comms_header"))
-        lines.append("")
-
-        sent = [e for e in entries if e.type in ("message_sent", "dm_sent")]
-        received = [e for e in entries if e.type in ("message_received", "dm_received")]
-
-        if sent or received:
-            lines.append(t("handler.audit_msgs_sent", count=len(sent)))
-            lines.append(t("handler.audit_msgs_received", count=len(received)))
-
-            peer_sent: Counter[str] = Counter()
-            peer_recv: Counter[str] = Counter()
-            for e in sent:
-                peer = e.to_person or "unknown"
-                peer_sent[peer] += 1
-            for e in received:
-                peer = e.from_person or "unknown"
-                peer_recv[peer] += 1
-
-            all_peers = sorted(set(peer_sent) | set(peer_recv))
-            for peer in all_peers:
-                lines.append(
-                    t(
-                        "handler.audit_comms_peer",
-                        peer=peer,
-                        sent=peer_sent.get(peer, 0),
-                        received=peer_recv.get(peer, 0),
-                    )
-                )
-        else:
-            lines.append(t("handler.audit_no_comms"))
+        for name in targets:
+            agg = AuditAggregator(animas_dir / name)
+            if mode == "report":
+                results.append(agg.generate_report(hours=hours))
+            else:
+                results.append(agg.generate_summary(hours=hours, compact=is_batch))
 
         self._activity.log(
             "tool_use",
             tool="audit_subordinate",
-            summary=t("handler.audit_log_summary", target_name=target_name, days=days),
-            meta={"target": target_name, "days": days},
+            summary=t(
+                "handler.audit_log_summary",
+                target_name=target_name or f"batch({len(targets)})",
+                hours=hours,
+            ),
+            meta={"targets": targets, "mode": mode, "hours": hours},
         )
 
-        return "\n".join(lines)
+        return "\n\n".join(results)
 
     # ── Task tracking ────────────────────────────────────────
 
