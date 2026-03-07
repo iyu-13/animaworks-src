@@ -510,6 +510,12 @@ def cli_main() -> None:
         default=1,
         help="Number of days to audit (default: 1, max: 30)",
     )
+    p_anima_audit.add_argument(
+        "--mode",
+        choices=["summary", "report"],
+        default="summary",
+        help="Output mode: summary (default) or report (chronological narrative)",
+    )
     p_anima_audit.set_defaults(func=_lazy_anima_audit)
 
     # ── Logs ──────────────────────────────────────────────────

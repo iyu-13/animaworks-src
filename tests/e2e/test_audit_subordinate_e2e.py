@@ -137,11 +137,13 @@ class TestAuditSubordinateE2E:
             result = handler.handle("audit_subordinate", {"name": "hinata", "mode": "report"})
 
         assert "行動レポート" in result or "Activity Report" in result
-        assert "🔄" in result
-        assert "🔧" in result
-        assert "📨" in result
-        assert "❌" in result
+        assert "🔄" in result  # heartbeat
+        assert "📨" in result  # message_sent
+        assert "❌" in result  # error
         assert "Timeout" in result
+        # tool_use appears only in summary, not as individual entries
+        assert "ツール使用サマリー" in result or "Tool Usage Summary" in result
+        assert "github_pr_review" in result or "web_search" in result
 
     def test_report_grandchild_thinking_excluded(self, three_level):
         handler, cfg, tmp_path = three_level

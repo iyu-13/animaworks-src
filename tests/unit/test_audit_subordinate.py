@@ -191,7 +191,8 @@ class TestAuditSubordinateSummary:
 class TestAuditSubordinateReport:
     """Tests for audit_subordinate report mode."""
 
-    def test_report_mode_chronological(self, tmp_path):
+    def test_report_mode_priority_categories(self, tmp_path):
+        """Report mode shows high-value events in category sections; tool_use only as summary."""
         handler = _make_handler(tmp_path, "sakura")
         sub_dir = _setup_subordinate(tmp_path, "hinata", supervisor="sakura")
 
@@ -209,10 +210,42 @@ class TestAuditSubordinateReport:
             result = handler.handle("audit_subordinate", {"name": "hinata", "mode": "report"})
 
         assert "行動レポート" in result or "Activity Report" in result
-        assert "🔄" in result
-        assert "🔧" in result
-        assert "📨" in result
+        # High-value events appear in their sections
+        assert "🔄" in result  # heartbeat
+        assert "📨" in result  # message_sent
+        # tool_use appears only in summary, not as individual entries
         assert "github_pr_review" in result
+        assert "ツール使用サマリー" in result or "Tool Usage Summary" in result
+        # Category sections present
+        assert "思考" in result or "Thinking" in result
+        assert "コミュニケーション" in result or "Communication" in result
+
+    def test_report_tool_use_summary_only_no_individual_entries(self, tmp_path):
+        """tool_use must appear only as summary line, never as individual entries."""
+        handler = _make_handler(tmp_path, "sakura")
+        sub_dir = _setup_subordinate(tmp_path, "hinata", supervisor="sakura")
+
+        _write_activity(sub_dir, [
+            {"type": "tool_use", "tool": "Read", "content": "read foo"},
+            {"type": "tool_use", "tool": "Read", "content": "read bar"},
+            {"type": "tool_use", "tool": "Write", "content": "write baz"},
+        ])
+
+        p1, p2, p3 = _patches(tmp_path, {
+            "sakura": {},
+            "hinata": {"supervisor": "sakura"},
+        })
+        with p1, p2, p3:
+            result = handler.handle("audit_subordinate", {"name": "hinata", "mode": "report"})
+
+        # Tool summary section must exist
+        assert "ツール使用サマリー" in result or "Tool Usage Summary" in result
+        assert "Read" in result and "Write" in result
+        # Must NOT have individual tool entry lines (e.g. "[HH:MM] 🔧 ツール: Read")
+        assert "ツール: Read" not in result
+        assert "ツール: Write" not in result
+        assert "Tool: Read" not in result
+        assert "Tool: Write" not in result
 
     def test_report_mode_footer_stats(self, tmp_path):
         handler = _make_handler(tmp_path, "sakura")

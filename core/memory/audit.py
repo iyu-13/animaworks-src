@@ -31,8 +31,14 @@ AUDIT_EVENT_TYPES: list[str] = [
 _SUMMARY_TRUNCATE = 300
 _REPORT_ENTRY_TRUNCATE = 300
 _BATCH_PER_ANIMA_CHARS = 500
-_MAX_REPORT_ENTRIES = 20
 _MAX_ERRORS_SHOWN = 5
+
+# Category-specific limits for report mode
+_MAX_HB_ENTRIES = 10  # heartbeat_end + heartbeat_reflection
+_MAX_RESPONSE_ENTRIES = 10  # response_sent + cron_executed
+_MAX_ACTION_ENTRIES = 10  # message_sent + task_exec_end + issue_resolved
+_MAX_ERROR_ENTRIES = 5  # error
+_MAX_TOOL_SUMMARY = 10  # tool usage TOP N (summary line, not individual entries)
 
 _REPORT_ICONS: dict[str, str] = {
     "heartbeat_end": "🔄",
@@ -89,10 +95,7 @@ class AuditAggregator:
             return entry.content[:_REPORT_ENTRY_TRUNCATE]
 
         if etype == "response_sent":
-            text = entry.content[:_REPORT_ENTRY_TRUNCATE]
-            if isinstance(entry.meta, dict):
-                entry.meta.pop("thinking_text", None)
-            return text
+            return entry.content[:_REPORT_ENTRY_TRUNCATE]
 
         if etype == "cron_executed":
             return (entry.content or entry.summary)[:500]
@@ -222,7 +225,7 @@ class AuditAggregator:
     # ── Report mode ──────────────────────────────────────────
 
     def generate_report(self, hours: int = 24) -> str:
-        """Generate a chronological report (日報形式)."""
+        """Generate a priority-based category report (日報形式)."""
         entries = self._load_entries(hours)
         process_status, model_name = self._get_status_info()
 
@@ -238,29 +241,78 @@ class AuditAggregator:
             return "\n".join(lines)
 
         type_counts: Counter[str] = Counter()
+        tool_counts: Counter[str] = Counter()
         for e in entries:
             type_counts[e.type] += 1
+            if e.type == "tool_use" and e.tool:
+                tool_counts[e.tool] += 1
 
-        for idx, e in enumerate(entries):
-            if idx >= _MAX_REPORT_ENTRIES:
-                lines.append(t("handler.audit_report_truncated", remaining=len(entries) - idx))
-                break
+        # Split entries into categories
+        hb_entries: list[Any] = []
+        response_entries: list[Any] = []
+        action_entries: list[Any] = []
+        error_entries: list[Any] = []
 
-            ts_short = e.ts[11:16] if len(e.ts) >= 16 else e.ts
-            icon = _REPORT_ICONS.get(e.type, "📝")
-            label = self._event_label(e)
-            content = self._extract_content(e)
+        for e in entries:
+            if e.type in ("heartbeat_end", "heartbeat_reflection"):
+                hb_entries.append(e)
+            elif e.type in ("response_sent", "cron_executed"):
+                response_entries.append(e)
+            elif e.type in ("message_sent", "task_exec_end", "issue_resolved"):
+                action_entries.append(e)
+            elif e.type == "error":
+                error_entries.append(e)
+            # tool_use: not shown as individual entries
 
-            lines.append(f"[{ts_short}] {icon} {label}")
-            if content:
-                for cl in content.split("\n")[:3]:
-                    lines.append(f"  {cl}")
+        # Sort each category chronologically (entries already loaded in order)
+        def _render_category(cat_entries: list[Any], limit: int) -> list[str]:
+            out: list[str] = []
+            for e in cat_entries[:limit]:
+                ts_short = e.ts[11:16] if len(e.ts) >= 16 else e.ts
+                icon = _REPORT_ICONS.get(e.type, "📝")
+                label = self._event_label(e)
+                content = self._extract_content(e)
+                out.append(f"[{ts_short}] {icon} {label}")
+                if content:
+                    for cl in content.split("\n")[:3]:
+                        out.append(f"  {cl}")
+                out.append("")
+            return out
+
+        # Section: Thinking (heartbeat / reflection)
+        if hb_entries:
+            lines.append(t("handler.audit_section_thinking"))
+            lines.extend(_render_category(hb_entries, _MAX_HB_ENTRIES))
+
+        # Section: Dialogue & Responses
+        if response_entries:
+            lines.append(t("handler.audit_section_responses"))
+            lines.extend(_render_category(response_entries, _MAX_RESPONSE_ENTRIES))
+
+        # Section: Communication & Tasks
+        if action_entries:
+            lines.append(t("handler.audit_section_actions"))
+            lines.extend(_render_category(action_entries, _MAX_ACTION_ENTRIES))
+
+        # Section: Errors
+        if error_entries:
+            lines.append(t("handler.audit_section_errors_report"))
+            lines.extend(_render_category(error_entries, _MAX_ERROR_ENTRIES))
+
+        # Section: Tool usage summary (not individual entries)
+        tool_count = type_counts.get("tool_use", 0)
+        if tool_count > 0:
+            lines.append(t("handler.audit_section_tool_summary", count=tool_count))
+            top_tools = tool_counts.most_common(_MAX_TOOL_SUMMARY)
+            summary_parts = [f"{name}: {cnt}" for name, cnt in top_tools]
+            lines.append("  " + " | ".join(summary_parts))
             lines.append("")
 
         # Footer statistics
         total = len(entries)
-        tool_count = type_counts.get("tool_use", 0)
         hb_count = type_counts.get("heartbeat_end", 0)
+        resp_count = type_counts.get("response_sent", 0) + type_counts.get("cron_executed", 0)
+        dm_count = type_counts.get("message_sent", 0)
         err_count = type_counts.get("error", 0)
         lines.append(
             t(
@@ -268,6 +320,8 @@ class AuditAggregator:
                 total=total,
                 tools=tool_count,
                 hb=hb_count,
+                resp_sent=resp_count,
+                dm_sent=dm_count,
                 errors=err_count,
             )
         )

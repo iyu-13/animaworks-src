@@ -780,6 +780,21 @@ def cmd_anima_audit(args: argparse.Namespace) -> None:
 
     name: str = args.anima
     days: int = max(1, min(getattr(args, "days", 1), 30))
+    mode = getattr(args, "mode", "summary")
+
+    if mode == "report":
+        from core.memory.audit import AuditAggregator
+        from core.paths import get_animas_dir as _get_animas_dir
+
+        animas_dir = _get_animas_dir()
+        anima_dir = animas_dir / name
+        if not anima_dir.exists() or not (anima_dir / "identity.md").exists():
+            print(f"Error: Anima '{name}' not found")
+            sys.exit(1)
+        agg = AuditAggregator(anima_dir)
+        print(agg.generate_report(hours=days * 24))
+        return
+
     animas_dir = get_animas_dir()
     anima_dir = animas_dir / name
 

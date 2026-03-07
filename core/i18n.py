@@ -313,8 +313,28 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "  ... {remaining} more entries omitted",
     },
     "handler.audit_report_footer": {
-        "ja": "─── 統計: 活動{total}件 | ツール{tools} | HB{hb} | エラー{errors} ───",
-        "en": "─── Stats: {total} events | Tools {tools} | HB {hb} | Errors {errors} ───",
+        "ja": "─── 統計: 活動{total}件 | ツール{tools} | HB{hb} | 応答{resp_sent} | DM{dm_sent} | エラー{errors} ───",
+        "en": "─── Stats: {total} events | Tools {tools} | HB {hb} | Responses {resp_sent} | DM {dm_sent} | Errors {errors} ───",
+    },
+    "handler.audit_section_thinking": {
+        "ja": "■ 思考・判断（ハートビート / 振り返り）",
+        "en": "■ Thinking & Decisions (Heartbeat / Reflection)",
+    },
+    "handler.audit_section_responses": {
+        "ja": "■ 対話・応答",
+        "en": "■ Dialogue & Responses",
+    },
+    "handler.audit_section_actions": {
+        "ja": "■ コミュニケーション・タスク",
+        "en": "■ Communication & Tasks",
+    },
+    "handler.audit_section_tool_summary": {
+        "ja": "■ ツール使用サマリー（全{count}回）",
+        "en": "■ Tool Usage Summary ({count} total)",
+    },
+    "handler.audit_section_errors_report": {
+        "ja": "■ エラー",
+        "en": "■ Errors",
     },
     "handler.audit_label_heartbeat": {"ja": "ハートビート完了", "en": "Heartbeat completed"},
     "handler.audit_label_reflection": {"ja": "振り返り", "en": "Reflection"},
@@ -1959,20 +1979,24 @@ _STRINGS: dict[str, dict[str, str]] = {
             "- ハイライト: 最も重要な成果を3-5個\n"
             "- ロール別セクション: 開発、運用、CS、管理など（活動がある場合のみ）\n"
             "- 各セクションは「誰が」「何をして」「どんな成果/影響をもたらしたか」を記述\n"
+            "- key_activitiesフィールドに各Animaの具体的な行動・思考・発言が含まれている。これを積極的に引用してストーリーを構成すること\n"
+            "- 数値データ（type_counts等）は補助情報として使い、key_activitiesの内容を主軸にすること\n"
             "- エラーや問題があれば「課題・注意事項」セクションに記載\n"
             "- 数値データ（エントリ数、メッセージ数等）を適宜引用して説得力を持たせる\n"
             "- 日本語で出力"
         ),
         "en": (
-            "You are an organisation activity reporter.\n"
-            "Based on the following audit data, create a Markdown narrative summarising the organisation's daily activity.\n\n"
+            "You are an organisational activity reporter.\n"
+            "Summarise the day's activities as a narrative-style Markdown report based on the audit data below.\n\n"
             "Requirements:\n"
-            "- Heading: date + Organisation Activity Report\n"
-            "- Highlights: 3-5 most important achievements\n"
-            "- Sections by role: Engineering, Operations, CS, Management, etc. (only if activity exists)\n"
-            "- Each section describes WHO did WHAT and WHAT impact it had\n"
-            "- If there were errors or issues, include a 'Issues & Notes' section\n"
-            "- Cite numerical data (entry counts, message counts, etc.) for credibility\n"
+            "- Heading: Date + Organisation Activity Report\n"
+            "- Highlights: 3-5 most important outcomes\n"
+            "- Sections by role: Development, Operations, CS, Management, etc. (only if activity exists)\n"
+            "- Each section describes \"who\" \"did what\" and \"what outcome/impact it had\"\n"
+            "- The key_activities field contains each Anima's specific actions, thoughts, and messages — use these prominently to build the narrative\n"
+            "- Use numeric data (type_counts etc.) as supporting evidence, with key_activities content as the primary source\n"
+            "- Include an \"Issues & Notes\" section for errors or problems\n"
+            "- Cite numeric data (entry counts, message counts, etc.) to add credibility\n"
             "- Output in English"
         ),
     },
