@@ -28,6 +28,24 @@ from core.time_utils import now_local
 logger = logging.getLogger("animaworks.activity")
 
 
+_TOOL_RESULT_TRUNCATE = 1500
+_TOOL_INPUT_TRUNCATE = 500
+
+
+def _truncate_tool_field(value: Any, limit: int) -> Any:
+    """Truncate tool input/result for the conversation view API."""
+    if isinstance(value, str):
+        if len(value) <= limit:
+            return value
+        return value[:limit] + f"\n…({len(value) - limit} chars truncated)"
+    if isinstance(value, (dict, list)):
+        s = json.dumps(value, ensure_ascii=False)
+        if len(s) <= limit:
+            return value
+        return s[:limit] + f"\n…({len(s) - limit} chars truncated)"
+    return value
+
+
 class ConversationMixin:
     """Mixin providing conversation view methods for ActivityLogger."""
 
@@ -242,11 +260,13 @@ class ConversationMixin:
                 result_entry = tool_results.get(tid) if tid else None
                 if not result_entry:
                     result_entry = find_tool_result_fallback(entries, e)
+                raw_input = e.meta.get("args", e.content)
+                raw_result = result_entry.content if result_entry else ""
                 tc: dict[str, Any] = {
                     "tool_use_id": tid,
                     "tool_name": e.tool,
-                    "input": e.meta.get("args", e.content),
-                    "result": result_entry.content if result_entry else "",
+                    "input": _truncate_tool_field(raw_input, _TOOL_INPUT_TRUNCATE),
+                    "result": _truncate_tool_field(raw_result, _TOOL_RESULT_TRUNCATE),
                     "is_error": (result_entry.meta.get("is_error", False) if result_entry else False),
                 }
                 if e.meta.get("blocked"):
