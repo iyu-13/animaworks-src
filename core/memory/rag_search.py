@@ -198,7 +198,7 @@ class RAGMemorySearch:
             return
 
         meta_path = self._anima_dir / "index_meta.json"
-        current_hash = _compute_dir_hash(cs_dir, "*.md")
+        current_hash = _compute_dir_hash(cs_dir, "SKILL.md")
         stored_hash = _read_shared_hash(meta_path, "shared_common_skills_hash")
         if current_hash == stored_hash:
             logger.debug("common_skills unchanged (hash match), skipping")
