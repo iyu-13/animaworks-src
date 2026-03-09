@@ -284,10 +284,14 @@ class ActivityLogger(
                                 continue
                         except (ValueError, TypeError):
                             logger.debug("Failed to parse timestamp for cutoff filtering", exc_info=True)
-                    entry = ActivityEntry(**{k: v for k, v in raw.items() if k in ActivityEntry.__dataclass_fields__})
+                    try:
+                        entry = ActivityEntry(**{k: v for k, v in raw.items() if k in ActivityEntry.__dataclass_fields__})
+                    except (TypeError, ValueError, KeyError):
+                        logger.debug("Skipping malformed entry at line %d in %s", line_num, path)
+                        continue
                     entry._line_number = line_num
                     entries.append(entry)
-            except (OSError, json.JSONDecodeError, KeyError, ValueError, TypeError):
+            except OSError:
                 logger.exception("Failed to read activity log %s", path)
 
         entries.sort(key=lambda e: e.ts)
