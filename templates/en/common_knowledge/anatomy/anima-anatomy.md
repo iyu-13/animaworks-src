@@ -42,6 +42,8 @@ This classification determines who may modify each file.
 - Changing the **boundary** means "changing jobs" or "shifting responsibilities." Legitimate organizational operation
 - Changing the **outside** has no direct impact on the individual's personality or behavior
 
+> **Growth vs. identity.md**: identity.md is the immutable personality baseline (temperament) and cannot be self-modified. "Growth" is expressed through accumulation in `knowledge/` (lessons learned), `procedures/` (acquired workflows), and `skills/` (honed abilities). Even with a fixed identity.md, behavior evolves as memories accumulate — this is the "same person growing" model. Rewriting identity.md is not growth but replacement with a different person. Direct editing by the user (human operator) is allowed.
+
 ---
 
 ## Your Personality (identity)
