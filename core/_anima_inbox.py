@@ -217,12 +217,21 @@ class InboxMixin:
                             meta={"trigger": "inbox"},
                         )
 
-                    # Archive processed messages
-                    await self._archive_processed_messages(
-                        inbox_result.inbox_items,
-                        inbox_result.senders,
-                        self.agent.replied_to,
-                    )
+                    # Archive processed messages — but NOT when the LLM
+                    # returned nothing (e.g. SDK empty response due to API
+                    # outage / rate limit).  Keeping them lets the next
+                    # inbox cycle retry.
+                    if accumulated_text.strip() or self.agent.replied_to:
+                        await self._archive_processed_messages(
+                            inbox_result.inbox_items,
+                            inbox_result.senders,
+                            self.agent.replied_to,
+                        )
+                    else:
+                        logger.warning(
+                            "[%s] Empty LLM response for inbox — messages NOT archived (will retry)",
+                            self.name,
+                        )
 
                     self._activity.log(
                         "inbox_processing_end",
