@@ -464,7 +464,8 @@ class TestLiteLLMAdaptiveThinking:
         assert "thinking" not in kwargs
         assert "think" not in kwargs
 
-    def test_bedrock_qwen_gets_enable_thinking_false(self, anima_dir, tool_handler, memory):
+    def test_bedrock_qwen_thinking_false_omits_enable_thinking(self, anima_dir, tool_handler, memory):
+        """thinking=False must NOT send enable_thinking — causes 'Please continue' on qwen3-next."""
         from core.execution.litellm_loop import LiteLLMExecutor
 
         cfg = ModelConfig(
@@ -480,7 +481,7 @@ class TestLiteLLMAdaptiveThinking:
             memory=memory,
         )
         kwargs = ex._build_llm_kwargs()
-        assert kwargs["enable_thinking"] is False
+        assert "enable_thinking" not in kwargs
         assert "reasoning_effort" not in kwargs
 
     def test_openai_gets_extra_body_enable_thinking_true(self, anima_dir, tool_handler, memory):
@@ -562,7 +563,8 @@ class TestLiteLLMAdaptiveThinking:
         assert "thinking" not in kwargs
         assert "think" not in kwargs
 
-    def test_bedrock_glm_gets_enable_thinking_false(self, anima_dir, tool_handler, memory):
+    def test_bedrock_glm_thinking_false_omits_enable_thinking(self, anima_dir, tool_handler, memory):
+        """thinking=False must NOT send enable_thinking — same fix as Bedrock Qwen."""
         from core.execution.litellm_loop import LiteLLMExecutor
 
         cfg = ModelConfig(
@@ -578,7 +580,7 @@ class TestLiteLLMAdaptiveThinking:
             memory=memory,
         )
         kwargs = ex._build_llm_kwargs()
-        assert kwargs["enable_thinking"] is False
+        assert "enable_thinking" not in kwargs
         assert "reasoning_effort" not in kwargs
 
     def test_openai_gpt_with_thinking_uses_extra_body(self, anima_dir, tool_handler, memory):

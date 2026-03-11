@@ -88,8 +88,11 @@ class ContextMixin:
                     )
             elif is_bedrock_qwen(model) or is_bedrock_glm(model):
                 # Qwen / GLM on Bedrock: pass enable_thinking which LiteLLM
-                # forwards to additionalModelRequestFields in the Converse API
-                kwargs["enable_thinking"] = self._model_config.thinking
+                # forwards to additionalModelRequestFields in the Converse API.
+                # Only send when True — explicitly sending False causes some
+                # models (e.g. qwen3-next) to degrade to "Please continue."
+                if self._model_config.thinking:
+                    kwargs["enable_thinking"] = True
             elif model.startswith("bedrock/"):
                 if self._model_config.thinking:
                     kwargs["reasoning_effort"] = resolve_thinking_effort(

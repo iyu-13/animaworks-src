@@ -369,7 +369,8 @@ class AssistedExecutor(BaseExecutor):
                         self._model_config.thinking_effort,
                     )
             elif is_bedrock_qwen(model) or is_bedrock_glm(model):
-                kwargs["enable_thinking"] = self._model_config.thinking
+                if self._model_config.thinking:
+                    kwargs["enable_thinking"] = True
             elif model.startswith("bedrock/"):
                 if self._model_config.thinking:
                     kwargs["reasoning_effort"] = resolve_thinking_effort(

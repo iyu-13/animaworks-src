@@ -307,7 +307,7 @@ class StreamingMixin:
                             "input_tokens": response.usage.prompt_tokens or 0,
                             "output_tokens": response.usage.completion_tokens or 0,
                         }
-                    _chunk_count = 1
+                    _chunk_count = 0
 
                 async for chunk in response if _use_stream else _empty_aiter():
                     _chunk_count += 1
