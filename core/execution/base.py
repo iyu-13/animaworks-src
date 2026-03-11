@@ -229,8 +229,8 @@ class RepetitionDetector:
 
     def __init__(
         self,
-        n: int = 4,
-        threshold: int = 5,
+        n: int = 10,
+        threshold: int = 10,
         min_tokens: int = 100,
     ) -> None:
         self._n = n
