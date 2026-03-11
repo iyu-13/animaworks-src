@@ -83,7 +83,15 @@ def _resolve_cli_anima_identity(channel_cfg: dict) -> tuple[str, str]:
     return (anima_name, icon_url)
 
 
-async def _send_slack(channel: str, token: str, text: str, *, username: str = "", icon_url: str = "") -> str:
+async def _send_slack(
+    channel: str,
+    token: str,
+    text: str,
+    *,
+    username: str = "",
+    icon_url: str = "",
+    notification_text: str = "",
+) -> str:
     import httpx
 
     try:
@@ -103,6 +111,21 @@ async def _send_slack(channel: str, token: str, text: str, *, username: str = ""
             data = resp.json()
             if not data.get("ok"):
                 return f"ERROR: {data.get('error', 'unknown')}"
+
+            # Save ts→anima mapping so Slack thread replies are routed back
+            if username and data.get("ts") and notification_text:
+                try:
+                    from core.notification.reply_routing import save_notification_mapping
+
+                    save_notification_mapping(
+                        ts=data["ts"],
+                        channel=data.get("channel", channel),
+                        anima_name=username,
+                        notification_text=notification_text[:2000],
+                    )
+                except Exception:
+                    pass  # Non-critical: routing fails gracefully
+
             return "OK"
     except Exception as e:
         return f"ERROR: {e}"
@@ -185,7 +208,16 @@ def cli_main(args: list[str]) -> None:
                 results.append("slack: ERROR - no channel configured")
                 continue
             username, icon_url = _resolve_cli_anima_identity(ch_cfg)
-            result = asyncio.run(_send_slack(channel_id, token, text, username=username, icon_url=icon_url))
+            result = asyncio.run(
+                _send_slack(
+                    channel_id,
+                    token,
+                    text,
+                    username=username,
+                    icon_url=icon_url,
+                    notification_text=f"{ns.subject}\n{ns.body}",
+                )
+            )
             results.append(f"slack: {result}")
         else:
             results.append(f"{ch_type}: not supported in CLI mode")
