@@ -23,7 +23,7 @@ logger = logging.getLogger("animaworks.init")
 
 # Directories under templates/ that are infrastructure (always copied).
 # anima_templates/ is NOT included — animas are created separately.
-_INFRASTRUCTURE_DIRS = {"prompts", "company", "common_skills", "common_knowledge"}
+_INFRASTRUCTURE_DIRS = {"prompts", "company", "common_skills", "common_knowledge", "reference"}
 
 
 def _ensure_tool_prompt_db(data_dir: Path) -> None:
@@ -428,7 +428,7 @@ def ensure_runtime_dir(*, skip_animas: bool = False) -> Path:
 
 
 # Directories synced incrementally on every startup (new entries only).
-_INCREMENTAL_SYNC_DIRS = {"common_skills", "common_knowledge"}
+_INCREMENTAL_SYNC_DIRS = {"common_skills", "common_knowledge", "reference"}
 
 
 def _sync_shared_templates(data_dir: Path) -> None:
@@ -624,6 +624,7 @@ def _ensure_runtime_only_dirs(data_dir: Path) -> None:
     (data_dir / "tmp" / "attachments").mkdir(parents=True, exist_ok=True)
     (data_dir / "common_skills").mkdir(parents=True, exist_ok=True)
     (data_dir / "common_knowledge").mkdir(parents=True, exist_ok=True)
+    (data_dir / "reference").mkdir(parents=True, exist_ok=True)
 
     # Create initial shared channels
     for channel in ("general", "ops"):

@@ -960,6 +960,11 @@ def build_system_prompt(
             ck_hint = load_prompt("builder/common_knowledge_hint")
             _add(ck_hint, "common_knowledge_hint", 4)
 
+        reference_dir = data_dir / "reference"
+        if reference_dir.exists() and any(reference_dir.rglob("*.md")):
+            ref_hint = load_prompt("builder/reference_hint")
+            _add(ref_hint, "reference_hint", 4)
+
         has_newstaff = any(m.name == "newstaff" for m in skill_metas)
         if has_newstaff:
             hiring_rules = (

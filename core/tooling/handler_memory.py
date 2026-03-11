@@ -80,6 +80,17 @@ class MemoryToolsMixin:
                     "PermissionDenied",
                     "Path traversal detected — access denied.",
                 )
+        elif rel.startswith("reference/"):
+            from core.paths import get_reference_dir
+
+            suffix = rel[len("reference/") :]
+            ref_dir = get_reference_dir()
+            path = (ref_dir / suffix).resolve()
+            if not path.is_relative_to(ref_dir.resolve()):
+                return _error_result(
+                    "PermissionDenied",
+                    "Path traversal detected — access denied.",
+                )
         else:
             path = self._anima_dir / rel
             resolved = path.resolve()
@@ -129,6 +140,12 @@ class MemoryToolsMixin:
 
     def _handle_write_memory_file(self, args: dict[str, Any]) -> str:
         rel = args["path"]
+
+        if rel.startswith("reference/"):
+            return _error_result(
+                "PermissionDenied",
+                "reference/ is read-only. Use common_knowledge/ for shared writable documents.",
+            )
 
         # Support common_knowledge/ prefix — resolve to shared dir
         if rel.startswith("common_knowledge/"):
