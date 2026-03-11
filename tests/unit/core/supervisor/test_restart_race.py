@@ -47,7 +47,7 @@ class TestStartAnimaRestartingGuard:
         # Mock ProcessHandle to avoid real process creation
         with patch("core.supervisor.manager.ProcessHandle") as MockHandle:
             mock_handle = AsyncMock()
-            mock_handle.get_pid.return_value = 12345
+            mock_handle.get_pid = MagicMock(return_value=12345)
             mock_handle.send_request = AsyncMock(
                 return_value=MagicMock(error=None, result={"needs_bootstrap": False})
             )
@@ -64,7 +64,7 @@ class TestStartAnimaRestartingGuard:
         # Mock ProcessHandle to avoid real process creation
         with patch("core.supervisor.manager.ProcessHandle") as MockHandle:
             mock_handle = AsyncMock()
-            mock_handle.get_pid.return_value = 12345
+            mock_handle.get_pid = MagicMock(return_value=12345)
             mock_handle.send_request = AsyncMock(
                 return_value=MagicMock(error=None, result={"needs_bootstrap": False})
             )
@@ -176,7 +176,7 @@ class TestStartAnimaStartingGuard:
 
         with patch("core.supervisor.manager.ProcessHandle") as MockHandle:
             mock_handle = AsyncMock()
-            mock_handle.get_pid.return_value = 99999
+            mock_handle.get_pid = MagicMock(return_value=99999)
             mock_handle.send_request = AsyncMock(
                 return_value=MagicMock(error=None, result={"needs_bootstrap": False})
             )
