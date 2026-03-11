@@ -102,6 +102,10 @@
   border-color: var(--aw-color-accent-hover);
 }
 
+.tb-template-card.recommended:active {
+  border-color: var(--aw-color-accent-hover);
+}
+
 .tb-template-icon {
   width: 44px;
   height: 44px;
@@ -177,6 +181,10 @@
 }
 
 .tb-role-item:hover {
+  background: var(--aw-color-bg-subtle);
+}
+
+.tb-role-item:active {
   background: var(--aw-color-bg-subtle);
 }
 
@@ -342,7 +350,18 @@
   color: var(--aw-color-text-primary);
 }
 
+.tb-btn-icon:active {
+  background: var(--aw-color-bg-hover);
+  color: var(--aw-color-text-primary);
+}
+
 .tb-btn-icon.danger:hover {
+  background: var(--aw-color-error-bg);
+  color: var(--aw-color-error);
+  border-color: var(--aw-color-error-border);
+}
+
+.tb-btn-icon.danger:active {
   background: var(--aw-color-error-bg);
   color: var(--aw-color-error);
   border-color: var(--aw-color-error-border);
@@ -380,6 +399,10 @@
 }
 
 .tb-skip-link:hover {
+  color: var(--aw-color-text-secondary);
+}
+
+.tb-skip-link:active {
   color: var(--aw-color-text-secondary);
 }
 
@@ -437,6 +460,10 @@
   border-color: var(--aw-color-accent-light);
 }
 
+.tb-tool-toggle:active {
+  border-color: var(--aw-color-accent-light);
+}
+
 /* ── Role Select Dropdown (Edit) ────────────── */
 
 .tb-role-select {
@@ -475,6 +502,12 @@
 }
 
 .tb-add-member-btn:hover {
+  border-color: var(--aw-color-accent-light);
+  color: var(--aw-color-accent);
+  background: var(--aw-color-accent-bg);
+}
+
+.tb-add-member-btn:active {
   border-color: var(--aw-color-accent-light);
   color: var(--aw-color-accent);
   background: var(--aw-color-accent-bg);

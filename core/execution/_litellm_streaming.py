@@ -215,14 +215,11 @@ class StreamingMixin:
                 # Bedrock requires toolConfig in every request that has toolUse/toolResult
                 # in the conversation history — omitting tools causes ValidationException.
                 _has_tool_history_s = any(
-                    msg.get("role") == "tool"
-                    or (msg.get("role") == "assistant" and msg.get("tool_calls"))
+                    msg.get("role") == "tool" or (msg.get("role") == "assistant" and msg.get("tool_calls"))
                     for msg in messages
                 )
                 _bedrock_needs_tools_s = (
-                    is_final_iteration
-                    and _has_tool_history_s
-                    and self._model_config.model.startswith("bedrock/")
+                    is_final_iteration and _has_tool_history_s and self._model_config.model.startswith("bedrock/")
                 )
                 _has_tools = (not is_final_iteration or _bedrock_needs_tools_s) and bool(tools)
                 _use_stream = True
@@ -672,14 +669,11 @@ class StreamingMixin:
                 # Bedrock requires toolConfig in every request that has toolUse/toolResult
                 # in the conversation history — omitting tools causes ValidationException.
                 _has_tool_history_ol = any(
-                    msg.get("role") == "tool"
-                    or (msg.get("role") == "assistant" and msg.get("tool_calls"))
+                    msg.get("role") == "tool" or (msg.get("role") == "assistant" and msg.get("tool_calls"))
                     for msg in messages
                 )
                 _bedrock_needs_tools_ol = (
-                    is_final_iteration
-                    and _has_tool_history_ol
-                    and self._model_config.model.startswith("bedrock/")
+                    is_final_iteration and _has_tool_history_ol and self._model_config.model.startswith("bedrock/")
                 )
                 if not is_final_iteration or _bedrock_needs_tools_ol:
                     call_kwargs["tools"] = tools

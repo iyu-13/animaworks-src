@@ -40,6 +40,8 @@ def _sanitize_tool_id(tool_id: str) -> str:
     colons, etc.  Replace any invalid character with ``_``.
     """
     return _RE_INVALID_TOOL_ID.sub("_", tool_id) if tool_id else tool_id
+
+
 from core.memory._io import atomic_write_text
 from core.paths import load_prompt
 from core.schemas import ModelConfig
