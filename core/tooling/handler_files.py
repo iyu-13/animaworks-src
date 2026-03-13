@@ -64,6 +64,7 @@ def _build_fuzzy_cjk_latin_pattern(old: str) -> re.Pattern[str] | None:
     parts: list[str] = []
     any_fuzzy = False
     i = 0
+    _OPT_SPACE = "[ \\t]?"
 
     while i < len(old):
         ch = old[i]
@@ -72,7 +73,7 @@ def _build_fuzzy_cjk_latin_pattern(old: str) -> re.Pattern[str] | None:
             prev = old[i - 1]
             nxt = old[i + 1]
             if (_is_cjk(prev) and _is_latin_or_digit(nxt)) or (_is_latin_or_digit(prev) and _is_cjk(nxt)):
-                parts.append(r"\s?")
+                parts.append(_OPT_SPACE)
                 any_fuzzy = True
                 i += 1
                 continue
@@ -80,7 +81,7 @@ def _build_fuzzy_cjk_latin_pattern(old: str) -> re.Pattern[str] | None:
         if i > 0 and old[i - 1] != " ":
             prev = old[i - 1]
             if (_is_cjk(prev) and _is_latin_or_digit(ch)) or (_is_latin_or_digit(prev) and _is_cjk(ch)):
-                parts.append(r"\s?")
+                parts.append(_OPT_SPACE)
                 any_fuzzy = True
 
         parts.append(re.escape(ch))

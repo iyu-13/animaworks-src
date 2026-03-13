@@ -145,6 +145,14 @@ class TestBuildFuzzyPattern:
         assert pat.search("runa のheartbeat で確認")
         assert pat.search("runa の heartbeat で確認")
 
+    def test_does_not_match_across_newlines(self) -> None:
+        """Fuzzy space must NOT match newlines — prevents line collapse."""
+        pat = _build_fuzzy_cjk_latin_pattern("日本語path")
+        assert pat is not None
+        assert pat.search("日本語path")
+        assert pat.search("日本語 path")
+        assert not pat.search("日本語\npath")
+
     def test_fullmatch_exact_substring(self) -> None:
         """Pattern should match the exact substring, not a superset."""
         pat = _build_fuzzy_cjk_latin_pattern("testの値")
