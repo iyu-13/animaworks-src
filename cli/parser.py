@@ -602,6 +602,20 @@ def cli_main() -> None:
 
     register_profile_command(sub)
 
+    # Fallback: if first arg looks like an external tool name, forward to cli_dispatch
+    import sys as _sys
+
+    _first_arg = _sys.argv[1] if len(_sys.argv) > 1 else None
+    if _first_arg and not _first_arg.startswith("-"):
+        from core.tools import TOOL_MODULES
+
+        if _first_arg in TOOL_MODULES or _first_arg == "submit":
+            _sys.argv[0] = "animaworks-tool"
+            from core.tools import cli_dispatch
+
+            cli_dispatch()
+            return
+
     args = parser.parse_args()
 
     # Apply --data-dir override before any command

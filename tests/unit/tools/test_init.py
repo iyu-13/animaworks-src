@@ -131,13 +131,15 @@ class TestCliDispatch:
                 cli_dispatch()
         mock_module.cli_main.assert_called_once_with(["test"])
 
-    def test_errors_on_unknown_tool(self, capsys: pytest.CaptureFixture):
-        with patch.object(sys, "argv", ["animaworks-tool", "nonexistent_tool"]):
+    def test_errors_on_unknown_command(self, capsys: pytest.CaptureFixture):
+        with patch.object(sys, "argv", ["animaworks-tool", "nonexistent_xyz"]):
             with pytest.raises(SystemExit) as exc_info:
                 cli_dispatch()
             assert exc_info.value.code == 1
         out = capsys.readouterr().out
-        assert "Unknown tool: nonexistent_tool" in out
+        assert "Unknown command: nonexistent_xyz" in out
+        assert "Available tools:" in out
+        assert "Available CLI commands:" in out
 
     def test_core_tool_without_cli_main(self, capsys: pytest.CaptureFixture):
         mock_module = MagicMock(spec=[])  # no cli_main attribute
@@ -175,6 +177,80 @@ class TestCliDispatch:
                 assert exc_info.value.code == 1
         out = capsys.readouterr().out
         assert "has no CLI interface" in out
+
+
+# ── cli_dispatch fallback routing ────────────────────────────────
+
+
+class TestCliDispatchFallback:
+    """Tests for cli_dispatch() fallback routing to main CLI."""
+
+    def test_forwards_main_cli_command(self):
+        """animaworks-tool anima list → cli_main() called with rewritten argv."""
+        captured_argv = []
+
+        def capture_cli_main():
+            captured_argv.extend(sys.argv)
+
+        with patch.object(sys, "argv", ["animaworks-tool", "anima", "list"]):
+            with patch("cli.cli_main", capture_cli_main):
+                cli_dispatch()
+        assert captured_argv == ["animaworks", "anima", "list"]
+
+    def test_forwards_anima_subcommand(self):
+        """animaworks-tool audit sakura → argv=["animaworks", "anima", "audit", "sakura"]."""
+        captured_argv = []
+
+        def capture_cli_main():
+            captured_argv.extend(sys.argv)
+
+        with patch.object(sys, "argv", ["animaworks-tool", "audit", "sakura"]):
+            with patch("cli.cli_main", capture_cli_main):
+                cli_dispatch()
+        assert captured_argv == ["animaworks", "anima", "audit", "sakura"]
+
+    def test_forwards_anima_subcommand_with_flags(self):
+        """animaworks-tool audit sakura --days 3 → correct argv."""
+        captured_argv = []
+
+        def capture_cli_main():
+            captured_argv.extend(sys.argv)
+
+        with patch.object(sys, "argv", ["animaworks-tool", "audit", "sakura", "--days", "3"]):
+            with patch("cli.cli_main", capture_cli_main):
+                cli_dispatch()
+        assert captured_argv == ["animaworks", "anima", "audit", "sakura", "--days", "3"]
+
+    def test_forwards_start_command(self):
+        """animaworks-tool start → argv=["animaworks", "start"]."""
+        captured_argv = []
+
+        def capture_cli_main():
+            captured_argv.extend(sys.argv)
+
+        with patch.object(sys, "argv", ["animaworks-tool", "start"]):
+            with patch("cli.cli_main", capture_cli_main):
+                cli_dispatch()
+        assert captured_argv == ["animaworks", "start"]
+
+    def test_tool_takes_priority_over_fallback(self):
+        """Core tools are dispatched before fallback check."""
+        mock_module = MagicMock()
+        mock_module.cli_main = MagicMock()
+        with patch.object(sys, "argv", ["animaworks-tool", "slack", "send"]):
+            with patch("importlib.import_module", return_value=mock_module):
+                cli_dispatch()
+        mock_module.cli_main.assert_called_once_with(["send"])
+
+    def test_unknown_command_shows_both_lists(self, capsys: pytest.CaptureFixture):
+        """Truly unknown commands show both tool and CLI command lists."""
+        with patch.object(sys, "argv", ["animaworks-tool", "totally_unknown_cmd"]):
+            with pytest.raises(SystemExit) as exc_info:
+                cli_dispatch()
+            assert exc_info.value.code == 1
+        out = capsys.readouterr().out
+        assert "Available tools:" in out
+        assert "Available CLI commands:" in out
 
 
 # ── discover_core_tools ──────────────────────────────────────────

@@ -92,6 +92,23 @@ def discover_personal_tools(anima_dir: Path) -> dict[str, str]:
     return personal
 
 
+# Known CLI subcommands for fallback routing.
+# When animaworks-tool receives a command not found in TOOL_MODULES,
+# it transparently forwards to the main CLI (cli_main).
+_MAIN_CLI_COMMANDS: frozenset[str] = frozenset({
+    "init", "start", "serve", "stop", "restart", "reset",
+    "chat", "heartbeat", "send", "list", "status", "logs",
+    "board", "anima", "config", "task", "models", "cost",
+    "migrate-cron", "optimize-assets", "remake", "profile",
+    "create-anima",
+})
+
+_ANIMA_SUBCOMMANDS: frozenset[str] = frozenset({
+    "list", "info", "status", "restart", "create", "delete",
+    "enable", "disable", "set-model", "set-background-model",
+    "set-outbound-limit", "reload", "set-role", "rename", "audit",
+})
+
 _SUBMIT_TASK_ID_LENGTH = 12
 
 
@@ -281,6 +298,19 @@ def cli_dispatch():
         mod.cli_main(sys.argv[2:])
         return
 
-    print(f"Unknown tool: {tool_name}")
-    print(f"Available: {', '.join(sorted(all_tools))}")
+    # Fallback: try forwarding to main CLI
+    if tool_name in _MAIN_CLI_COMMANDS:
+        sys.argv = ["animaworks"] + sys.argv[1:]
+        from cli import cli_main
+        cli_main()
+        return
+    if tool_name in _ANIMA_SUBCOMMANDS:
+        sys.argv = ["animaworks", "anima"] + sys.argv[1:]
+        from cli import cli_main
+        cli_main()
+        return
+
+    print(f"Unknown command: {tool_name}")
+    print(f"Available tools: {', '.join(sorted(all_tools))}")
+    print(f"Available CLI commands: {', '.join(sorted(_MAIN_CLI_COMMANDS | _ANIMA_SUBCOMMANDS))}")
     sys.exit(1)

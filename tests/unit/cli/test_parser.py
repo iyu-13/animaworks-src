@@ -8,6 +8,8 @@ from __future__ import annotations
 import argparse
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 
 
 class TestParserCommands:
@@ -450,3 +452,61 @@ class TestNewLazyWrappers:
         args = MagicMock()
         _lazy_anima_list(args)
         mock_cmd.assert_called_once_with(args)
+
+
+# ── cli_main fallback to tool dispatch ───────────────────────────
+
+
+class TestCliMainToolFallback:
+    """Tests for cli_main() fallback routing to tool dispatch."""
+
+    def test_forwards_tool_name_to_cli_dispatch(self):
+        """animaworks slack send → cli_dispatch() called."""
+        import sys
+
+        mock_dispatch = MagicMock()
+        with patch.object(sys, "argv", ["animaworks", "slack", "send", "#general", "hello"]):
+            with patch("core.tools.cli_dispatch", mock_dispatch):
+                with patch("core.tools.TOOL_MODULES", {"slack": "core.tools.slack"}):
+                    from cli.parser import cli_main
+                    cli_main()
+        mock_dispatch.assert_called_once()
+
+    def test_forwards_submit_to_cli_dispatch(self):
+        """animaworks submit image_gen ... → cli_dispatch() called."""
+        import sys
+
+        mock_dispatch = MagicMock()
+        with patch.object(sys, "argv", ["animaworks", "submit", "image_gen", "pipeline"]):
+            with patch("core.tools.cli_dispatch", mock_dispatch):
+                with patch("core.tools.TOOL_MODULES", {"image_gen": "core.tools.image_gen"}):
+                    from cli.parser import cli_main
+                    cli_main()
+        mock_dispatch.assert_called_once()
+
+    def test_does_not_forward_known_subcommands(self):
+        """animaworks anima list → NOT forwarded (handled by argparse)."""
+        import sys
+
+        mock_dispatch = MagicMock()
+        mock_func = MagicMock()
+        with patch.object(sys, "argv", ["animaworks", "anima", "list"]):
+            with patch("core.tools.cli_dispatch", mock_dispatch):
+                with patch("core.tools.TOOL_MODULES", {"slack": "core.tools.slack"}):
+                    from cli.parser import cli_main
+                    with patch("cli.commands.anima_mgmt.cmd_anima_list", mock_func):
+                        cli_main()
+        mock_dispatch.assert_not_called()
+
+    def test_does_not_forward_flags(self):
+        """animaworks --help → NOT forwarded (flag, not tool name)."""
+        import sys
+
+        mock_dispatch = MagicMock()
+        with patch.object(sys, "argv", ["animaworks", "--help"]):
+            with patch("core.tools.cli_dispatch", mock_dispatch):
+                with patch("core.tools.TOOL_MODULES", {"slack": "core.tools.slack"}):
+                    from cli.parser import cli_main
+                    with pytest.raises(SystemExit):
+                        cli_main()
+        mock_dispatch.assert_not_called()
