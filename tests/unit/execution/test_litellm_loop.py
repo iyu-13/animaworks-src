@@ -115,14 +115,14 @@ class TestBuildBaseTools:
     def test_includes_file_tools(self, executor):
         tools = executor._build_base_tools()
         names = [t["function"]["name"] for t in tools]
-        assert "read_file" in names
-        assert "write_file" in names
+        assert "Read" in names
+        assert "Write" in names
 
     def test_includes_search_tools(self, executor):
         tools = executor._build_base_tools()
         names = [t["function"]["name"] for t in tools]
-        assert "search_code" in names
-        assert "list_directory" in names
+        assert "Grep" in names
+        assert "Glob" in names
 
     def test_excludes_use_tool_in_mode_a(self, anima_dir, model_config, memory):
         """use_tool is NOT included in Mode A (LiteLLM) — Mode B only."""

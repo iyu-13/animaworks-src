@@ -295,7 +295,7 @@ class TestDefaultData:
             "post_channel",
             "read_channel",
             "call_human",
-            "execute_command",
+            "Bash",
         ]
         for name in expected_names:
             assert name in DEFAULT_DESCRIPTIONS, (

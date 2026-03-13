@@ -182,7 +182,7 @@ class TestToTextFormat:
     def test_contains_fewshot_examples(self):
         result = to_text_format([])
         assert "docker ps" in result
-        assert "execute_command" in result
+        assert "Bash" in result
 
     def test_contains_anti_hallucination_rule(self):
         result = to_text_format([])
@@ -310,41 +310,30 @@ class TestBuildToolSchemas:
     def test_task_tools_included(self, _anima_dir):
         executor = self._make_executor(_anima_dir)
         names = executor._known_tools
-        assert "backlog_task" in names
         assert "update_task" in names
-        assert "list_tasks" in names
-
-    def test_submit_tasks_included(self, _anima_dir):
-        executor = self._make_executor(_anima_dir)
-        assert "submit_tasks" in executor._known_tools
+        assert "submit_tasks" in names
 
     def test_supervisor_tools_when_has_subordinates(self, _anima_dir):
         executor = self._make_executor(_anima_dir, has_subs=True)
         names = executor._known_tools
-        assert "disable_subordinate" in names
-        assert "enable_subordinate" in names
         assert "delegate_task" in names
-        assert "org_dashboard" in names
 
     def test_supervisor_tools_absent_without_subordinates(self, _anima_dir):
         executor = self._make_executor(_anima_dir, has_subs=False)
         names = executor._known_tools
-        assert "disable_subordinate" not in names
         assert "delegate_task" not in names
 
-    def test_admin_tools_when_newstaff(self, _anima_dir):
-        executor = self._make_executor(_anima_dir, has_newstaff=True)
-        assert "create_anima" in executor._known_tools
-
-    def test_admin_tools_absent_without_newstaff(self, _anima_dir):
-        executor = self._make_executor(_anima_dir, has_newstaff=False)
-        assert "create_anima" not in executor._known_tools
+    def test_unified_cc_tools_present(self, _anima_dir):
+        executor = self._make_executor(_anima_dir)
+        names = executor._known_tools
+        for tool in ("Read", "Write", "Edit", "Bash", "Grep", "Glob", "WebSearch", "WebFetch"):
+            assert tool in names, f"{tool} missing from Mode B known_tools"
 
     def test_core_tools_always_present(self, _anima_dir):
         executor = self._make_executor(_anima_dir)
         names = executor._known_tools
-        for tool in ("search_memory", "read_file", "write_file", "execute_command",
-                     "send_message", "check_permissions", "skill"):
+        for tool in ("search_memory", "read_memory_file", "write_memory_file",
+                     "send_message", "post_channel", "skill"):
             assert tool in names, f"{tool} missing from Mode B known_tools"
 
 

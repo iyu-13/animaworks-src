@@ -44,6 +44,7 @@ def handler(anima_dir: Path) -> ToolHandler:
 
 
 # All built-in tool names that must be in the dispatch dict
+# Includes 8 CC-compatible aliases (Read, Write, Edit, Bash, Grep, Glob, WebSearch, WebFetch)
 EXPECTED_BUILTIN_TOOLS = frozenset({
     "use_tool",
     "search_memory",
@@ -61,6 +62,15 @@ EXPECTED_BUILTIN_TOOLS = frozenset({
     "web_fetch",
     "search_code",
     "list_directory",
+    # CC-compatible aliases (Mode A/B unified schema)
+    "Read",
+    "Write",
+    "Edit",
+    "Bash",
+    "Grep",
+    "Glob",
+    "WebSearch",
+    "WebFetch",
     "call_human",
     "create_anima",
     "disable_subordinate",
@@ -110,8 +120,8 @@ class TestDispatchDictCompleteness:
         assert extra == set(), f"Unexpected tools in dispatch dict: {extra}"
 
     def test_dispatch_count(self, handler: ToolHandler):
-        """Dispatch dict should have exactly 46 entries."""
-        assert len(handler._dispatch) == 46
+        """Dispatch dict should have exactly 54 entries (46 + 8 CC aliases)."""
+        assert len(handler._dispatch) == 54
 
     def test_all_dispatch_values_are_callable(self, handler: ToolHandler):
         """Every value in the dispatch dict must be callable."""

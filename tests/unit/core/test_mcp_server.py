@@ -17,22 +17,16 @@ from mcp.types import TextContent, Tool
 
 EXPECTED_INTERNAL_TOOL_NAMES: frozenset[str] = frozenset(
     {
+        # AW-essential 10 tools (unified architecture)
+        "search_memory",
+        "read_memory_file",
+        "write_memory_file",
         "send_message",
         "post_channel",
-        "read_channel",
-        "read_dm_history",
-        "backlog_task",
-        "update_task",
-        "list_tasks",
         "call_human",
-        "search_memory",
-        "report_procedure_outcome",
-        "report_knowledge_outcome",
-        "check_permissions",
-        "disable_subordinate",
-        "enable_subordinate",
-        "create_skill",
-        "set_subordinate_background_model",
+        "delegate_task",
+        "submit_tasks",
+        "update_task",
         "skill",
     }
 )
@@ -45,14 +39,14 @@ class TestMcpToolSchemas:
     """Tests for the static MCP_TOOLS list built at import time."""
 
     def test_mcp_tools_includes_all_internal(self) -> None:
-        """MCP_TOOLS includes at least all 14 internal tools."""
+        """MCP_TOOLS includes at least all 10 AW-essential tools."""
         from core.mcp.server import MCP_TOOLS
 
         actual_names = {t.name for t in MCP_TOOLS}
         assert actual_names >= EXPECTED_INTERNAL_TOOL_NAMES
 
     def test_all_expected_internal_tool_names_present(self) -> None:
-        """All 14 expected internal tool names are present in MCP_TOOLS."""
+        """All 10 AW-essential tool names are present in MCP_TOOLS."""
         from core.mcp.server import MCP_TOOLS
 
         actual_names = {t.name for t in MCP_TOOLS}
@@ -148,28 +142,6 @@ class TestListToolsHandler:
 
         expected = frozenset(t["name"] for t in _supervisor_tools())
         assert expected == _SUPERVISOR_TOOL_NAMES
-
-    async def test_check_permissions_always_visible(self) -> None:
-        """check_permissions is NOT a supervisor tool and is always visible."""
-        import core.mcp.server as mcp_mod
-        from core.mcp.server import _SUPERVISOR_TOOL_NAMES, list_tools
-
-        assert "check_permissions" not in _SUPERVISOR_TOOL_NAMES
-        with patch.object(mcp_mod, "_is_supervisor", False):
-            result = await list_tools()
-        result_names = {t.name for t in result}
-        assert "check_permissions" in result_names
-
-    async def test_create_skill_always_visible(self) -> None:
-        """create_skill is NOT a supervisor tool and is always visible."""
-        import core.mcp.server as mcp_mod
-        from core.mcp.server import _SUPERVISOR_TOOL_NAMES, list_tools
-
-        assert "create_skill" not in _SUPERVISOR_TOOL_NAMES
-        with patch.object(mcp_mod, "_is_supervisor", False):
-            result = await list_tools()
-        result_names = {t.name for t in result}
-        assert "create_skill" in result_names
 
     def test_list_tools_is_async(self) -> None:
         """list_tools should be a coroutine function."""
@@ -286,9 +258,9 @@ class TestCallToolHandler:
         mock_handler.handle.return_value = '{"status": "ok"}'
 
         with patch.object(mcp_mod, "_get_tool_handler", return_value=mock_handler):
-            result = await mcp_mod.call_tool("list_tasks", None)
+            result = await mcp_mod.call_tool("send_message", None)
 
-        mock_handler.handle.assert_called_once_with("list_tasks", {})
+        mock_handler.handle.assert_called_once_with("send_message", {})
 
 
 # ── TestGetToolHandler ───────────────────────────────────────────────

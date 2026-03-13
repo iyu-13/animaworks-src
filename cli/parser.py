@@ -592,6 +592,21 @@ def cli_main() -> None:
 
     register_task_command(sub)
 
+    # ── Internal (animaworks-tool internal) ───────────────────
+    from cli.commands.internal_cmd import register_internal_command
+
+    register_internal_command(sub)
+
+    # ── Supervisor ───────────────────────────────────────────
+    from cli.commands.supervisor_cmd import register_supervisor_command
+
+    register_supervisor_command(sub)
+
+    # ── Vault ─────────────────────────────────────────────────
+    from cli.commands.vault_cmd import register_vault_command
+
+    register_vault_command(sub)
+
     # ── Models ────────────────────────────────────────────────
     from cli.commands.models_cmd import register_models_command
 

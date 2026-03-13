@@ -16,10 +16,11 @@ class TestMessagingTemplates:
         path = _JA_PROMPTS / "messaging_s.md"
         assert path.exists(), f"Missing template: {path}"
 
-    def test_messaging_s_has_mcp_send_message(self):
-        """S mode template must reference MCP send_message tool."""
+    def test_messaging_s_has_send_message(self):
+        """S mode template must reference send_message tool (no mcp__aw__ prefix)."""
         content = (_JA_PROMPTS / "messaging_s.md").read_text(encoding="utf-8")
-        assert "mcp__aw__send_message" in content
+        assert "send_message" in content
+        assert "mcp__aw__" not in content
 
     def test_messaging_s_no_bash_send(self):
         """S mode template must NOT reference bash send command (abolished)."""

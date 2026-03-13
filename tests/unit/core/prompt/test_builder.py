@@ -405,8 +405,8 @@ class TestBuildSystemPrompt:
             assert "未完了タスク" in result
             assert "task 1" in result
 
-    def test_a_mode_injects_external_tools_hint_with_execute_command(self, tmp_path, data_dir):
-        """Mode A hints should mention execute_command."""
+    def test_a_mode_injects_external_tools_hint_with_bash(self, tmp_path, data_dir):
+        """Mode A hints should mention Bash and animaworks-tool."""
         anima_dir = tmp_path / "animas" / "alice"
         anima_dir.mkdir(parents=True)
         (anima_dir / "identity.md").write_text("I am Alice", encoding="utf-8")
@@ -438,7 +438,7 @@ class TestBuildSystemPrompt:
                 tool_registry=["chatwork", "slack"],
                 execution_mode="a",
             )
-            assert "execute_command" in result
+            assert "Bash" in result
             assert "animaworks-tool" in result
 
     def test_s_mode_injects_external_tools_hint_with_bash(
@@ -480,10 +480,10 @@ class TestBuildSystemPrompt:
             assert "Bash" in result
             assert "animaworks-tool" in result
 
-    def test_b_mode_injects_external_tools_hint_with_use_tool(
+    def test_b_mode_injects_external_tools_hint_with_bash_cli(
         self, tmp_path, data_dir
     ):
-        """B mode injects External Tools hint mentioning use_tool."""
+        """B mode injects External Tools hint mentioning Bash + animaworks-tool."""
         anima_dir = tmp_path / "animas" / "alice"
         anima_dir.mkdir(parents=True)
         (anima_dir / "identity.md").write_text("I am Alice", encoding="utf-8")
@@ -515,8 +515,7 @@ class TestBuildSystemPrompt:
                 tool_registry=["chatwork"],
                 execution_mode="b",
             )
-            assert "External Tools" in result
-            assert "use_tool" in result
+            assert "animaworks-tool" in result
 
 
 # ── _format_anima_entry ──────────────────────────────────

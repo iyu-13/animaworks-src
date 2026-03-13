@@ -199,10 +199,11 @@ class TestHumanNotificationGuidanceBranching:
 class TestSTemplateContent:
     """Verify actual S template files contain correct MCP tool references."""
 
-    def test_messaging_s_contains_mcp_send_message(self) -> None:
-        """messaging_s.md must reference the MCP tool name mcp__aw__send_message."""
+    def test_messaging_s_contains_send_message(self) -> None:
+        """messaging_s.md must reference send_message (unified name, no mcp__aw__ prefix)."""
         content = (TEMPLATES_DIR / "ja" / "prompts" / "messaging_s.md").read_text(encoding="utf-8")
-        assert "mcp__aw__send_message" in content
+        assert "send_message" in content
+        assert "mcp__aw__" not in content
 
     def test_messaging_s_does_not_contain_bash_send(self) -> None:
         """messaging_s.md must NOT contain 'bash send' (legacy CLI approach removed)."""
