@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from core.anima import DigitalAnima
-from core.exceptions import ExecutionError, MemoryWriteError, ProcessError, AnimaNotRunningError  # noqa: F401
+from core.exceptions import AnimaNotRunningError, ExecutionError, MemoryWriteError, ProcessError  # noqa: F401
 from core.i18n import t
 from core.memory.streaming_journal import StreamingJournal
 from core.supervisor.inbox_rate_limiter import InboxRateLimiter

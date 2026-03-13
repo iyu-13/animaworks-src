@@ -22,7 +22,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from core.exceptions import IPCConnectionError, ProcessError, AnimaNotRunningError  # noqa: F401
+from core.exceptions import AnimaNotRunningError, IPCConnectionError, ProcessError
 from core.supervisor.ipc import IPCClient, IPCRequest, IPCResponse
 from core.time_utils import ensure_aware, now_local
 
@@ -276,7 +276,7 @@ class ProcessHandle:
 
         try:
             return await self.ipc_client.send_request(request, timeout=timeout)
-        except RuntimeError:
+        except IPCConnectionError:
             if self.process and self.process.poll() is not None:
                 self.state = ProcessState.FAILED
             raise
@@ -329,7 +329,7 @@ class ProcessHandle:
             async for response in self.ipc_client.send_request_stream(request, timeout=timeout):
                 chunk_count += 1
                 yield response
-        except RuntimeError as e:
+        except IPCConnectionError as e:
             if self.process and self.process.poll() is not None:
                 self.state = ProcessState.FAILED
                 logger.error(

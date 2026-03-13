@@ -18,8 +18,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from core.i18n import t
 from core.exceptions import ToolExecutionError
+from core.i18n import t
 
 if TYPE_CHECKING:
     from core.anima import DigitalAnima
@@ -437,7 +437,6 @@ class PendingTaskExecutor:
                             try:
                                 from core.execution._sanitize import ORIGIN_ANIMA
                                 from core.i18n import t
-from core.exceptions import ToolExecutionError
 
                                 notify_text = t(
                                     "pending_executor.task_fail_notify",
@@ -503,7 +502,6 @@ from core.exceptions import ToolExecutionError
                         try:
                             from core.execution._sanitize import ORIGIN_ANIMA
                             from core.i18n import t
-from core.exceptions import ToolExecutionError
 
                             notify_text = t(
                                 "pending_executor.task_fail_notify",
@@ -906,7 +904,6 @@ from core.exceptions import ToolExecutionError
                 try:
                     from core.execution._sanitize import ORIGIN_ANIMA
                     from core.i18n import t
-from core.exceptions import ToolExecutionError
 
                     notify_text = t(
                         "pending_executor.task_fail_notify",

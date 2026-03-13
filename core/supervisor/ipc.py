@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from core.exceptions import IPCConnectionError  # noqa: F401
+from core.exceptions import IPCConnectionError
 
 logger = logging.getLogger(__name__)
 
