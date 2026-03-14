@@ -524,7 +524,7 @@ class CodexSDKExecutor(BaseExecutor):
                 _clear_thread_id(self._anima_dir, session_type)
         thread = codex.start_thread(
             {
-                "working_directory": str(self._anima_dir),
+                "working_directory": str(self._task_cwd or self._anima_dir),
                 "skip_git_repo_check": True,
             }
         )

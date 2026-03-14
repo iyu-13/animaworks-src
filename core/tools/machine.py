@@ -502,7 +502,7 @@ def get_tool_schemas() -> list[dict[str, Any]]:
                     },
                     "working_directory": {
                         "type": "string",
-                        "description": t("machine.schema.working_directory"),
+                        "description": t("machine.schema.working_directory_with_alias"),
                     },
                     "background": {
                         "type": "boolean",
@@ -567,7 +567,16 @@ def dispatch(name: str, args: dict[str, Any]) -> str:
         return _handle_list_engines()
 
     instruction = args.get("instruction", "")
-    working_directory = args.get("working_directory", "")
+    working_directory_raw = args.get("working_directory", "")
+    if working_directory_raw:
+        try:
+            from core.workspace import resolve_workspace
+
+            working_directory = str(resolve_workspace(working_directory_raw))
+        except ValueError as e:
+            return json.dumps({"error": str(e)}, ensure_ascii=False)
+    else:
+        working_directory = ""
     background = args.get("background", False)
     model = args.get("model")
     timeout = args.get("timeout")

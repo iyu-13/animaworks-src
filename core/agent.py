@@ -149,6 +149,17 @@ class AgentCore(
         """Inject a callback invoked when heartbeat.md or cron.md is modified."""
         self._tool_handler.on_schedule_changed = fn
 
+    def set_task_cwd(self, cwd: Path | None) -> None:
+        """Set the working directory for the next TaskExec session.
+
+        When set, execution engines use this instead of anima_dir as cwd.
+        Call with None to reset after task completion.
+        """
+        if hasattr(self._executor, "set_task_cwd"):
+            self._executor.set_task_cwd(cwd)
+        if hasattr(self._tool_handler, "set_task_cwd"):
+            self._tool_handler.set_task_cwd(cwd)
+
     def drain_notifications(self) -> list[dict[str, Any]]:
         """Return and clear pending notification events from ToolHandler."""
         return self._tool_handler.drain_notifications()

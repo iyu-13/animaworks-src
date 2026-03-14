@@ -512,6 +512,7 @@ class AnimaWorksConfig(BaseModel):
     voice: VoiceConfig = VoiceConfig()
     housekeeping: HousekeepingConfig = HousekeepingConfig()
     machine: MachineConfig = MachineConfig()
+    workspaces: dict[str, str] = {}  # alias → absolute path
     activity_level: int = Field(
         default=100,
         ge=10,

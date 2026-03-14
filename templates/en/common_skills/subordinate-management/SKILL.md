@@ -106,8 +106,11 @@ animaworks anima audit --all --since 09:00  # All animas since 9:00 today
 ```
 delegate_task(name="aoi", instruction="Summarize weekly report", deadline="1d", summary="Weekly report creation")
 # name, instruction, deadline are required. summary is optional (defaults to first 100 chars of instruction)
+# Specify workspace to have the delegate work in that workspace (see workspace-manager skill)
 task_tracker(status="active")      # Check progress of delegated tasks (status: all / active / completed)
 ```
+
+For assigning workspaces to subordinates (primary working directory), see the `workspace-manager` skill.
 
 ## Permissions
 

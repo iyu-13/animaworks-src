@@ -462,7 +462,7 @@ class TestDispatch:
                 },
             )
         )
-        assert result["success"] is False
+        assert "error" in result
 
     def test_engine_not_found(self, tmp_path):
         with patch("core.tools.machine.shutil.which", return_value=None):

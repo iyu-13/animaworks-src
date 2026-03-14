@@ -737,6 +737,16 @@ class OrgToolsMixin:
         summary = args.get("summary", "") or instruction[:100]
         deadline = args.get("deadline", "")
 
+        workspace_raw = args.get("workspace", "")
+        resolved_wd = ""
+        if workspace_raw:
+            try:
+                from core.workspace import resolve_workspace
+
+                resolved_wd = str(resolve_workspace(workspace_raw))
+            except ValueError as e:
+                return _error_result("InvalidArguments", f"Workspace resolution failed: {e}")
+
         if not target_name:
             return _error_result("InvalidArguments", "name is required")
         if not instruction:
@@ -786,6 +796,7 @@ class OrgToolsMixin:
             "submitted_at": datetime.now(UTC).isoformat(),
             "reply_to": self._anima_name,
             "source": "delegation",
+            "working_directory": resolved_wd,
         }
         pending_dir = target_dir / "state" / "pending"
         pending_dir.mkdir(parents=True, exist_ok=True)

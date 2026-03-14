@@ -840,6 +840,7 @@ _EXPECTED_FILES = [
     "operations/task-board-guide.md",
     "operations/task-management.md",
     "operations/tool-usage-overview.md",
+    "operations/workspace-guide.md",
     "organization/hierarchy-rules.md",
     "organization/roles.md",
     "security/prompt-injection-awareness.md",

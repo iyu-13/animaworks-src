@@ -376,7 +376,7 @@ class FileToolsMixin:
                     capture_output=True,
                     text=True,
                     timeout=timeout,
-                    cwd=str(self._anima_dir),
+                    cwd=str(self._task_cwd or self._anima_dir),
                     executable="/bin/bash",
                 )
             else:
@@ -390,7 +390,7 @@ class FileToolsMixin:
                     capture_output=True,
                     text=True,
                     timeout=timeout,
-                    cwd=str(self._anima_dir),
+                    cwd=str(self._task_cwd or self._anima_dir),
                 )
             output = proc.stdout
             if proc.stderr:

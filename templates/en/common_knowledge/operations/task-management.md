@@ -56,6 +56,7 @@ submit_tasks(batch_id="human-20260313", tasks=[
 | `tasks[].description` | MUST | Original instruction text (include quoted text when delegating) |
 | `tasks[].parallel` | MAY | `true` for parallel execution (recommended `true` for single tasks) |
 | `tasks[].depends_on` | MAY | Array of predecessor task IDs |
+| `tasks[].workspace` | MAY | Working directory. Workspace alias (e.g., `aischreiber`) makes TaskExec run in that directory. Omitted = Anima default |
 
 - When receiving instructions from a human, always register with `submit_tasks` (MUST)
 - Human-origin tasks must be processed with highest priority (MUST)
@@ -392,6 +393,7 @@ submit_tasks(batch_id="build-20260301", tasks=[
 | `tasks[].description` | MUST | Work content |
 | `tasks[].parallel` | MAY | `true` for parallel execution (default: `false`) |
 | `tasks[].depends_on` | MAY | Array of predecessor task IDs |
+| `tasks[].workspace` | MAY | Working directory. Workspace alias makes TaskExec run in that directory |
 | `tasks[].acceptance_criteria` | MAY | Array of completion criteria |
 | `tasks[].constraints` | MAY | Array of constraints |
 | `tasks[].file_paths` | MAY | Array of related file paths |
@@ -452,6 +454,7 @@ delegate_task(name="dave", instruction="Run API test and report results", deadli
 | `instruction` | MUST | Task instruction content |
 | `deadline` | MUST | Deadline. Relative format `30m` / `2h` / `1d` or ISO8601 |
 | `summary` | MAY | One-line task summary (defaults to first 100 chars of instruction if omitted) |
+| `workspace` | MAY | Working directory. Workspace alias makes the delegate work in that directory |
 
 ### Tracking Delegated Tasks
 

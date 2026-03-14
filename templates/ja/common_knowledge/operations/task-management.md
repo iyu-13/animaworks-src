@@ -57,6 +57,7 @@ submit_tasks(batch_id="human-20260313", tasks=[
 | `tasks[].description` | MUST | 元の指示文（委任時は原文引用を含める） |
 | `tasks[].parallel` | MAY | `true` で並列実行可能（単一タスクでは `true` 推奨） |
 | `tasks[].depends_on` | MAY | 先行タスクIDの配列 |
+| `tasks[].workspace` | MAY | 作業ディレクトリ。ワークスペースエイリアス（例: `aischreiber`）を指定すると TaskExec がそのディレクトリで実行する。省略時は Anima のデフォルト |
 
 - 人間からの指示を受けたら、必ず `submit_tasks` でタスクキューに登録する（MUST）
 - 人間由来タスク（source=human 相当）は最優先で処理する（MUST）
@@ -395,6 +396,7 @@ submit_tasks(batch_id="build-20260301", tasks=[
 | `tasks[].description` | MUST | 作業内容 |
 | `tasks[].parallel` | MAY | `true` で並列実行可能（デフォルト: `false`） |
 | `tasks[].depends_on` | MAY | 先行タスクIDの配列 |
+| `tasks[].workspace` | MAY | 作業ディレクトリ。ワークスペースエイリアスを指定すると TaskExec がそのディレクトリで実行する |
 | `tasks[].acceptance_criteria` | MAY | 完了条件の配列 |
 | `tasks[].constraints` | MAY | 制約の配列 |
 | `tasks[].file_paths` | MAY | 関連ファイルパスの配列 |
@@ -455,6 +457,7 @@ delegate_task(name="dave", instruction="API テストを実施して結果を報
 | `instruction` | MUST | タスクの指示内容 |
 | `deadline` | MUST | 期限。相対形式 `30m` / `2h` / `1d` または ISO8601 |
 | `summary` | MAY | タスクの1行要約（省略時は instruction の先頭100文字） |
+| `workspace` | MAY | 作業ディレクトリ。ワークスペースエイリアスを指定すると委譲先がそのディレクトリで作業する |
 
 ### 委譲タスクの追跡
 

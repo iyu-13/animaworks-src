@@ -168,6 +168,7 @@ def _intercept_task_to_pending(
         "submitted_by": "self_task_intercept",
         "submitted_at": datetime.now(UTC).isoformat(),
         "reply_to": anima_dir.name,
+        "working_directory": "",
     }
 
     pending_dir = anima_dir / "state" / "pending"
@@ -200,6 +201,7 @@ def _intercept_task_to_pending(
                     "constraints": [],
                     "file_paths": [],
                     "reply_to": anima_dir.name,
+                    "working_directory": "",
                 },
             },
         )
@@ -373,6 +375,7 @@ def _intercept_task_to_delegation(
         "submitted_at": datetime.now(UTC).isoformat(),
         "reply_to": my_name,
         "source": "delegation",
+        "working_directory": "",
     }
     pending_dir = target_dir / "state" / "pending"
     pending_dir.mkdir(parents=True, exist_ok=True)

@@ -1624,6 +1624,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         "ja": "期限（相対形式: '30m', '2h', '1d' または ISO8601）",
         "en": "Deadline (relative format: '30m', '2h', '1d' or ISO8601)",
     },
+    "schema.delegate_task.workspace": {
+        "ja": "ワークスペースエイリアスまたはalias#hash。部下がこのディレクトリで作業する",
+        "en": "Workspace alias or alias#hash. The subordinate will work in this directory",
+    },
     "schema.delegate_task.desc": {
         "ja": "直属部下にタスクを委譲する。部下のタスクキューに追加し、state/pending/ に書き出して即時実行をトリガーする。同時にDMで指示を送信。自分側にも追跡用エントリが作成される。直属部下のみ操作可能。",
         "en": "Delegate a task to a direct subordinate. Adds to the subordinate's task queue and writes to state/pending/ to trigger immediate execution. Also sends a DM with instructions. A tracking entry is created on your side. Only direct subordinates can be targeted.",
@@ -2587,6 +2591,35 @@ _STRINGS: dict[str, dict[str, str]] = {
     "machine.schema.timeout": {
         "ja": "タイムアウト秒数。同期時デフォルト600、非同期時デフォルト1800",
         "en": "Timeout in seconds. Default 600 for sync, 1800 for async",
+    },
+    # ── Workspace ─────────────────────────────────────────────
+    "workspace.dir_not_found": {
+        "ja": "ワークスペースディレクトリ '{path}' が存在しません。",
+        "en": "Workspace directory '{path}' does not exist.",
+    },
+    "workspace.not_found": {
+        "ja": "ワークスペース '{alias}' が見つかりません。エイリアス、ハッシュ、または絶対パスを確認してください。",
+        "en": "Workspace '{alias}' not found. Check the alias, hash, or absolute path.",
+    },
+    "workspace.registered": {
+        "ja": "ワークスペースを登録しました: {qualified} → {path}",
+        "en": "Workspace registered: {qualified} → {path}",
+    },
+    "workspace.removed": {
+        "ja": "ワークスペース '{alias}' を削除しました。",
+        "en": "Workspace '{alias}' removed.",
+    },
+    "workspace.resolve_error": {
+        "ja": "ワークスペースの解決に失敗しました: {error}",
+        "en": "Failed to resolve workspace: {error}",
+    },
+    "pending_executor.workspace_not_specified": {
+        "ja": "(指定なし)",
+        "en": "(not specified)",
+    },
+    "machine.schema.working_directory_with_alias": {
+        "ja": "作業ディレクトリ。絶対パスまたはワークスペースエイリアス（例: aischreiber, aischreiber#3af4be6e）を指定可能",
+        "en": "Working directory. Accepts absolute path or workspace alias (e.g. aischreiber, aischreiber#3af4be6e)",
     },
 }
 

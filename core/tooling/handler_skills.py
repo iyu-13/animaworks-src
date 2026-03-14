@@ -391,6 +391,7 @@ class SkillsToolsMixin:
             "submitted_by": self._anima_name,
             "submitted_at": now_iso(),
             "reply_to": task_desc_meta.get("reply_to", self._anima_name),
+            "working_directory": task_desc_meta.get("working_directory", ""),
         }
 
         pending_dir = self._anima_dir / "state" / "pending"
@@ -480,6 +481,16 @@ class SkillsToolsMixin:
 
         written: list[str] = []
         for t in tasks:
+            workspace_raw = t.get("workspace", "")
+            resolved_wd = ""
+            if workspace_raw:
+                try:
+                    from core.workspace import resolve_workspace
+
+                    resolved_wd = str(resolve_workspace(workspace_raw))
+                except ValueError as e:
+                    return _error_result("InvalidArguments", f"Workspace resolution failed: {e}")
+
             task_desc = {
                 "task_type": "llm",
                 "task_id": t["task_id"],
@@ -495,6 +506,7 @@ class SkillsToolsMixin:
                 "submitted_by": self._anima_name,
                 "submitted_at": submitted_at,
                 "reply_to": t.get("reply_to", self._anima_name),
+                "working_directory": resolved_wd,
             }
 
             # Layer 1: Write JSON to state/pending/
@@ -526,6 +538,7 @@ class SkillsToolsMixin:
                             "file_paths": t.get("file_paths", []),
                             "context": t.get("context", ""),
                             "reply_to": t.get("reply_to", self._anima_name),
+                            "working_directory": resolved_wd,
                         },
                     },
                 )

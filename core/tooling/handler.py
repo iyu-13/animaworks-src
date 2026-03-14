@@ -138,6 +138,9 @@ class ToolHandler(
         self._session_origin: str = ""
         self._session_origin_chain: list[str] = []
 
+        # ── TaskExec CWD override ──
+        self._task_cwd: Path | None = None
+
         # ── Session trust tracking (security: min trust across all tools used) ──
         # 2 = trusted, 1 = medium, 0 = untrusted; default trusted (no tools used yet)
         self._min_trust_seen: int = 2
@@ -289,6 +292,10 @@ class ToolHandler(
     def set_pending_executor_wake(self, wake_fn: Callable[[], Any]) -> None:
         """Attach the PendingTaskExecutor's wake callback for submit_tasks."""
         self._pending_executor_wake = wake_fn
+
+    def set_task_cwd(self, cwd: Path | None) -> None:
+        """Set override cwd for TaskExec command execution."""
+        self._task_cwd = cwd
 
     def _is_state_file(self, path: Path) -> bool:
         """Return True if *path* resolves to state/current_task.md or state/pending.md."""

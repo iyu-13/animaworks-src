@@ -64,7 +64,7 @@ animaworks-tool machine run --background "instruction" -d /path/to/workdir
 |-----------|----------|-------------|
 | engine | YES | Engine name (check `--help` for available engines) |
 | instruction | YES | Task instruction. Specify goal, target, constraints, expected output |
-| working_directory | YES | Absolute path to working directory |
+| working_directory | YES | Working directory. Absolute path, or workspace alias (e.g., `aischreiber` / `aischreiber#3af4be6e`) |
 | background | no | true for async execution (default: false) |
 | model | no | Model override (engine default if omitted) |
 | timeout | no | Timeout in seconds (sync: 600, async: 1800) |

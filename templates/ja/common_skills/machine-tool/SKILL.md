@@ -55,7 +55,7 @@ animaworks-tool machine run -t 300 "指示" -d /path/to/workdir
 |-----------|------|------|
 | engine | YES | エンジン名（`--help` で利用可能なエンジンを確認） |
 | instruction | YES | 作業指示。ゴール・対象・制約・期待出力を明記 |
-| working_directory | YES | 作業ディレクトリの絶対パス |
+| working_directory | YES | 作業ディレクトリ。絶対パス、またはワークスペースエイリアス（例: `aischreiber` / `aischreiber#3af4be6e`） |
 | background | no | true で非同期実行（デフォルト: false） |
 | model | no | モデル上書き（省略時はエンジンのデフォルト） |
 | timeout | no | タイムアウト秒数（同期: 600、非同期: 1800） |

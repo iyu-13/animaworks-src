@@ -463,8 +463,13 @@ class BaseExecutor(ABC):
         self._model_config = model_config
         self._anima_dir = anima_dir
         self._interrupt_event = interrupt_event
+        self._task_cwd: Path | None = None
         self.reminder_queue: SystemReminderQueue = SystemReminderQueue()
         self._hb_soft_timeout_s: int = self._load_hb_soft_timeout()
+
+    def set_task_cwd(self, cwd: Path | None) -> None:
+        """Set override cwd for TaskExec sessions."""
+        self._task_cwd = cwd
 
     def _load_hb_soft_timeout(self) -> int:
         """Load heartbeat soft_timeout_seconds from config (cached at init)."""

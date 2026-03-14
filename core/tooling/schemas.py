@@ -884,6 +884,10 @@ def _supervisor_tools() -> list[dict[str, Any]]:
                         "type": "string",
                         "description": _t("schema.delegate_task.deadline"),
                     },
+                    "workspace": {
+                        "type": "string",
+                        "description": _t("schema.delegate_task.workspace"),
+                    },
                 },
                 "required": ["name", "instruction", "deadline"],
             },
@@ -1237,6 +1241,11 @@ SUBMIT_TASKS_TOOLS: list[dict[str, Any]] = [
                             "reply_to": {
                                 "type": "string",
                                 "description": "Name of the Anima to notify on completion (default: submitter)",
+                            },
+                            "workspace": {
+                                "type": "string",
+                                "description": "Workspace alias or alias#hash for the task's working directory",
+                                "default": "",
                             },
                         },
                         "required": ["task_id", "title", "description"],

@@ -38,6 +38,7 @@ then read it with `read_memory_file(path="common_knowledge/...")`.
 | Want to use the task board (human-facing dashboard) | `operations/task-board-guide.md` |
 | Don't know how to configure Heartbeat or cron | `operations/heartbeat-cron-guide.md` |
 | Don't know how to run long-running tools | `operations/background-tasks.md` |
+| Don't know how to register or use workspaces | `operations/workspace-guide.md` |
 | Want to change project settings | `reference/operations/project-setup.md` (→ reference) |
 
 ### Tools, Models & Technical
@@ -121,6 +122,7 @@ then read it with `read_memory_file(path="common_knowledge/...")`.
 | `heartbeat-cron-guide.md` | Scheduling and running Heartbeat and cron (how Heartbeat works, cron definitions, self-updates) |
 | `tool-usage-overview.md` | Tool usage overview (S/A/B mode tool sets, internal/external tools, how to call them) |
 | `background-tasks.md` | Background task guide (using submit, when to use it, how to get results) |
+| `workspace-guide.md` | Workspace guide (concept, registration, tool usage, troubleshooting) |
 | `model-guide.md` | → Moved to `reference/operations/model-guide.md`. Model selection and configuration |
 | `mode-s-auth-guide.md` | → Moved to `reference/operations/mode-s-auth-guide.md`. Mode S authentication guide |
 | `voice-chat-guide.md` | → Moved to `reference/operations/voice-chat-guide.md`. Voice chat guide |
@@ -179,6 +181,7 @@ then read it with `read_memory_file(path="common_knowledge/...")`.
 | tool, animaworks-tool, MCP, skill | `operations/tool-usage-overview.md` |
 | execution mode, S-mode, A-mode, B-mode, C-mode | `operations/tool-usage-overview.md` |
 | background, submit, long-running tool | `operations/background-tasks.md` |
+| workspace, working_directory, project directory | `operations/workspace-guide.md` |
 | model, models.json, credential, set-model, context window | `reference/operations/model-guide.md` |
 | background_model, background model, cost optimization | `reference/operations/model-guide.md` |
 | Mode S, authentication, API direct, Bedrock, Vertex AI, Max plan | `reference/operations/mode-s-auth-guide.md` |

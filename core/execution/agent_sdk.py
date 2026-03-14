@@ -428,7 +428,7 @@ class AgentSDKExecutor(BaseExecutor):
             system_prompt=prompt_kwarg,
             allowed_tools=_allowed_tools,
             permission_mode="acceptEdits",
-            cwd=str(self._anima_dir),
+            cwd=str(self._task_cwd or self._anima_dir),
             max_turns=max_turns,
             model=self._resolve_agent_sdk_model(),
             env=self._build_env(),

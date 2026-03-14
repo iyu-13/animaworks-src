@@ -667,17 +667,22 @@ class PendingTaskExecutor:
         if dep_context:
             full_context = f"{full_context}\n\n{dep_context}"
 
+        working_directory = task_desc.get("working_directory", "")
         prompt = load_prompt(
             "task_exec",
             task_id=task_id,
             title=title,
             submitted_by=submitted_by,
+            workspace=working_directory or t("pending_executor.workspace_not_specified"),
             description=description,
             context=full_context,
             acceptance_criteria=criteria_text,
             constraints=constraints_text,
             file_paths=paths_text,
         )
+
+        if working_directory:
+            self._anima.agent.set_task_cwd(Path(working_directory))
 
         if "machine" in description.lower():
             prompt += "\n\n" + t("pending_executor.machine_directive")
@@ -707,6 +712,7 @@ class PendingTaskExecutor:
                     journal.finalize(summary=result_summary[:500])
         finally:
             journal.close()
+            self._anima.agent.set_task_cwd(None)
 
         if not result_summary:
             result_summary = accumulated_text[:500] or t("pending_executor.task_completed")

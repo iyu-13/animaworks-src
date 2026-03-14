@@ -105,8 +105,11 @@ animaworks anima audit --all --since 09:00  # 全Anima、今日9時以降
 ```
 delegate_task(name="aoi", instruction="週次レポートをまとめて", deadline="1d", summary="週次レポート作成")
 # name, instruction, deadline は必須。summary は省略可（instruction の先頭100文字が使われる）
+# workspace を指定すると委譲先がそのワークスペースで作業する（workspace-manager スキル参照）
 task_tracker(status="active")      # 委譲タスクの進捗確認（status: all / active / completed）
 ```
+
+部下へのワークスペース割り当て（主な作業ディレクトリの指定）は `workspace-manager` スキルを参照すること。
 
 ## 権限
 

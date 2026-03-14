@@ -30,9 +30,11 @@ AnimaWorks のタスク管理は3つの層で構成される。
 | 書き込み元 | `submit_tasks`, `delegate_task`, SDK Task/Agent tool |
 | 読み取り元 | PendingTaskExecutor（3秒ポーリング） |
 
-タスクの完全な記述（description, acceptance_criteria, constraints, depends_on 等）を含む。
+タスクの完全な記述（description, acceptance_criteria, constraints, depends_on, workspace 等）を含む。
 PendingTaskExecutor が検出すると `processing/` に移動して実行し、完了後に削除する。
 失敗時は `failed/` に移動する。
+
+タスクに `workspace` フィールドがある場合、レジストリで解決した絶対パスが `working_directory` として TaskExec のプロンプトに注入される。省略時は Anima の injection.md の `## ワークスペース` セクション、またはデフォルト値が使われる。
 
 Anima はこの層を直接操作しない。ツール経由で間接的に書き込む。
 
