@@ -18,16 +18,10 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-ORG_DASHBOARD_JS = (
-    REPO_ROOT / "server" / "static" / "workspace" / "modules" / "org-dashboard.js"
-)
-APP_WEBSOCKET_JS = (
-    REPO_ROOT / "server" / "static" / "workspace" / "modules" / "app-websocket.js"
-)
+ORG_DASHBOARD_JS = REPO_ROOT / "server" / "static" / "workspace" / "modules" / "org-dashboard.js"
+APP_WEBSOCKET_JS = REPO_ROOT / "server" / "static" / "workspace" / "modules" / "app-websocket.js"
 STYLE_CSS = REPO_ROOT / "server" / "static" / "workspace" / "style.css"
-AVATAR_RESOLVER_JS = (
-    REPO_ROOT / "server" / "static" / "modules" / "avatar-resolver.js"
-)
+AVATAR_RESOLVER_JS = REPO_ROOT / "server" / "static" / "modules" / "avatar-resolver.js"
 
 
 # ── Message Line E2E Flow ──────────────────────
@@ -53,9 +47,9 @@ class TestMessageLineE2EFlow:
     def test_message_line_svg_structure(self):
         """SVG group contains path (trail) + circle (packet) + animateMotion."""
         assert "org-msg-line-group" in self.org_src
-        trail_match = re.search(r'class.*org-msg-trail', self.org_src)
-        packet_match = re.search(r'class.*org-msg-packet', self.org_src)
-        anim_match = re.search(r'animateMotion', self.org_src)
+        trail_match = re.search(r"class.*org-msg-trail", self.org_src)
+        packet_match = re.search(r"class.*org-msg-packet", self.org_src)
+        anim_match = re.search(r"animateMotion", self.org_src)
         assert trail_match, "Trail path missing"
         assert packet_match, "Packet circle missing"
         assert anim_match, "animateMotion missing"
@@ -81,8 +75,7 @@ class TestMessageLineE2EFlow:
             if "_svgLayer.innerHTML" in line and '""' in line:
                 found_svg_innerHTML_clear = True
         assert not found_svg_innerHTML_clear, (
-            "_svgLayer.innerHTML should not be cleared directly — "
-            "use _connectionsGroup.innerHTML instead"
+            "_svgLayer.innerHTML should not be cleared directly — use _connectionsGroup.innerHTML instead"
         )
 
     def test_zero_distance_guard(self):
@@ -202,9 +195,11 @@ class TestIntegrationConsistency:
         assert import_match, "No import from org-dashboard.js found"
         imported = [s.strip() for s in import_match.group(1).split(",")]
         for name in imported:
-            assert f"export function {name}" in self.org_src or f"export async function {name}" in self.org_src, (
-                f"{name} imported but not exported from org-dashboard.js"
-            )
+            assert (
+                f"export function {name}" in self.org_src
+                or f"export async function {name}" in self.org_src
+                or f"export const {name}" in self.org_src
+            ), f"{name} imported but not exported from org-dashboard.js"
 
     def test_org_dashboard_imports_expression_candidates(self):
         """org-dashboard.js should import bustupExpressionCandidates."""
