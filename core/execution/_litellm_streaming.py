@@ -445,6 +445,13 @@ class StreamingMixin:
                     )
                 if tracker and usage_data:
                     tracker.update_from_usage(usage_data)
+                    yield {
+                        "type": "context_update",
+                        "context_usage_ratio": tracker.usage_ratio,
+                        "input_tokens": tracker._input_tokens,
+                        "context_window": tracker.context_window,
+                        "threshold": tracker.threshold,
+                    }
 
                     if tracker.threshold_exceeded:
                         try:
@@ -719,6 +726,13 @@ class StreamingMixin:
                     usage_dict = {"input_tokens": _inp_ol, "output_tokens": _out_ol}
                     if tracker:
                         tracker.update_from_usage(usage_dict)
+                        yield {
+                            "type": "context_update",
+                            "context_usage_ratio": tracker.usage_ratio,
+                            "input_tokens": tracker._input_tokens,
+                            "context_window": tracker.context_window,
+                            "threshold": tracker.threshold,
+                        }
 
                     if tracker and tracker.threshold_exceeded:
                         try:

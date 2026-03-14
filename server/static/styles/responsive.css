@@ -703,8 +703,12 @@ body.sidebar-collapsed .sidebar-collapse-btn {
   }
 
   .chat-send-btn,
-  .chat-attach-btn,
-  .chat-queue-btn {
+  .chat-attach-btn {
+    width: 32px;
+    height: 32px;
+  }
+
+  .context-ring-wrap {
     width: 32px;
     height: 32px;
   }

@@ -873,6 +873,13 @@ class AgentSDKExecutor(BaseExecutor):
                             tracker.update_from_message_start(usage)
                             usage_acc.cache_read_tokens += usage.get("cache_read_input_tokens", 0)
                             usage_acc.cache_write_tokens += usage.get("cache_creation_input_tokens", 0)
+                            yield {
+                                "type": "context_update",
+                                "context_usage_ratio": tracker.usage_ratio,
+                                "input_tokens": tracker._input_tokens,
+                                "context_window": tracker.context_window,
+                                "threshold": tracker.threshold,
+                            }
 
                     elif event_type == "content_block_start":
                         block = event.get("content_block", {})

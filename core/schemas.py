@@ -185,6 +185,8 @@ class CycleResult(BaseModel):
     duration_ms: int = 0
     timestamp: datetime = Field(default_factory=now_local)
     context_usage_ratio: float = 0.0
+    context_window: int = 0
+    context_threshold: float = 0.0
     session_chained: bool = False
     total_turns: int = 0
     tool_call_records: list[ToolCallRecordDict] = Field(default_factory=list)

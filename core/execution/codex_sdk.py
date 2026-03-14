@@ -753,6 +753,13 @@ class CodexSDKExecutor(BaseExecutor):
                         usage_acc.input_tokens = ud.get("input_tokens", 0) or ud.get("prompt_tokens", 0) or 0
                         usage_acc.output_tokens = ud.get("output_tokens", 0) or ud.get("completion_tokens", 0) or 0
                         tracker.update(ud, include_output_in_ratio=True)
+                        yield {
+                            "type": "context_update",
+                            "context_usage_ratio": tracker.usage_ratio,
+                            "input_tokens": tracker._input_tokens,
+                            "context_window": tracker.context_window,
+                            "threshold": tracker.threshold,
+                        }
                     saved_tid = _get_thread_id(thread)
                     if saved_tid:
                         _save_thread_id(self._anima_dir, saved_tid, session_type)

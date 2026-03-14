@@ -29,9 +29,35 @@ export function createStreamingController(ctx) {
     sendBtn.innerHTML = SEND_BTN_ICONS[mode] || SEND_BTN_ICONS.send;
   }
 
+  // ── Context Ring Indicator ──────────────────────────────
+  const RING_CIRCUMFERENCE = 97.4; // 2 * PI * 15.5
+
+  function updateContextRing(data) {
+    const ring = $("chatContextRing");
+    if (!ring) return;
+    const ratio = data.contextUsageRatio || 0;
+    const inputTokens = data.inputTokens || 0;
+    const contextWindow = data.contextWindow || 0;
+    const fg = ring.querySelector(".context-ring-fg");
+    if (!fg) return;
+
+    const offset = RING_CIRCUMFERENCE * (1 - Math.min(ratio, 1));
+    fg.style.strokeDashoffset = offset;
+
+    let colorClass = "ctx-green";
+    if (ratio >= 0.85) colorClass = "ctx-red";
+    else if (ratio >= 0.70) colorClass = "ctx-yellow";
+    ring.className = `context-ring-wrap ${colorClass}`;
+
+    const pct = Math.round(ratio * 100);
+    const inK = inputTokens >= 1000 ? `${(inputTokens / 1000).toFixed(0)}k` : String(inputTokens);
+    const winK = contextWindow >= 1000 ? `${(contextWindow / 1000).toFixed(0)}k` : String(contextWindow);
+    ring.title = contextWindow ? `${pct}%  ${inK} / ${winK}` : `${pct}%`;
+    ring.setAttribute("data-ratio", ratio);
+  }
+
   function updateSendButton() {
     const sendBtn = $("chatPageSendBtn");
-    const queueBtn = $("chatPageQueueBtn");
     const inputVal = $("chatPageInput")?.value?.trim() || "";
     const hasInput = inputVal.length > 0;
     const name = state.selectedAnima;
@@ -40,7 +66,6 @@ export function createStreamingController(ctx) {
     const isChatStreaming = streamCtx && streamCtx.thread === tid;
     const pendingQueue = name ? mgr.getPendingQueue(name, tid) : [];
 
-    if (queueBtn) queueBtn.disabled = !hasInput || !name;
     if (!sendBtn) return;
 
     sendBtn.classList.remove("stop", "interrupt");
@@ -434,6 +459,7 @@ export function createStreamingController(ctx) {
           streamingMsg.thinking = false;
           renderBubble(streamingMsg, "thinking");
         },
+        onContextUpdate: (ctxData) => { updateContextRing(ctxData); },
         onError: ({ message: errorMsg }) => {
           logger.debug(`onError: ${errorMsg}`);
           if (!streamingMsg?.text) {
@@ -454,7 +480,7 @@ export function createStreamingController(ctx) {
           }
           finalizeStreamError(streamingMsg, errorMsg);
         },
-        onDone: ({ summary, images: doneImages, thinkingSummary }) => {
+        onDone: ({ summary, images: doneImages, thinkingSummary, contextUsageRatio, inputTokens, contextWindow, contextThreshold }) => {
           if (_textAnimator) _textAnimator.flush();
           if (_thinkingAnimator) { _thinkingAnimator.flush(); _thinkingAnimator = null; }
           if (!streamingMsg) return;
@@ -469,6 +495,9 @@ export function createStreamingController(ctx) {
           streamingMsg.streaming = false;
           streamingMsg.activeTool = null;
           streamingMsg.heartbeatRelay = false; streamingMsg.heartbeatText = ""; streamingMsg.afterHeartbeatRelay = false;
+          if (contextUsageRatio || contextWindow) {
+            updateContextRing({ contextUsageRatio, inputTokens, contextWindow, threshold: contextThreshold });
+          }
           renderFull();
           ctx.controllers.activity.addLocalActivity("chat", name, `${t("chat.response_prefix")} ${streamingMsg.text.slice(0, 100)}`);
           ctx.controllers.renderer.markResponseComplete(name, tid);
@@ -622,7 +651,8 @@ export function createStreamingController(ctx) {
           if (_resumeThinkingAnimator) { _resumeThinkingAnimator.flush(); _resumeThinkingAnimator = null; }
           if (streamingMsg) { streamingMsg.text += `\n${t("chat.error_prefix")} ${errorMsg}`; delete streamingMsg._displayText; delete streamingMsg._displayThinkingText; streamingMsg.streaming = false; if (state.selectedAnima === animaName) ctx.controllers.renderer.renderChat(smartScroll()); }
         },
-        onDone: ({ summary, images, thinkingSummary }) => {
+        onContextUpdate: (ctxData) => { updateContextRing(ctxData); },
+        onDone: ({ summary, images, thinkingSummary, contextUsageRatio, inputTokens, contextWindow, contextThreshold }) => {
           if (_resumeAnimator) _resumeAnimator.flush();
           if (_resumeThinkingAnimator) { _resumeThinkingAnimator.flush(); _resumeThinkingAnimator = null; }
           if (streamingMsg) {
@@ -634,6 +664,9 @@ export function createStreamingController(ctx) {
               streamingMsg.thinkingText = thinkingSummary;
             }
             streamingMsg.streaming = false; streamingMsg.activeTool = null;
+            if (contextUsageRatio || contextWindow) {
+              updateContextRing({ contextUsageRatio, inputTokens, contextWindow, threshold: contextThreshold });
+            }
             if (state.selectedAnima === animaName) ctx.controllers.renderer.renderChat(smartScroll());
             ctx.controllers.renderer.markResponseComplete(animaName, tid);
           }
@@ -676,6 +709,6 @@ export function createStreamingController(ctx) {
     submitChat, sendChat, resumeActiveStream,
     stopStreaming, addToQueue,
     showPendingIndicator, hidePendingIndicator,
-    updateSendButton,
+    updateSendButton, updateContextRing,
   };
 }

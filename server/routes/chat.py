@@ -289,6 +289,17 @@ def _handle_chunk(
     if event_type == "thinking_end":
         return _format_sse("thinking_end", {}), ""
 
+    if event_type == "context_update":
+        return _format_sse(
+            "context_update",
+            {
+                "context_usage_ratio": chunk.get("context_usage_ratio", 0),
+                "input_tokens": chunk.get("input_tokens", 0),
+                "context_window": chunk.get("context_window", 0),
+                "threshold": chunk.get("threshold", 0),
+            },
+        ), ""
+
     if event_type == "notification_sent":
         # Broadcast notification to all WebSocket clients (with queue support)
         if request:
@@ -369,6 +380,13 @@ def _chunk_to_event(chunk: dict[str, Any]) -> tuple[str, dict[str, Any]] | None:
         return "thinking_delta", {"text": chunk.get("text", "")}
     if event_type == "thinking_end":
         return "thinking_end", {}
+    if event_type == "context_update":
+        return "context_update", {
+            "context_usage_ratio": chunk.get("context_usage_ratio", 0),
+            "input_tokens": chunk.get("input_tokens", 0),
+            "context_window": chunk.get("context_window", 0),
+            "threshold": chunk.get("threshold", 0),
+        }
     if event_type == "cycle_done":
         cycle_result = chunk.get("cycle_result", {})
         response_text = cycle_result.get("summary", "")

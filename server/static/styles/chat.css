@@ -1437,46 +1437,42 @@
   color: var(--aw-color-error);
 }
 
-/* Queue add button */
-.chat-queue-btn {
+/* Context ring indicator */
+.context-ring-wrap {
   width: 28px;
   height: 28px;
-  padding: 0;
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: transparent;
-  color: var(--aw-color-text-muted);
-  border: 1px solid var(--aw-color-border, #ddd);
-  border-radius: 50%;
-  font-size: 0.8rem;
-  cursor: pointer;
-  transition: all 0.15s;
-  flex-shrink: 0;
+  cursor: default;
+  position: relative;
 }
 
-.chat-queue-icon {
-  width: 12px;
-  height: 12px;
+.context-ring {
+  width: 22px;
+  height: 22px;
   display: block;
-  stroke: currentColor;
-  stroke-width: 2.2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  fill: none;
-  pointer-events: none;
 }
 
-.chat-queue-btn:hover:not(:disabled),
-.chat-queue-btn:active:not(:disabled) {
-  border-color: var(--aw-color-accent);
-  color: var(--aw-color-accent);
-}
-
-.chat-queue-btn:disabled {
+.context-ring-bg {
+  stroke: var(--aw-color-border, #e5e7eb);
   opacity: 0.4;
-  cursor: not-allowed;
 }
+
+.context-ring-fg {
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.4s ease, stroke 0.3s ease;
+}
+
+.ctx-green .context-ring-fg { stroke: #86c7a0; }
+.ctx-yellow .context-ring-fg { stroke: #ddb978; }
+.ctx-red .context-ring-fg { stroke: #d98e8e; }
+
+[data-theme="dark"] .context-ring-bg { stroke: var(--aw-color-border, #374151); }
+[data-theme="dark"] .ctx-green .context-ring-fg { stroke: #6aad86; }
+[data-theme="dark"] .ctx-yellow .context-ring-fg { stroke: #c9a35c; }
+[data-theme="dark"] .ctx-red .context-ring-fg { stroke: #c47272; }
 
 /* Send button: stop mode (streaming, no pending) */
 .chat-send-btn.stop {

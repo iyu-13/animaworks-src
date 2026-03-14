@@ -193,6 +193,15 @@ async function _processStream(res, callbacks, setResponseId, setLastEventId, sig
             });
             break;
 
+          case "context_update":
+            callbacks.onContextUpdate?.({
+              contextUsageRatio: data.context_usage_ratio || 0,
+              inputTokens: data.input_tokens || 0,
+              contextWindow: data.context_window || 0,
+              threshold: data.threshold || 0,
+            });
+            break;
+
           case "done": {
             const summaryLen = (data.summary || "").length;
             const totalElapsed = ((performance.now() - streamStart) / 1000).toFixed(1);
@@ -202,6 +211,10 @@ async function _processStream(res, callbacks, setResponseId, setLastEventId, sig
               emotion: data.emotion || "neutral",
               images: data.images || data.artifacts || [],
               thinkingSummary: data.thinking_summary || null,
+              contextUsageRatio: data.context_usage_ratio || 0,
+              inputTokens: data.input_tokens || 0,
+              contextWindow: data.context_window || 0,
+              contextThreshold: data.context_threshold || 0,
             });
             break;
           }

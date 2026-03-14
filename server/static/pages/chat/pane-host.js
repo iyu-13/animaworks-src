@@ -93,11 +93,14 @@ function paneHtml() {
           ></textarea>
           <div class="chat-input-actions">
             <button type="button" class="chat-attach-btn" data-chat-id="chatPageAttachBtn" title="${t("chat.attach_image")}">+</button>
-            <button type="button" class="chat-queue-btn" data-chat-id="chatPageQueueBtn" disabled title="${t("chat.queue_add")}">
-              <svg class="chat-queue-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <path d="M12 5v14M5 12l7 7 7-7" />
+            <div class="context-ring-wrap" data-chat-id="chatContextRing" title="">
+              <svg class="context-ring" viewBox="0 0 36 36" aria-hidden="true">
+                <circle class="context-ring-bg" cx="18" cy="18" r="15.5" fill="none" stroke-width="3"/>
+                <circle class="context-ring-fg" cx="18" cy="18" r="15.5" fill="none" stroke-width="3"
+                  stroke-dasharray="97.4" stroke-dashoffset="97.4"
+                  transform="rotate(-90 18 18)"/>
               </svg>
-            </button>
+            </div>
             <div class="voice-controls-slot"></div>
             <button type="submit" class="chat-send-btn" data-chat-id="chatPageSendBtn" disabled>
               <svg class="chat-send-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
