@@ -119,14 +119,23 @@ async def chat_sse(
 # ── Server Management ─────────────────────────────────────────
 
 
-def start_server(port: int = DEFAULT_PORT) -> subprocess.Popen:
-    """Start AnimaWorks server in background, return the process."""
+def start_server(port: int = DEFAULT_PORT, runtime_dir: Path | None = None) -> subprocess.Popen:
+    """Start AnimaWorks server in background with isolated runtime.
+
+    Sets ANIMAWORKS_HOME so the server only sees SWE agents,
+    never polluting the production ~/.animaworks/.
+    """
     logger.info("Starting AnimaWorks server on port %d ...", port)
+    env = {**os.environ}
+    if runtime_dir:
+        env["ANIMAWORKS_HOME"] = str(runtime_dir)
+        logger.info("Using isolated runtime: %s", runtime_dir)
     proc = subprocess.Popen(
         [sys.executable, "-m", "main", "start", "--foreground", "--port", str(port)],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        env=env,
     )
     return proc
 
@@ -576,16 +585,18 @@ async def main_async(args: argparse.Namespace) -> int:
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Setup team if requested
+    # Setup team in isolated runtime (never touches ~/.animaworks/)
+    runtime_dir = None
     if args.setup_team:
         from swe.team_setup import setup_team
 
-        setup_team()
+        _, runtime_dir = setup_team()
+        logger.info("Isolated runtime: %s", runtime_dir)
 
-    # Start server
+    # Start server with isolated ANIMAWORKS_HOME
     server_proc = None
     if not args.no_server:
-        server_proc = start_server(args.port)
+        server_proc = start_server(args.port, runtime_dir=runtime_dir)
         if not await wait_for_server(base_url):
             if server_proc:
                 stop_server(server_proc)

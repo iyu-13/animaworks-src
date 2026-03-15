@@ -2,9 +2,7 @@
 from __future__ import annotations
 
 import json
-import shutil
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -12,18 +10,17 @@ from swe.team_setup import setup_team, teardown_team
 
 
 @pytest.fixture
-def tmp_animaworks(tmp_path):
-    """Create a temporary AnimaWorks home directory."""
-    home = tmp_path / ".animaworks"
-    home.mkdir()
-    animas = home / "animas"
-    animas.mkdir()
+def runtime_dir(tmp_path):
+    """Create a temporary isolated runtime directory."""
+    rt = tmp_path / "swe-runtime"
+    rt.mkdir()
+    (rt / "animas").mkdir()
     config = {
         "credentials": {"vllm-local": {"type": "api_key", "api_key": "dummy"}},
         "animas": {},
     }
-    (home / "config.json").write_text(json.dumps(config))
-    return home
+    (rt / "config.json").write_text(json.dumps(config))
+    return rt
 
 
 @pytest.fixture
@@ -57,92 +54,76 @@ def team_config(tmp_path):
 
 
 class TestSetupTeam:
-    def test_creates_agent_directories(self, tmp_animaworks, team_config):
-        with patch("swe.team_setup.Path.home", return_value=tmp_animaworks.parent):
-            with patch("swe.team_setup._ensure_init"):
-                names = setup_team(team_config)
+    def test_creates_agent_directories(self, runtime_dir, team_config):
+        names, _ = setup_team(team_config, runtime_dir=runtime_dir)
 
         assert set(names) == {"test-arch", "test-inv"}
-        assert (tmp_animaworks / "animas" / "test-arch").is_dir()
-        assert (tmp_animaworks / "animas" / "test-inv").is_dir()
+        assert (runtime_dir / "animas" / "test-arch").is_dir()
+        assert (runtime_dir / "animas" / "test-inv").is_dir()
 
-    def test_creates_status_json(self, tmp_animaworks, team_config):
-        with patch("swe.team_setup.Path.home", return_value=tmp_animaworks.parent):
-            with patch("swe.team_setup._ensure_init"):
-                setup_team(team_config)
+    def test_creates_status_json(self, runtime_dir, team_config):
+        setup_team(team_config, runtime_dir=runtime_dir)
 
         status = json.loads(
-            (tmp_animaworks / "animas" / "test-arch" / "status.json").read_text()
+            (runtime_dir / "animas" / "test-arch" / "status.json").read_text()
         )
         assert status["model"] == "claude-sonnet-4-6"
         assert status["enabled"] is True
         assert status["supervisor"] is None
 
-    def test_creates_identity_md(self, tmp_animaworks, team_config):
-        with patch("swe.team_setup.Path.home", return_value=tmp_animaworks.parent):
-            with patch("swe.team_setup._ensure_init"):
-                setup_team(team_config)
+    def test_creates_identity_md(self, runtime_dir, team_config):
+        setup_team(team_config, runtime_dir=runtime_dir)
 
-        identity = (tmp_animaworks / "animas" / "test-arch" / "identity.md").read_text()
+        identity = (runtime_dir / "animas" / "test-arch" / "identity.md").read_text()
         assert "Test architect" in identity
 
-    def test_creates_injection_md(self, tmp_animaworks, team_config):
-        with patch("swe.team_setup.Path.home", return_value=tmp_animaworks.parent):
-            with patch("swe.team_setup._ensure_init"):
-                setup_team(team_config)
+    def test_creates_injection_md(self, runtime_dir, team_config):
+        setup_team(team_config, runtime_dir=runtime_dir)
 
-        injection = (tmp_animaworks / "animas" / "test-inv" / "injection.md").read_text()
+        injection = (runtime_dir / "animas" / "test-inv" / "injection.md").read_text()
         assert "## Role" in injection
 
-    def test_creates_subdirectories(self, tmp_animaworks, team_config):
-        with patch("swe.team_setup.Path.home", return_value=tmp_animaworks.parent):
-            with patch("swe.team_setup._ensure_init"):
-                setup_team(team_config)
+    def test_creates_subdirectories(self, runtime_dir, team_config):
+        setup_team(team_config, runtime_dir=runtime_dir)
 
-        agent_dir = tmp_animaworks / "animas" / "test-arch"
+        agent_dir = runtime_dir / "animas" / "test-arch"
         assert (agent_dir / "state").is_dir()
         assert (agent_dir / "state" / "pending").is_dir()
         assert (agent_dir / "episodes").is_dir()
         assert (agent_dir / "knowledge").is_dir()
 
-    def test_sets_credential(self, tmp_animaworks, team_config):
-        with patch("swe.team_setup.Path.home", return_value=tmp_animaworks.parent):
-            with patch("swe.team_setup._ensure_init"):
-                setup_team(team_config)
+    def test_sets_credential(self, runtime_dir, team_config):
+        setup_team(team_config, runtime_dir=runtime_dir)
 
         status = json.loads(
-            (tmp_animaworks / "animas" / "test-inv" / "status.json").read_text()
+            (runtime_dir / "animas" / "test-inv" / "status.json").read_text()
         )
         assert status["credential"] == "vllm-local"
 
-    def test_registers_in_config(self, tmp_animaworks, team_config):
-        with patch("swe.team_setup.Path.home", return_value=tmp_animaworks.parent):
-            with patch("swe.team_setup._ensure_init"):
-                setup_team(team_config)
+    def test_registers_in_config(self, runtime_dir, team_config):
+        setup_team(team_config, runtime_dir=runtime_dir)
 
-        config = json.loads((tmp_animaworks / "config.json").read_text())
+        config = json.loads((runtime_dir / "config.json").read_text())
         assert "test-arch" in config["animas"]
         assert "test-inv" in config["animas"]
 
-    def test_idempotent(self, tmp_animaworks, team_config):
-        with patch("swe.team_setup.Path.home", return_value=tmp_animaworks.parent):
-            with patch("swe.team_setup._ensure_init"):
-                setup_team(team_config)
-                names = setup_team(team_config)
+    def test_idempotent(self, runtime_dir, team_config):
+        setup_team(team_config, runtime_dir=runtime_dir)
+        names, _ = setup_team(team_config, runtime_dir=runtime_dir)
 
         assert set(names) == {"test-arch", "test-inv"}
 
+    def test_returns_runtime_dir(self, runtime_dir, team_config):
+        _, returned_dir = setup_team(team_config, runtime_dir=runtime_dir)
+        assert returned_dir == runtime_dir
+
 
 class TestTeardownTeam:
-    def test_removes_agents(self, tmp_animaworks, team_config):
-        with patch("swe.team_setup.Path.home", return_value=tmp_animaworks.parent):
-            with patch("swe.team_setup._ensure_init"):
-                setup_team(team_config)
-                teardown_team(team_config)
+    def test_removes_runtime(self, runtime_dir, team_config):
+        setup_team(team_config, runtime_dir=runtime_dir)
+        teardown_team(team_config, runtime_dir=runtime_dir)
 
-        assert not (tmp_animaworks / "animas" / "test-arch").exists()
-        assert not (tmp_animaworks / "animas" / "test-inv").exists()
+        assert not runtime_dir.exists()
 
-    def test_noop_if_not_exists(self, tmp_animaworks, team_config):
-        with patch("swe.team_setup.Path.home", return_value=tmp_animaworks.parent):
-            teardown_team(team_config)
+    def test_noop_if_not_exists(self, tmp_path, team_config):
+        teardown_team(team_config, runtime_dir=tmp_path / "nonexistent")

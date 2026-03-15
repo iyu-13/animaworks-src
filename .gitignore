@@ -118,3 +118,7 @@ server/static/finance/
 tests/evaluation/results/
 tests/unit/experiments/
 scripts/benchmark/results/
+
+# SWE-bench evaluation
+swe/runtime/
+swe/results/

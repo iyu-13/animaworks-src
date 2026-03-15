@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
-"""Create SWE-bench evaluation team (3 Animas) in the AnimaWorks runtime directory."""
+"""Create SWE-bench evaluation team in an ISOLATED runtime directory.
+
+IMPORTANT: This creates agents under swe/runtime/ (or $SWE_RUNTIME_DIR),
+NOT in the production ~/.animaworks/. The runner sets ANIMAWORKS_HOME to
+this isolated directory before starting the server, so SWE agents never
+appear in the production environment.
+"""
 from __future__ import annotations
 
 import json
 import logging
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -11,37 +18,73 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG = Path(__file__).parent / "configs" / "team.json"
+DEFAULT_RUNTIME = Path(__file__).parent / "runtime"
 
 
-def _ensure_init() -> None:
-    """Run animaworks init if runtime dir doesn't exist."""
-    home = Path.home() / ".animaworks"
-    if not home.exists():
-        logger.info("Running animaworks init --skip-anima ...")
-        subprocess.run(
-            [sys.executable, "-m", "main", "init", "--skip-anima"],
-            check=True,
-        )
+def _get_runtime_dir() -> Path:
+    """Return the isolated runtime directory for SWE evaluation."""
+    import os
+
+    return Path(os.environ.get("SWE_RUNTIME_DIR", str(DEFAULT_RUNTIME)))
 
 
-def _register_credential(name: str, cfg: dict) -> None:
-    """Register a credential in config.json if not already present."""
-    config_path = Path.home() / ".animaworks" / "config.json"
-    config = json.loads(config_path.read_text())
-    creds = config.setdefault("credentials", {})
-    if name not in creds:
-        creds[name] = cfg
-        config_path.write_text(json.dumps(config, indent=2, ensure_ascii=False))
-        logger.info("Registered credential: %s", name)
+def _ensure_init(runtime_dir: Path) -> None:
+    """Initialize AnimaWorks runtime in the isolated directory."""
+    if (runtime_dir / "config.json").exists():
+        return
+    logger.info("Initializing isolated runtime at %s ...", runtime_dir)
+    env = {**__import__("os").environ, "ANIMAWORKS_HOME": str(runtime_dir)}
+    subprocess.run(
+        [sys.executable, "-m", "main", "init", "--skip-anima"],
+        check=True,
+        env=env,
+    )
 
 
-def setup_team(config_path: Path = DEFAULT_CONFIG) -> list[str]:
-    """Create agents defined in team config. Returns list of agent names."""
-    _ensure_init()
+def _copy_credentials(runtime_dir: Path) -> None:
+    """Copy credentials from production config to isolated runtime."""
+    prod_config = Path.home() / ".animaworks" / "config.json"
+    if not prod_config.exists():
+        return
+    prod = json.loads(prod_config.read_text())
+    prod_creds = prod.get("credentials", {})
+    if not prod_creds:
+        return
+
+    rt_config_path = runtime_dir / "config.json"
+    rt_config = json.loads(rt_config_path.read_text())
+    rt_config.setdefault("credentials", {}).update(prod_creds)
+    rt_config_path.write_text(json.dumps(rt_config, indent=2, ensure_ascii=False))
+    logger.info("Copied %d credentials to isolated runtime", len(prod_creds))
+
+
+def _copy_models_json(runtime_dir: Path) -> None:
+    """Copy models.json from production to isolated runtime."""
+    prod_models = Path.home() / ".animaworks" / "models.json"
+    if prod_models.exists():
+        shutil.copy2(prod_models, runtime_dir / "models.json")
+        logger.info("Copied models.json to isolated runtime")
+
+
+def setup_team(
+    config_path: Path = DEFAULT_CONFIG,
+    runtime_dir: Path | None = None,
+) -> tuple[list[str], Path]:
+    """Create agents in the isolated runtime directory.
+
+    Returns (list of agent names, runtime_dir path).
+    """
+    if runtime_dir is None:
+        runtime_dir = _get_runtime_dir()
+
+    _ensure_init(runtime_dir)
+    _copy_credentials(runtime_dir)
+    _copy_models_json(runtime_dir)
 
     team_cfg = json.loads(config_path.read_text())
     agents = team_cfg["agents"]
-    animas_dir = Path.home() / ".animaworks" / "animas"
+    animas_dir = runtime_dir / "animas"
+    animas_dir.mkdir(exist_ok=True)
     created = []
 
     for name, agent_cfg in agents.items():
@@ -75,12 +118,12 @@ def setup_team(config_path: Path = DEFAULT_CONFIG) -> list[str]:
         # injection.md
         (agent_dir / "injection.md").write_text(agent_cfg["injection"] + "\n")
 
-        # permissions.md — allow bash and file tools
+        # permissions.md
         (agent_dir / "permissions.md").write_text(
             "## Allowed Commands\n- All commands allowed for SWE-bench evaluation\n"
         )
 
-        # heartbeat.md — disable heartbeat
+        # heartbeat.md — disable heartbeat for SWE agents
         (agent_dir / "heartbeat.md").write_text(
             "# Heartbeat\n\nHeartbeat disabled for SWE-bench evaluation.\n"
         )
@@ -93,37 +136,35 @@ def setup_team(config_path: Path = DEFAULT_CONFIG) -> list[str]:
             (agent_dir / subdir).mkdir(exist_ok=True)
         (agent_dir / "state" / "pending").mkdir(exist_ok=True)
 
-        # Register in config.json
-        config_path_runtime = Path.home() / ".animaworks" / "config.json"
-        config = json.loads(config_path_runtime.read_text())
+        # Register in isolated config.json
+        rt_config_path = runtime_dir / "config.json"
+        config = json.loads(rt_config_path.read_text())
         animas_cfg = config.setdefault("animas", {})
         if name not in animas_cfg:
             animas_cfg[name] = {
                 "supervisor": agent_cfg.get("supervisor"),
                 "speciality": agent_cfg.get("role", "general"),
             }
-            config_path_runtime.write_text(
+            rt_config_path.write_text(
                 json.dumps(config, indent=2, ensure_ascii=False)
             )
 
         created.append(name)
 
-    logger.info("Team setup complete: %s", created)
-    return created
+    logger.info("Team setup complete in %s: %s", runtime_dir, created)
+    return created, runtime_dir
 
 
-def teardown_team(config_path: Path = DEFAULT_CONFIG) -> None:
-    """Remove agents created by setup_team."""
-    team_cfg = json.loads(config_path.read_text())
-    animas_dir = Path.home() / ".animaworks" / "animas"
-
-    import shutil
-
-    for name in team_cfg["agents"]:
-        agent_dir = animas_dir / name
-        if agent_dir.exists():
-            shutil.rmtree(agent_dir)
-            logger.info("Removed agent: %s", name)
+def teardown_team(
+    config_path: Path = DEFAULT_CONFIG,
+    runtime_dir: Path | None = None,
+) -> None:
+    """Remove the isolated runtime directory entirely."""
+    if runtime_dir is None:
+        runtime_dir = _get_runtime_dir()
+    if runtime_dir.exists():
+        shutil.rmtree(runtime_dir)
+        logger.info("Removed isolated runtime: %s", runtime_dir)
 
 
 if __name__ == "__main__":
@@ -133,9 +174,10 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser(description="SWE-bench team setup")
     p.add_argument("action", choices=["setup", "teardown"])
     p.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    p.add_argument("--runtime-dir", type=Path, default=None)
     args = p.parse_args()
 
     if args.action == "setup":
-        setup_team(args.config)
+        setup_team(args.config, args.runtime_dir)
     else:
-        teardown_team(args.config)
+        teardown_team(args.config, args.runtime_dir)
