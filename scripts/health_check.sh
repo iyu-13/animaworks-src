@@ -24,8 +24,11 @@ try:
                 if not ts_str:
                     continue
                 ts = datetime.fromisoformat(ts_str).replace(tzinfo=timezone.utc)
-                content = str(d.get('content','')) + str(d.get('summary',''))
-                if ts >= cutoff and '(no response)' in content:
+                # response_sent タイプで内容が (no response) のものだけを対象にする
+                if d.get('type') != 'response_sent':
+                    continue
+                content = str(d.get('content',''))
+                if ts >= cutoff and content.strip() == '(no response)':
                     count += 1
             except:
                 pass
