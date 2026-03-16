@@ -5,26 +5,14 @@
 # This file is part of AnimaWorks core/server, licensed under Apache-2.0.
 # See LICENSE for the full license text.
 
-"""API clients and shared constants for image/3D generation.
-
-Facade module — re-exports everything from core.tools.image for backward
-compatibility. Use ``from core.tools._image_clients import NovelAIClient``
-or ``from core.tools.image import NovelAIClient``.
-"""
+"""Image and 3D generation API clients and shared constants."""
 
 from __future__ import annotations
 
-from core.tools.image import (
-    _BUSTUP_PROMPT,
-    _CHIBI_PROMPT,
+from .constants import (
     _DEFAULT_ANIMATIONS,
     _DOWNLOAD_TIMEOUT,
-    _EXPRESSION_GUIDANCE,
-    _EXPRESSION_PROMPTS,
     _HTTP_TIMEOUT,
-    _REALISTIC_BUSTUP_PROMPT,
-    _REALISTIC_EXPRESSION_GUIDANCE,
-    _REALISTIC_EXPRESSION_PROMPTS,
     _RETRYABLE_CODES,
     EXECUTION_PROFILE,
     FAL_FLUX_PRO_SUBMIT_URL,
@@ -38,14 +26,20 @@ from core.tools.image import (
     NOVELAI_API_URL,
     NOVELAI_ENCODE_URL,
     NOVELAI_MODEL,
-    FalTextToImageClient,
-    FluxKontextClient,
-    MeshyClient,
-    NovelAIClient,
-    _convert_anime_to_realistic,
-    _image_to_data_uri,
-    _retry,
 )
+from .fal import FalTextToImageClient, FluxKontextClient
+from .meshy import MeshyClient
+from .novelai import NovelAIClient
+from .prompts import (
+    _BUSTUP_PROMPT,
+    _CHIBI_PROMPT,
+    _EXPRESSION_GUIDANCE,
+    _EXPRESSION_PROMPTS,
+    _REALISTIC_BUSTUP_PROMPT,
+    _REALISTIC_EXPRESSION_GUIDANCE,
+    _REALISTIC_EXPRESSION_PROMPTS,
+)
+from .utils import _convert_anime_to_realistic, _image_to_data_uri, _retry
 
 __all__ = [
     "EXECUTION_PROFILE",
