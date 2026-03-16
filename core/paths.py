@@ -107,7 +107,7 @@ def _get_locale() -> str:
         if isinstance(loc, str) and loc:
             return loc
         return "ja"
-    except (ImportError, FileNotFoundError, ValueError, OSError, AttributeError):
+    except Exception:
         return "ja"
 
 
