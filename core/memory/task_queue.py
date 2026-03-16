@@ -300,11 +300,21 @@ class TaskQueueManager:
         """
         if not summary:
             return None
-        tasks = self._load_all()
-        for task in tasks.values():
-            if task.status in _ACTIVE_STATUSES and summary in task.summary:
+        for task in self.load_active_tasks().values():
+            if summary in task.summary:
                 return task
         return None
+
+    def load_active_tasks(self) -> dict[str, TaskEntry]:
+        """Load all non-terminal tasks (single JSONL replay).
+
+        Use this for batch operations to avoid repeated file reads.
+        """
+        return {
+            tid: t
+            for tid, t in self._load_all().items()
+            if t.status in _ACTIVE_STATUSES
+        }
 
     # ── Read operations ──────────────────────────────────────
 

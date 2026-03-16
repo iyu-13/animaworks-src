@@ -1157,22 +1157,26 @@ class ConversationMemory:
             )
             return
 
-        for item in parsed.resolved_items:
-            matched = tqm.find_by_summary(item)
-            if matched:
-                tqm.update_status(matched.task_id, "done", summary=item)
-                logger.info("Task marked done from session summary: %s", matched.task_id)
+        active_tasks = tqm.load_active_tasks()
 
-        for task in parsed.new_tasks:
-            if not tqm.find_by_summary(task):
+        for item in parsed.resolved_items:
+            for task in active_tasks.values():
+                if item in task.summary or task.summary in item:
+                    tqm.update_status(task.task_id, "done", summary=item)
+                    logger.info("Task marked done from session summary: %s", task.task_id)
+                    break
+
+        existing_summaries = {t.summary for t in active_tasks.values()}
+        for task_text in parsed.new_tasks:
+            if not any(task_text in s or s in task_text for s in existing_summaries):
                 tqm.add_task(
                     source="anima",
-                    original_instruction=task,
+                    original_instruction=task_text,
                     assignee=anima_name,
-                    summary=task,
+                    summary=task_text,
                     meta={"origin": "session_summary_auto_detected"},
                 )
-                logger.info("New task registered from session summary: %s", task[:60])
+                logger.info("New task registered from session summary: %s", task_text[:60])
 
     def _auto_track_procedure_outcomes(
         self,

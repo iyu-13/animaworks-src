@@ -103,11 +103,10 @@ def create_animas_router() -> APIRouter:
 
         memory = MemoryManager(anima_dir)
 
-        identity, injection, cur_state, pending, k_files, e_files, p_files = await asyncio.gather(
+        identity, injection, cur_state, k_files, e_files, p_files = await asyncio.gather(
             asyncio.to_thread(memory.read_identity),
             asyncio.to_thread(memory.read_injection),
             asyncio.to_thread(memory.read_current_state),
-            asyncio.to_thread(memory.read_pending),
             asyncio.to_thread(memory.list_knowledge_files),
             asyncio.to_thread(memory.list_episode_files),
             asyncio.to_thread(memory.list_procedure_files),
@@ -118,7 +117,6 @@ def create_animas_router() -> APIRouter:
             "identity": identity,
             "injection": injection,
             "state": cur_state,
-            "pending": pending,
             "knowledge_files": k_files,
             "episode_files": e_files,
             "procedure_files": p_files,
