@@ -469,12 +469,19 @@ class TestFileOperations:
         assert parsed["error_type"] == "PermissionDenied"
 
     def test_read_file_budget_calculation(self, anima_dir: Path, memory: MagicMock):
-        """Verify budget for various context window sizes."""
+        """Verify budget for various context window sizes.
+
+        Two-tier budget (Claude Code compatible):
+        - Dynamic: min(context * 20%, 25K tokens) → chars = tokens * 3
+        - Lines:   max(50, min(2000, chars // 80))
+        - 128K+ converges to CC's 25K token / 75K char / 937 line cap.
+        """
         cases = [
-            (8_000, 50, 2_400),  # floor applied
-            (32_000, 120, 9_600),
-            (128_000, 480, 38_400),
-            (200_000, 500, 60_000),  # ceil applied
+            (8_000, 60, 4_800),       # 20% scaling
+            (32_000, 240, 19_200),     # 20% scaling
+            (128_000, 937, 75_000),    # token hard cap (CC compatible)
+            (200_000, 937, 75_000),    # token hard cap (CC compatible)
+            (1_000_000, 937, 75_000),  # token hard cap (CC compatible)
         ]
         for ctx, expected_lines, expected_chars in cases:
             h = ToolHandler(anima_dir=anima_dir, memory=memory, context_window=ctx)
@@ -541,7 +548,10 @@ class TestFileOperations:
         assert "Showing lines" not in result
 
     def test_read_file_limit_capped_by_budget(self, anima_dir: Path, memory: MagicMock):
-        """LLM-specified limit exceeding budget is capped."""
+        """LLM-specified limit exceeding budget is capped.
+
+        8K context → budget_lines=60 (20% scaling), so lines 0-59 shown.
+        """
         h = ToolHandler(anima_dir=anima_dir, memory=memory, context_window=8_000)
         content = "\n".join(f"line{i}" for i in range(200))
         (anima_dir / "many.txt").write_text(content, encoding="utf-8")
@@ -549,8 +559,8 @@ class TestFileOperations:
             "read_file",
             {"path": str(anima_dir / "many.txt"), "limit": 999},
         )
-        assert "line49" in result
-        assert "line50" not in result
+        assert "line59" in result
+        assert "line60" not in result
 
     def test_read_file_binary_file(self, handler: ToolHandler, anima_dir: Path):
         """Binary files return a clear error."""

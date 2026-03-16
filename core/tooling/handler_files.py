@@ -29,9 +29,11 @@ from core.tooling.handler_base import (
     _READ_CHARS_PER_TOKEN,
     _READ_CONTEXT_FRACTION,
     _READ_FILE_SAFETY_NOTICE,
+    _READ_MAX_CHARS,
     _READ_MAX_LINE_CHARS,
     _READ_MAX_LINES,
     _READ_MIN_LINES,
+    _READ_TOKEN_HARD_CAP,
     _error_result,
     _extract_first_heading,
 )
@@ -329,9 +331,18 @@ class FileToolsMixin:
     # ── File budget ───────────────────────────────────────────
 
     def _read_file_budget(self) -> tuple[int, int]:
-        """Calculate (max_lines, max_chars) from context window."""
-        budget_tokens = int(self._context_window * _READ_CONTEXT_FRACTION)
-        budget_chars = int(budget_tokens * _READ_CHARS_PER_TOKEN)
+        """Calculate (max_lines, max_chars) from context window.
+
+        Two-tier budget matching Claude Code Read tool constraints:
+        - Token hard cap: 25,000 tokens (75,000 chars) for 128K+ models
+        - Dynamic scaling: 20% of context window for smaller models
+        - Line hard cap: 2,000 lines (protects against many-short-line files)
+        """
+        budget_tokens = min(
+            int(self._context_window * _READ_CONTEXT_FRACTION),
+            _READ_TOKEN_HARD_CAP,
+        )
+        budget_chars = min(int(budget_tokens * _READ_CHARS_PER_TOKEN), _READ_MAX_CHARS)
         budget_lines = max(
             _READ_MIN_LINES,
             min(_READ_MAX_LINES, budget_chars // _READ_AVG_LINE_LENGTH),

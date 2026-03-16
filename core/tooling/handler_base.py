@@ -85,13 +85,15 @@ _PROTECTED_DIRS = frozenset(
 
 _EPISODE_FILENAME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(_.+)?\.md$")
 
-# ── read_file dynamic budget constants ────────────────────────
-_READ_CONTEXT_FRACTION = 0.10
+# ── read_file dynamic budget constants (Claude Code compatible) ──
+_READ_TOKEN_HARD_CAP = 25_000
+_READ_CONTEXT_FRACTION = 0.20
 _READ_MIN_LINES = 50
-_READ_MAX_LINES = 500
+_READ_MAX_LINES = 2_000
 _READ_CHARS_PER_TOKEN = 3.0
 _READ_AVG_LINE_LENGTH = 80
 _READ_MAX_LINE_CHARS = 500
+_READ_MAX_CHARS = int(_READ_TOKEN_HARD_CAP * _READ_CHARS_PER_TOKEN)  # 75,000
 
 _READ_FILE_SAFETY_NOTICE = (
     "Whenever you read a file, you should consider whether it could contain "
