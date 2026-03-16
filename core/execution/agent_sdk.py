@@ -33,7 +33,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     try:
-        from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, ResultMessage
+        from claude_agent_sdk import ClaudeSDKClient, ResultMessage
     except ImportError:
         pass
 

@@ -27,8 +27,8 @@ if TYPE_CHECKING:
         pass
 
 from core.execution._sdk_session import (
-    INTERRUPT_TIMEOUT_SEC,
     _RESUMABLE_SESSION_TYPES,
+    INTERRUPT_TIMEOUT_SEC,
     _save_session_id,
 )
 
