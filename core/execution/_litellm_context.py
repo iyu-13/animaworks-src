@@ -22,6 +22,11 @@ from core.schemas import ImageData
 
 logger = logging.getLogger("animaworks.execution.litellm_loop")
 
+_COMPACT_MSG_TRUNCATE_CHARS = 2000
+_COMPACT_TOOL_ARGS_TRUNCATE_CHARS = 200
+_COMPACT_MIN_CONTEXT_WINDOW = 16_000
+_COMPACT_MAX_SUMMARY_TOKENS = 4096
+
 
 def _extract_tool_uses_from_messages(messages: list[dict]) -> list[dict]:
     """Extract tool_use info from LiteLLM-format messages."""
@@ -307,11 +312,11 @@ class ContextMixin:
             return False
 
         ctx_window = self._resolve_cw()
-        if ctx_window < 16_000:
+        if ctx_window < _COMPACT_MIN_CONTEXT_WINDOW:
             return False
 
         # Format conversation history for summarization
-        history_parts = []
+        history_parts: list[str] = []
         for msg in messages[2:]:  # Skip system + original user
             role = msg.get("role", "unknown")
             content = msg.get("content", "")
@@ -320,16 +325,17 @@ class ContextMixin:
                 call_summaries = []
                 for tc in calls:
                     fn = tc.get("function", {})
-                    call_summaries.append(f"  Tool: {fn.get('name', '?')}({fn.get('arguments', '')[:200]})")
+                    call_summaries.append(
+                        f"  Tool: {fn.get('name', '?')}({fn.get('arguments', '')[:_COMPACT_TOOL_ARGS_TRUNCATE_CHARS]})"
+                    )
                 history_parts.append("[Assistant tool calls]\n" + "\n".join(call_summaries))
             elif role == "tool":
-                # Truncate large tool results for the summary prompt
                 content_str = content if isinstance(content, str) else str(content)
-                truncated = content_str[:2000] if len(content_str) > 2000 else content_str
+                truncated = content_str[:_COMPACT_MSG_TRUNCATE_CHARS]
                 history_parts.append(f"[Tool result] {truncated}")
             elif content:
                 content_str = content if isinstance(content, str) else str(content)
-                history_parts.append(f"[{role}] {content_str[:2000]}")
+                history_parts.append(f"[{role}] {content_str[:_COMPACT_MSG_TRUNCATE_CHARS]}")
 
         history_text = "\n\n".join(history_parts)
 
@@ -343,7 +349,7 @@ class ContextMixin:
         ]
 
         compact_kwargs = {k: v for k, v in llm_kwargs.items() if k not in ("max_tokens",)}
-        compact_kwargs["max_tokens"] = min(4096, ctx_window // 4)
+        compact_kwargs["max_tokens"] = min(_COMPACT_MAX_SUMMARY_TOKENS, ctx_window // 4)
         # Remove thinking-related params for compaction (avoid overhead)
         for key in ["thinking", "think", "reasoning_effort", "enable_thinking", "reasoning_config"]:
             compact_kwargs.pop(key, None)
