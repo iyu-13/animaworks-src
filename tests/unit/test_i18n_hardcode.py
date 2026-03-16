@@ -105,7 +105,7 @@ KNOWN_VIOLATIONS: dict[str, int] = {
     "core/tools/_image_schemas.py": 1,
     "core/tools/aws_collector.py": 1,
     "core/tools/github.py": 1,
-    "core/tools/slack.py": 1,
+    "core/tools/_slack_cli.py": 1,
     # mock task data with Japanese titles
     "server/routes/external_tasks.py": 8,
 }

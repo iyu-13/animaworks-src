@@ -223,7 +223,7 @@ class TestTaskboardMdToSlack:
 class TestSlackClientUpdateMessage:
     """SlackClient.update_message() method."""
 
-    @patch("core.tools.slack._require_slack_sdk")
+    @patch("core.tools._slack_client._require_slack_sdk")
     def test_calls_chat_update(self, mock_sdk):
         from core.tools.slack import SlackClient
 
@@ -242,7 +242,7 @@ class TestSlackClientUpdateMessage:
 class TestSlackClientPinsAdd:
     """SlackClient.pins_add() method."""
 
-    @patch("core.tools.slack._require_slack_sdk")
+    @patch("core.tools._slack_client._require_slack_sdk")
     def test_calls_pins_add(self, mock_sdk):
         from core.tools.slack import SlackClient
 

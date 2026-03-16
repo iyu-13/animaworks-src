@@ -320,8 +320,8 @@ class TestSlackClient:
         # We need to mock the slack_sdk import first
         mock_wc = MagicMock()
         mock_sae = type("SlackApiError", (Exception,), {})
-        with patch.dict("core.tools.slack.__dict__", {"WebClient": mock_wc, "SlackApiError": mock_sae}):
-            with patch("core.tools.slack.get_credential", side_effect=ToolConfigError("no token")):
+        with patch.dict("core.tools._slack_client.__dict__", {"WebClient": mock_wc, "SlackApiError": mock_sae}):
+            with patch("core.tools._slack_client.get_credential", side_effect=ToolConfigError("no token")):
                 with pytest.raises(ToolConfigError):
                     from core.tools.slack import SlackClient
                     SlackClient()

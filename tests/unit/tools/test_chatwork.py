@@ -74,7 +74,7 @@ class TestChatworkClient:
         mock_requests = MagicMock()
         mock_session = MagicMock()
         mock_requests.Session.return_value = mock_session
-        with patch.dict("core.tools.chatwork.__dict__", {"requests": mock_requests}):
+        with patch.dict("core.tools._chatwork_client.__dict__", {"requests": mock_requests}):
             self._mock_session = mock_session
             self._mock_requests = mock_requests
             yield
@@ -95,13 +95,13 @@ class TestChatworkClient:
         assert client.api_token == "my-token"
 
     def test_init_from_env(self):
-        with patch("core.tools.chatwork.get_credential", return_value="test-cw-token"):
+        with patch("core.tools._chatwork_client.get_credential", return_value="test-cw-token"):
             client = ChatworkClient()
         assert client.api_token == "test-cw-token"
 
     def test_init_missing_token(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.delenv("CHATWORK_API_TOKEN", raising=False)
-        with patch("core.tools.chatwork.get_credential", side_effect=ToolConfigError("no token")):
+        with patch("core.tools._chatwork_client.get_credential", side_effect=ToolConfigError("no token")):
             with pytest.raises(ToolConfigError):
                 ChatworkClient()
 
@@ -178,7 +178,7 @@ class TestChatworkClient:
         self._mock_session.request.side_effect = [rate_resp, ok_resp]
 
         client = ChatworkClient()
-        with patch("core.tools.chatwork.time.sleep"):
+        with patch("core.tools._retry.time.sleep"):
             result = client.get("/me")
         assert result == {"ok": True}
 
@@ -359,7 +359,7 @@ class TestSyncRooms:
 
         cache = MessageCache(db_path=tmp_path / "test.db")
         try:
-            with patch("core.tools.chatwork.time.sleep"):
+            with patch("core.tools._chatwork_cli.time.sleep"):
                 result = _sync_rooms(client, cache, sync_limit=10)
 
             # Both rooms saved
@@ -391,7 +391,7 @@ class TestSyncRooms:
 
         cache = MessageCache(db_path=tmp_path / "test.db")
         try:
-            with patch("core.tools.chatwork.time.sleep"):
+            with patch("core.tools._chatwork_cli.time.sleep"):
                 result = _sync_rooms(client, cache, sync_limit=1)
 
             # All 3 rooms have metadata
@@ -417,7 +417,7 @@ class TestSyncRooms:
 
         cache = MessageCache(db_path=tmp_path / "test.db")
         try:
-            with patch("core.tools.chatwork.time.sleep"):
+            with patch("core.tools._chatwork_cli.time.sleep"):
                 result = _sync_rooms(client, cache, sync_limit=10)
 
             assert result["rooms"] == 2
@@ -435,7 +435,7 @@ class TestSyncRooms:
 
         cache = MessageCache(db_path=tmp_path / "test.db")
         try:
-            with patch("core.tools.chatwork.time.sleep"):
+            with patch("core.tools._chatwork_cli.time.sleep"):
                 result = _sync_rooms(client, cache, sync_limit=10)
 
             assert result["rooms"] == 1
@@ -450,7 +450,7 @@ class TestSyncRooms:
 
         cache = MessageCache(db_path=tmp_path / "test.db")
         try:
-            with patch("core.tools.chatwork.time.sleep"):
+            with patch("core.tools._chatwork_cli.time.sleep"):
                 result = _sync_rooms(client, cache, sync_limit=10)
 
             assert result["rooms"] == 0
@@ -531,11 +531,11 @@ class TestDispatch:
 
         from core.tools.chatwork import dispatch
 
-        with patch.dict("core.tools.chatwork.__dict__", {"requests": mock_requests}):
+        with patch.dict("core.tools._chatwork_client.__dict__", {"requests": mock_requests}):
             with patch("core.tools.chatwork.MessageCache") as MockCache:
                 mock_cache = MagicMock()
                 MockCache.return_value = mock_cache
-                with patch("core.tools.chatwork.time.sleep"):
+                with patch("core.tools._chatwork_cli.time.sleep"):
                     result = dispatch("chatwork_sync", {"limit": 5})
 
                 assert result["rooms"] == 1
@@ -558,7 +558,7 @@ class TestDispatch:
 
         from core.tools.chatwork import dispatch
 
-        with patch.dict("core.tools.chatwork.__dict__", {"requests": mock_requests}):
+        with patch.dict("core.tools._chatwork_client.__dict__", {"requests": mock_requests}):
             with patch("core.tools.chatwork.MessageCache") as MockCache:
                 mock_cache = MagicMock()
                 mock_cache.find_mentions.return_value = [{"message_id": "m1"}]
