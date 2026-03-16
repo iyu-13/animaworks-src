@@ -28,6 +28,7 @@ from tests.helpers.mocks import make_litellm_response, patch_litellm
 
 # ── Fixtures ──────────────────────────────────────────────────
 
+
 @pytest.fixture
 def data_dir(tmp_path, monkeypatch):
     """Isolated AnimaWorks data directory."""
@@ -67,6 +68,7 @@ def conv_memory(anima_dir, model_config):
 
 # ── ConversationState tests ──────────────────────────────────
 
+
 class TestConversationStateIndex:
     """Tests for last_finalized_turn_index in ConversationState."""
 
@@ -99,6 +101,7 @@ class TestConversationStateIndex:
 
 
 # ── finalize_session tests ────────────────────────────────────
+
 
 class TestFinalizeSession:
     """Tests for differential session finalization."""
@@ -162,10 +165,7 @@ class TestFinalizeSession:
     async def test_finalize_session_updates_index(self, conv_memory):
         """After finalization, last_finalized_turn_index equals len(turns)."""
         state = conv_memory.load()
-        state.turns = [
-            ConversationTurn(role="human", content=f"msg {i}")
-            for i in range(4)
-        ]
+        state.turns = [ConversationTurn(role="human", content=f"msg {i}") for i in range(4)]
         state.last_finalized_turn_index = 0
         conv_memory.save()
 
@@ -183,6 +183,7 @@ class TestFinalizeSession:
 
 
 # ── finalize_if_session_ended tests ───────────────────────────
+
 
 class TestFinalizeIfSessionEnded:
     """Tests for session gap detection."""
@@ -246,6 +247,7 @@ class TestFinalizeIfSessionEnded:
 
 # ── ParsedSessionSummary tests ────────────────────────────────
 
+
 class TestParseSessionSummary:
     """Tests for _parse_session_summary."""
 
@@ -303,17 +305,26 @@ class TestParseSessionSummary:
         assert parsed.episode_body == raw
 
 
-# ── State auto-update tests ───────────────────────────────────
+# ── State auto-update tests (Issue #114: task_queue routing) ────
+
 
 class TestUpdateState:
-    """Tests for _update_state_from_summary."""
+    """Tests for _update_state_from_summary — routes to task_queue.jsonl."""
 
-    def test_appends_resolved_items(self, conv_memory, anima_dir):
-        """Resolved items are appended to current_state.md."""
+    def test_resolved_items_mark_task_done(self, conv_memory, anima_dir):
+        """Resolved items update matching task_queue entries to done."""
         from core.memory.manager import MemoryManager
+        from core.memory.task_queue import TaskQueueManager
 
         mm = MemoryManager(anima_dir)
-        mm.update_state("status: 作業中\n- 未解決: サーバー障害")
+        tqm = TaskQueueManager(anima_dir)
+        tqm.add_task(
+            source="anima",
+            original_instruction="サーバー障害の修正",
+            assignee=anima_dir.name,
+            summary="サーバー障害の修正",
+        )
+        task_id = list(tqm._load_all().keys())[0]
 
         parsed = ParsedSessionSummary(
             title="test",
@@ -325,13 +336,14 @@ class TestUpdateState:
         )
 
         conv_memory._update_state_from_summary(mm, parsed)
-        updated = mm.read_current_state()
-        assert "サーバー障害の修正" in updated
-        assert "✅" in updated
+        task = tqm.get_task_by_id(task_id)
+        assert task is not None
+        assert task.status == "done"
 
-    def test_appends_new_tasks(self, conv_memory, anima_dir):
-        """New tasks are appended with checkbox format."""
+    def test_new_tasks_added_to_queue(self, conv_memory, anima_dir):
+        """New tasks are registered in task_queue.jsonl."""
         from core.memory.manager import MemoryManager
+        from core.memory.task_queue import TaskQueueManager
 
         mm = MemoryManager(anima_dir)
         mm.update_state("status: idle")
@@ -346,16 +358,25 @@ class TestUpdateState:
         )
 
         conv_memory._update_state_from_summary(mm, parsed)
-        updated = mm.read_current_state()
-        assert "- [ ] レポート作成" in updated
-        assert "自動検出" in updated
+        tqm = TaskQueueManager(anima_dir)
+        pending = tqm.get_pending()
+        summaries = [t.summary for t in pending]
+        assert "レポート作成" in summaries
 
-    def test_appends_resolved_without_keyword(self, conv_memory, anima_dir):
-        """Resolved items are appended even when state lacks '未解決' keyword."""
+    def test_resolved_items_mark_matching_task_done(self, conv_memory, anima_dir):
+        """Resolved items update matching task_queue entries to done."""
         from core.memory.manager import MemoryManager
+        from core.memory.task_queue import TaskQueueManager
 
         mm = MemoryManager(anima_dir)
-        mm.update_state("status: idle")
+        tqm = TaskQueueManager(anima_dir)
+        tqm.add_task(
+            source="anima",
+            original_instruction="ネットワーク障害の対応",
+            assignee=anima_dir.name,
+            summary="ネットワーク障害",
+        )
+        task_id = list(tqm._load_all().keys())[0]
 
         parsed = ParsedSessionSummary(
             title="test",
@@ -367,16 +388,23 @@ class TestUpdateState:
         )
 
         conv_memory._update_state_from_summary(mm, parsed)
-        updated = mm.read_current_state()
-        assert "ネットワーク障害" in updated
-        assert "✅" in updated
+        task = tqm.get_task_by_id(task_id)
+        assert task is not None
+        assert task.status == "done"
 
-    def test_no_duplicate(self, conv_memory, anima_dir):
-        """Already-present items are not duplicated."""
+    def test_no_duplicate_new_tasks(self, conv_memory, anima_dir):
+        """Already-present tasks in queue are not duplicated."""
         from core.memory.manager import MemoryManager
+        from core.memory.task_queue import TaskQueueManager
 
         mm = MemoryManager(anima_dir)
-        mm.update_state("status: 作業中\n- レポート作成")
+        tqm = TaskQueueManager(anima_dir)
+        tqm.add_task(
+            source="anima",
+            original_instruction="レポート作成",
+            assignee=anima_dir.name,
+            summary="レポート作成",
+        )
 
         parsed = ParsedSessionSummary(
             title="test",
@@ -388,12 +416,12 @@ class TestUpdateState:
         )
 
         conv_memory._update_state_from_summary(mm, parsed)
-        updated = mm.read_current_state()
-        # Should only appear once (original), not appended again
-        assert updated.count("レポート作成") == 1
+        all_tasks = [t for t in tqm._load_all().values() if "レポート作成" in t.summary]
+        assert len(all_tasks) == 1
 
 
 # ── Resolution recording tests ────────────────────────────────
+
 
 class TestResolutions:
     """Tests for resolution registry and activity log."""
@@ -458,6 +486,7 @@ class TestResolutions:
 
 # ── Activity log type test ────────────────────────────────────
 
+
 class TestActivityLogType:
     """Tests for issue_resolved event type formatting."""
 
@@ -478,6 +507,7 @@ class TestActivityLogType:
 
 
 # ── Builder resolution injection test ─────────────────────────
+
 
 class TestBuilderResolutionInjection:
     """Tests for resolution injection in system prompt."""
@@ -507,6 +537,7 @@ class TestBuilderResolutionInjection:
 
 
 # ── Consolidation resolved events test ────────────────────────
+
 
 class TestConsolidationResolved:
     """Tests for resolved events in consolidation."""

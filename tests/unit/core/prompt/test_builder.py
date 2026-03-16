@@ -61,10 +61,7 @@ def _mock_load_prompt_with_builder(default: str = "section"):
             return f"## 未完了タスク\n\n{kwargs.get('task_summary', '')}"
         if name == "builder/external_tools_guide":
             cats = kwargs.get("categories", "")
-            return (
-                f"外部ツールを使うには `discover_tools` を呼んでください。\n"
-                f"カテゴリ: {cats}"
-            )
+            return f"外部ツールを使うには `discover_tools` を呼んでください。\nカテゴリ: {cats}"
         if name == "builder/hiring_rules_s":
             return "## 雇用ルール\n\ncreate-anima"
         if name == "builder/hiring_rules_other":
@@ -134,8 +131,10 @@ class TestBuildMessagingSection:
     def test_with_animas(self, tmp_path):
         anima_dir = tmp_path / "alice"
         anima_dir.mkdir()
-        with patch("core.tooling.prompt_db.get_prompt_store", return_value=None), \
-             patch("core.prompt.builder.load_prompt", return_value="messaging section"):
+        with (
+            patch("core.tooling.prompt_db.get_prompt_store", return_value=None),
+            patch("core.prompt.builder.load_prompt", return_value="messaging section"),
+        ):
             result = _build_messaging_section(anima_dir, ["bob", "charlie"])
             assert result == "messaging section"
 
@@ -148,8 +147,10 @@ class TestBuildMessagingSection:
                 return _MOCK_FALLBACKS
             return "messaging section"
 
-        with patch("core.tooling.prompt_db.get_prompt_store", return_value=None), \
-             patch("core.prompt.builder.load_prompt", side_effect=_mock_lp) as mock_lp:
+        with (
+            patch("core.tooling.prompt_db.get_prompt_store", return_value=None),
+            patch("core.prompt.builder.load_prompt", side_effect=_mock_lp) as mock_lp,
+        ):
             _build_messaging_section(anima_dir, [])
             call_kwargs = mock_lp.call_args[1]
             assert "(まだ他の社員はいません)" in call_kwargs["animas_line"]
@@ -158,8 +159,10 @@ class TestBuildMessagingSection:
         """S mode should load the messaging_s template."""
         anima_dir = tmp_path / "alice"
         anima_dir.mkdir()
-        with patch("core.tooling.prompt_db.get_prompt_store", return_value=None), \
-             patch("core.prompt.builder.load_prompt", return_value="s messaging") as mock_lp:
+        with (
+            patch("core.tooling.prompt_db.get_prompt_store", return_value=None),
+            patch("core.prompt.builder.load_prompt", return_value="s messaging") as mock_lp,
+        ):
             result = _build_messaging_section(anima_dir, ["bob"], execution_mode="s")
             assert result == "s messaging"
             template_names = [c[0][0] for c in mock_lp.call_args_list]
@@ -169,8 +172,10 @@ class TestBuildMessagingSection:
         """A mode should load the standard messaging template."""
         anima_dir = tmp_path / "alice"
         anima_dir.mkdir()
-        with patch("core.tooling.prompt_db.get_prompt_store", return_value=None), \
-             patch("core.prompt.builder.load_prompt", return_value="a messaging") as mock_lp:
+        with (
+            patch("core.tooling.prompt_db.get_prompt_store", return_value=None),
+            patch("core.prompt.builder.load_prompt", return_value="a messaging") as mock_lp,
+        ):
             result = _build_messaging_section(anima_dir, ["bob"], execution_mode="a")
             assert result == "a messaging"
             template_names = [c[0][0] for c in mock_lp.call_args_list]
@@ -180,8 +185,10 @@ class TestBuildMessagingSection:
         """Default execution_mode should be s, using messaging_s template."""
         anima_dir = tmp_path / "alice"
         anima_dir.mkdir()
-        with patch("core.tooling.prompt_db.get_prompt_store", return_value=None), \
-             patch("core.prompt.builder.load_prompt", return_value="section") as mock_lp:
+        with (
+            patch("core.tooling.prompt_db.get_prompt_store", return_value=None),
+            patch("core.prompt.builder.load_prompt", return_value="section") as mock_lp,
+        ):
             _build_messaging_section(anima_dir, ["bob"])
             template_names = [c[0][0] for c in mock_lp.call_args_list]
             assert "messaging_s" in template_names
@@ -276,8 +283,14 @@ class TestBuildSystemPrompt:
         memory.list_procedure_files.return_value = ["proc-x"]
         memory.list_skill_summaries.return_value = [("coding", "Write code")]
         memory.list_common_skill_summaries.return_value = [("deploy", "Deploy apps")]
-        memory.list_skill_metas.return_value = [SkillMeta(name="coding", description="Write code", path=Path("/tmp/test/skills/coding.md"), is_common=False)]
-        memory.list_common_skill_metas.return_value = [SkillMeta(name="deploy", description="Deploy apps", path=Path("/tmp/test/common_skills/deploy.md"), is_common=True)]
+        memory.list_skill_metas.return_value = [
+            SkillMeta(name="coding", description="Write code", path=Path("/tmp/test/skills/coding.md"), is_common=False)
+        ]
+        memory.list_common_skill_metas.return_value = [
+            SkillMeta(
+                name="deploy", description="Deploy apps", path=Path("/tmp/test/common_skills/deploy.md"), is_common=True
+            )
+        ]
         memory.list_procedure_metas.return_value = []
         memory.collect_distilled_knowledge_separated.return_value = ([], [])
         memory.common_skills_dir = data_dir / "common_skills"
@@ -399,11 +412,9 @@ class TestBuildSystemPrompt:
 
         with patch("core.prompt.builder.load_prompt", side_effect=_mock_load_prompt_with_builder()):
             result = build_system_prompt(memory)
-            # Non-idle state goes to "進行中タスク" branch
+            # Non-idle state goes to "進行中タスク" branch (Issue #114: pending removed)
             assert "進行中タスク" in result
             assert "status: working" in result
-            assert "未完了タスク" in result
-            assert "task 1" in result
 
     def test_a_mode_injects_external_tools_hint_with_bash(self, tmp_path, data_dir):
         """Mode A hints should mention Bash and animaworks-tool."""
@@ -441,9 +452,7 @@ class TestBuildSystemPrompt:
             assert "Bash" in result
             assert "animaworks-tool" in result
 
-    def test_s_mode_injects_external_tools_hint_with_bash(
-        self, tmp_path, data_dir
-    ):
+    def test_s_mode_injects_external_tools_hint_with_bash(self, tmp_path, data_dir):
         """S mode injects External Tools hint mentioning Bash."""
         anima_dir = tmp_path / "animas" / "alice"
         anima_dir.mkdir(parents=True)
@@ -480,9 +489,7 @@ class TestBuildSystemPrompt:
             assert "Bash" in result
             assert "animaworks-tool" in result
 
-    def test_b_mode_injects_external_tools_hint_with_bash_cli(
-        self, tmp_path, data_dir
-    ):
+    def test_b_mode_injects_external_tools_hint_with_bash_cli(self, tmp_path, data_dir):
         """B mode injects External Tools hint mentioning Bash + animaworks-tool."""
         anima_dir = tmp_path / "animas" / "alice"
         anima_dir.mkdir(parents=True)
@@ -595,9 +602,7 @@ class TestBuildOrgContext:
         # No communication rules when alone
         assert "コミュニケーションルール" not in result
 
-    def test_communication_rules_injected_when_others_exist(
-        self, data_dir, make_anima
-    ):
+    def test_communication_rules_injected_when_others_exist(self, data_dir, make_anima):
         """Communication rules are included when other animas exist."""
         make_anima("sakura")
         make_anima("rin", supervisor="sakura", speciality="development")
@@ -667,6 +672,7 @@ class TestHiringContextPlacement:
 
         # read_model_config returns a ModelConfig with supervisor=None
         from core.schemas import ModelConfig
+
         memory.read_model_config.return_value = ModelConfig()
 
         return memory
@@ -729,6 +735,7 @@ class TestHiringContextPlacement:
         memory = self._build_solo_prompt(tmp_path, data_dir)
 
         from core.schemas import ModelConfig
+
         memory.read_model_config.return_value = ModelConfig(supervisor="boss")
 
         result = build_system_prompt(memory)

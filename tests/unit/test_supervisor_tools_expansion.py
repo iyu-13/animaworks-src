@@ -249,9 +249,6 @@ class TestReadSubordinateState:
         (sub_dir / "state" / "current_state.md").write_text(
             "API実装中", encoding="utf-8",
         )
-        (sub_dir / "state" / "pending.md").write_text(
-            "テスト作成待ち", encoding="utf-8",
-        )
 
         mock_cfg = _mock_config(tmp_path, {
             "sakura": {},
@@ -265,7 +262,6 @@ class TestReadSubordinateState:
             result = handler.handle("read_subordinate_state", {"name": "hinata"})
 
         assert "API実装中" in result
-        assert "テスト作成待ち" in result
 
     def test_read_empty_state(self, tmp_path):
         handler = _make_handler(tmp_path, "sakura")

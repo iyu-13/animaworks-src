@@ -68,6 +68,7 @@ class MemoryManager:
             d.mkdir(parents=True, exist_ok=True)
 
         self._migrate_current_task_to_state()
+        self._migrate_pending_to_state()
 
         # Eagerly initialize delegates (also available lazily via properties
         # for code that bypasses __init__ via __new__).
@@ -99,6 +100,23 @@ class MemoryManager:
                 "Both current_task.md and current_state.md exist in %s; using current_state.md",
                 self.state_dir,
             )
+
+    def _migrate_pending_to_state(self) -> None:
+        """One-time migration: merge pending.md into current_state.md."""
+        pending = self.state_dir / "pending.md"
+        if not pending.exists():
+            return
+        content = pending.read_text(encoding="utf-8").strip()
+        if content:
+            current = self.read_current_state()
+            merged = current.rstrip() + "\n\n## Migrated from pending.md\n\n" + content
+            self.update_state(merged)
+            logger.info(
+                "Migrated pending.md (%d chars) into current_state.md",
+                len(content),
+            )
+        pending.unlink()
+        logger.info("Removed deprecated pending.md")
 
     def _init_delegates(self) -> None:
         """Create delegate instances.  Safe to call multiple times.
@@ -217,7 +235,8 @@ class MemoryManager:
         return self._read(self.state_dir / "current_state.md") or "status: idle"
 
     def read_pending(self) -> str:
-        return self._read(self.state_dir / "pending.md")
+        logger.warning("read_pending() is deprecated — pending.md has been abolished; returning empty")
+        return ""
 
     def read_heartbeat_config(self) -> str:
         return self._read(self.anima_dir / "heartbeat.md")
@@ -325,7 +344,7 @@ class MemoryManager:
         atomic_write_text(self.state_dir / "current_state.md", content)
 
     def update_pending(self, content: str) -> None:
-        atomic_write_text(self.state_dir / "pending.md", content)
+        logger.warning("update_pending() is deprecated — pending.md has been abolished")
 
     def write_knowledge(self, topic: str, content: str, *, origin: str = "") -> None:
         safe = re.sub(r"[^\w\-_]", "_", topic)

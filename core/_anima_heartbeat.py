@@ -288,6 +288,30 @@ class HeartbeatMixin:
 
     _CURRENT_STATE_CLEANUP_THRESHOLD = 3000
 
+    def _enforce_state_size_limit(self) -> None:
+        """Hard-trim current_state.md if it exceeds the cleanup threshold.
+
+        Called after heartbeat completion.  Overflow content is archived
+        into today's episode file for traceability.
+        """
+        state = self.memory.read_current_state()
+        if len(state) <= self._CURRENT_STATE_CLEANUP_THRESHOLD:
+            return
+        threshold = self._CURRENT_STATE_CLEANUP_THRESHOLD
+        trimmed = state[-threshold:]
+        first_nl = trimmed.find("\n")
+        if first_nl != -1 and first_nl < threshold * 0.2:
+            trimmed = trimmed[first_nl + 1 :]
+        overflow = state[: len(state) - len(trimmed)]
+        self.memory.append_episode(f"## current_state.md overflow archived\n\n{overflow}")
+        self.memory.update_state(trimmed)
+        logger.info(
+            "[%s] current_state.md hard-trimmed: %d → %d chars",
+            self.name,
+            len(state),
+            len(trimmed),
+        )
+
     async def _build_heartbeat_prompt(self) -> list[str]:
         """Build heartbeat prompt parts.
 
@@ -558,6 +582,9 @@ class HeartbeatMixin:
                     self.name,
                     exc_info=True,
                 )
+
+            # Hard-trim current_state.md if it exceeds the cleanup threshold
+            self._enforce_state_size_limit()
 
             return result
         finally:

@@ -707,19 +707,6 @@ class OrgToolsMixin:
 
         parts.append("")
 
-        pending_file = desc_dir / "state" / "pending.md"
-        if pending_file.exists():
-            try:
-                content = pending_file.read_text(encoding="utf-8").strip()
-                parts.append(t("handler.state_pending"))
-                parts.append(content if content else t("handler.state_none"))
-            except Exception:
-                parts.append(t("handler.state_pending"))
-                parts.append(t("handler.state_unreadable"))
-        else:
-            parts.append(t("handler.state_pending"))
-            parts.append(t("handler.state_none"))
-
         self._activity.log(
             "tool_use",
             tool="read_subordinate_state",

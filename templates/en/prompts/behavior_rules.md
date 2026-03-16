@@ -45,7 +45,8 @@ In either case:
 - **Check before reporting**: Before sending a report, verify the topic is not already in the resolved list
 - **Detect duplicates**: Do not send the same report multiple times. Send an update only when the situation has changed since the last report
 
-#### current_state.md Cleanup
-- During Heartbeat, move all ✅ completed tasks from the "In Progress" section to "Resolved" or remove them
-- When "Resolved" exceeds 10 items, remove the oldest entries
-- Keep current_state.md under 30 lines at all times
+#### current_state.md (Working Memory) and Task Management Separation
+- `state/current_state.md` is your **working memory**. Record observations, plans, situational awareness, and blockers — your current thinking context
+- **Manage tasks** using `backlog_task` / `update_task` tools, which write to `task_queue.jsonl`. Do not write task lists in current_state.md
+- Keep current_state.md under 30 lines / 3000 characters. Excess content is auto-archived during heartbeats
+- Write important knowledge or procedures to `knowledge/` or `procedures/`, not current_state.md

@@ -100,7 +100,6 @@ def _cache_subordinate_paths(
             descendant_read_files.append(sub_dir / "injection.md")
             descendant_read_files.append(sub_dir / "status.json")
             descendant_read_files.append(sub_dir / "state" / "current_state.md")
-            descendant_read_files.append(sub_dir / "state" / "pending.md")
             descendant_read_files.append(sub_dir / "state" / "task_queue.jsonl")
             descendant_read_dirs.append(sub_dir / "state" / "pending")
 
@@ -140,15 +139,14 @@ def _intercept_task_to_pending(
     prompt = tool_input.get("prompt", description)
 
     context_parts: list[str] = []
-    for ctx_file in ("current_state.md", "pending.md"):
-        ctx_path = anima_dir / "state" / ctx_file
-        if ctx_path.exists():
-            try:
-                content = ctx_path.read_text(encoding="utf-8").strip()
-                if content and content != "status: idle":
-                    context_parts.append(f"[{ctx_file}]\n{content}")
-            except Exception:
-                pass
+    ctx_path = anima_dir / "state" / "current_state.md"
+    if ctx_path.exists():
+        try:
+            content = ctx_path.read_text(encoding="utf-8").strip()
+            if content and content != "status: idle":
+                context_parts.append(f"[current_state.md]\n{content}")
+        except Exception:
+            pass
 
     task_desc = {
         "task_type": "llm",

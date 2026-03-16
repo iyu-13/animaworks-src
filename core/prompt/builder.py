@@ -864,29 +864,8 @@ def build_system_prompt(
         if state_content:
             _add(state_content, "current_state", 2, "elastic")
 
-    # pending: skip for inbox and task
+    # Resolution Registry, Recent Outbound: skip for inbox and task
     if not is_inbox and not is_task:
-        pending = memory.read_pending()
-        if pending:
-            pending_max = max(int(2000 * scale), 200)
-            pending_content = f"{_ss.get('pending_tasks_header', '## Pending Tasks')}\n\n{pending}"
-            if len(pending_content) > pending_max:
-                pending_content = pending_content[:pending_max]
-            _add(pending_content, "pending", 2, "elastic")
-
-    # Task Queue, Resolution Registry, Recent Outbound: skip for inbox and task
-    if not is_inbox and not is_task:
-        try:
-            from core.memory.task_queue import TaskQueueManager
-
-            task_queue = TaskQueueManager(memory.anima_dir)
-            task_summary = task_queue.format_for_priming()
-            if task_summary:
-                task_content = load_prompt("builder/task_queue", task_summary=task_summary)
-                _add(task_content, "task_queue", 3, "elastic")
-        except Exception:
-            logger.debug("Failed to inject task queue", exc_info=True)
-
         try:
             resolutions = memory.read_resolutions(days=7)
             if resolutions:

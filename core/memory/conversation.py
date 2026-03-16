@@ -30,8 +30,6 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from core.i18n import t
 
 _RE_INVALID_TOOL_ID = re.compile(r"[^a-zA-Z0-9_-]")
-_RE_AUTO_DETECTED_RESOLVED = re.compile(r"^- ✅\s.*(?:自動検出|auto-detected):", re.MULTILINE)
-_AUTO_DETECTED_MAX_KEEP = 10
 
 
 def _sanitize_tool_id(tool_id: str) -> str:
@@ -42,40 +40,6 @@ def _sanitize_tool_id(tool_id: str) -> str:
     colons, etc.  Replace any invalid character with ``_``.
     """
     return _RE_INVALID_TOOL_ID.sub("_", tool_id) if tool_id else tool_id
-
-
-def _prune_auto_detected_resolved(text: str, max_keep: int = _AUTO_DETECTED_MAX_KEEP) -> tuple[str, list[str]]:
-    """Prune old auto-detected resolved lines from current_state.md content.
-
-    Only targets lines matching ``- ✅ ... （自動検出: ...）`` or
-    ``- ✅ ... (auto-detected: ...)``.  Lines written by the LLM in
-    other formats (``[x]``, ``☑``, date prefix, etc.) are left untouched.
-    Incomplete auto-detected tasks (``- [ ] ... 自動検出``) are also kept.
-
-    Returns:
-        (pruned_text, removed_lines) — the cleaned text and a list of
-        lines that were removed (oldest first), suitable for archival
-        into episodes.
-    """
-    lines = text.split("\n")
-    auto_resolved_indices: list[int] = []
-    for i, line in enumerate(lines):
-        if _RE_AUTO_DETECTED_RESOLVED.match(line):
-            auto_resolved_indices.append(i)
-
-    if len(auto_resolved_indices) <= max_keep:
-        return text, []
-
-    to_remove = set(auto_resolved_indices[: len(auto_resolved_indices) - max_keep])
-    removed: list[str] = []
-    kept: list[str] = []
-    for i, line in enumerate(lines):
-        if i in to_remove:
-            removed.append(line)
-        else:
-            kept.append(line)
-
-    return "\n".join(kept), removed
 
 
 from core.memory._io import atomic_write_text
@@ -1102,9 +1066,9 @@ class ConversationMemory:
         Falls back to treating the entire raw text as episode body
         when the expected sections are not found.
         """
-        # Extract ## エピソード要約 section
+        # Extract ## エピソード要約 / Episode Summary section
         episode_match = re.search(
-            r"##\s*エピソード要約\s*\n(.+?)(?=##\s*ステート変更|\Z)",
+            r"##\s*(?:エピソード要約|Episode Summary)\s*\n(.+?)(?=##\s*(?:ステート変更|State Changes)|\Z)",
             raw,
             re.DOTALL,
         )
@@ -1114,9 +1078,9 @@ class ConversationMemory:
         title = lines[0][:50] if lines else t("conversation.title_fallback")
         body = "\n".join(lines[1:]).strip() if len(lines) > 1 else episode_body
 
-        # Extract ## ステート変更 section
+        # Extract ## ステート変更 / State Changes section
         state_match = re.search(
-            r"##\s*ステート変更\s*\n(.+)",
+            r"##\s*(?:ステート変更|State Changes)\s*\n(.+)",
             raw,
             re.DOTALL,
         )
@@ -1128,33 +1092,33 @@ class ConversationMemory:
         if state_match:
             state_text = state_match.group(1)
 
-            # ### 解決済み
+            # ### 解決済み / Resolved
             resolved_match = re.search(
-                r"###\s*解決済み\s*\n(.+?)(?=###|\Z)",
+                r"###\s*(?:解決済み|Resolved)\s*\n(.+?)(?=###|\Z)",
                 state_text,
                 re.DOTALL,
             )
             if resolved_match:
                 for line in resolved_match.group(1).strip().splitlines():
                     item = line.strip().lstrip("- ").strip()
-                    if item and item != "なし":
+                    if item and item not in ("なし", "None", "none"):
                         resolved_items.append(item)
 
-            # ### 新規タスク
+            # ### 新規タスク / New Tasks
             tasks_match = re.search(
-                r"###\s*新規タスク\s*\n(.+?)(?=###|\Z)",
+                r"###\s*(?:新規タスク|New Tasks)\s*\n(.+?)(?=###|\Z)",
                 state_text,
                 re.DOTALL,
             )
             if tasks_match:
                 for line in tasks_match.group(1).strip().splitlines():
                     item = line.strip().lstrip("- ").strip()
-                    if item and item != "なし":
+                    if item and item not in ("なし", "None", "none"):
                         new_tasks.append(item)
 
-            # ### 現在の状態
+            # ### 現在の状態 / Current State
             status_match = re.search(
-                r"###\s*現在の状態\s*\n(.+?)(?=###|\Z)",
+                r"###\s*(?:現在の状態|Current State)\s*\n(.+?)(?=###|\Z)",
                 state_text,
                 re.DOTALL,
             )
@@ -1175,43 +1139,44 @@ class ConversationMemory:
         memory_mgr: MemoryManager,
         parsed: ParsedSessionSummary,
     ) -> None:
-        """Auto-update state/current_state.md based on conversation conclusions.
+        """Route session summary outcomes to task_queue.jsonl.
 
-        After appending new items, prunes old auto-detected resolved
-        lines to prevent unbounded growth.  Pruned lines are archived
-        into today's episode file for traceability.
+        New tasks are registered in the persistent task queue instead of
+        appending free-form markers to current_state.md.  Resolved items
+        update matching task_queue entries to 'done'.
         """
-        current = memory_mgr.read_current_state()
-        updated = False
+        from core.memory.task_queue import TaskQueueManager
 
-        # Append resolved items with checkmark
+        anima_name = memory_mgr.anima_dir.name
+        try:
+            tqm = TaskQueueManager(memory_mgr.anima_dir)
+        except Exception:
+            logger.warning(
+                "Failed to initialise TaskQueueManager; skipping state update",
+                exc_info=True,
+            )
+            return
+
+        active_tasks = tqm.load_active_tasks()
+
         for item in parsed.resolved_items:
-            if item not in current:
-                marker = t("conversation.resolved_marker", item=item, ts=now_local().strftime("%m/%d %H:%M"))
-                current += f"\n{marker}"
-                updated = True
+            for task in active_tasks.values():
+                if item in task.summary or task.summary in item:
+                    tqm.update_status(task.task_id, "done", summary=item)
+                    logger.info("Task marked done from session summary: %s", task.task_id)
+                    break
 
-        # Append new tasks
-        for task in parsed.new_tasks:
-            if task not in current:
-                current += "\n" + t("conversation.new_task_marker", task=task, ts=now_local().strftime("%m/%d %H:%M"))
-                updated = True
-
-        # Prune old auto-detected resolved lines
-        if updated:
-            current, pruned = _prune_auto_detected_resolved(current)
-            if pruned:
-                header = t("conversation.pruned_auto_detected_header")
-                episode_entry = header + "\n" + "\n".join(pruned)
-                memory_mgr.append_episode(episode_entry)
-                logger.info(
-                    "Pruned %d auto-detected resolved lines from current_state.md",
-                    len(pruned),
+        existing_summaries = {t.summary for t in active_tasks.values()}
+        for task_text in parsed.new_tasks:
+            if not any(task_text in s or s in task_text for s in existing_summaries):
+                tqm.add_task(
+                    source="anima",
+                    original_instruction=task_text,
+                    assignee=anima_name,
+                    summary=task_text,
+                    meta={"origin": "session_summary_auto_detected"},
                 )
-
-        if updated:
-            memory_mgr.update_state(current)
-            logger.info("State auto-updated from session summary")
+                logger.info("New task registered from session summary: %s", task_text[:60])
 
     def _auto_track_procedure_outcomes(
         self,

@@ -59,7 +59,7 @@ class TestChannelE:
         assert "Test summary" in result
 
     def test_budget_constant(self):
-        assert _BUDGET_PENDING_TASKS == 300
+        assert _BUDGET_PENDING_TASKS == 500
 
 
 class TestPrimeMemoriesIncludesChannelE:

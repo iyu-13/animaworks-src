@@ -90,9 +90,7 @@ class TestReadCurrentState:
 
     def test_with_file(self, mm, anima_dir):
         (anima_dir / "state").mkdir(parents=True, exist_ok=True)
-        (anima_dir / "state" / "current_state.md").write_text(
-            "status: busy\ntask: testing", encoding="utf-8"
-        )
+        (anima_dir / "state" / "current_state.md").write_text("status: busy\ntask: testing", encoding="utf-8")
         assert "busy" in mm.read_current_state()
 
 
@@ -114,12 +112,8 @@ class TestCurrentStateMigration:
     def test_uses_current_state_when_both_exist(self, anima_dir, data_dir, caplog):
         """When both exist → current_state.md is used (warning logged)."""
         (anima_dir / "state").mkdir(parents=True, exist_ok=True)
-        (anima_dir / "state" / "current_task.md").write_text(
-            "status: old", encoding="utf-8"
-        )
-        (anima_dir / "state" / "current_state.md").write_text(
-            "status: new\ntask: preferred", encoding="utf-8"
-        )
+        (anima_dir / "state" / "current_task.md").write_text("status: old", encoding="utf-8")
+        (anima_dir / "state" / "current_state.md").write_text("status: new\ntask: preferred", encoding="utf-8")
 
         mm = MemoryManager(anima_dir)
 
@@ -137,13 +131,16 @@ class TestCurrentStateMigration:
 
 
 class TestReadPending:
+    """read_pending is deprecated (Issue #114); always returns empty."""
+
     def test_no_file(self, mm):
         assert mm.read_pending() == ""
 
-    def test_with_file(self, mm, anima_dir):
+    def test_deprecated_returns_empty(self, mm, anima_dir):
+        """Deprecated read_pending always returns '' regardless of file."""
         (anima_dir / "state").mkdir(parents=True, exist_ok=True)
         (anima_dir / "state" / "pending.md").write_text("- task 1", encoding="utf-8")
-        assert mm.read_pending() == "- task 1"
+        assert mm.read_pending() == ""
 
 
 class TestReadHeartbeatConfig:
@@ -310,10 +307,13 @@ class TestUpdateState:
 
 
 class TestUpdatePending:
-    def test_writes_pending(self, mm):
+    """update_pending is deprecated (Issue #114); does not write."""
+
+    def test_deprecated_no_write(self, mm, anima_dir):
+        """Deprecated update_pending does not write to pending.md."""
         mm.update_pending("- task 1\n- task 2")
-        content = mm.read_pending()
-        assert "task 1" in content
+        # read_pending is also deprecated and returns ""; pending.md is abolished
+        assert mm.read_pending() == ""
 
 
 class TestWriteKnowledge:
@@ -337,9 +337,7 @@ class TestReadRecentEpisodes:
         today = today_local()
         for i in range(3):
             d = today - timedelta(days=i)
-            (mm.episodes_dir / f"{d.isoformat()}.md").write_text(
-                f"Day {i}", encoding="utf-8"
-            )
+            (mm.episodes_dir / f"{d.isoformat()}.md").write_text(f"Day {i}", encoding="utf-8")
         result = mm.read_recent_episodes(days=3)
         assert "Day 0" in result
         assert "Day 1" in result
@@ -352,29 +350,19 @@ class TestReadRecentEpisodes:
 
 class TestSearchMemoryText:
     def test_search_all(self, mm, anima_dir):
-        (anima_dir / "knowledge" / "python.md").write_text(
-            "Python is great\nJava is OK", encoding="utf-8"
-        )
-        (anima_dir / "episodes" / "2026-01-01.md").write_text(
-            "Learned Python today", encoding="utf-8"
-        )
+        (anima_dir / "knowledge" / "python.md").write_text("Python is great\nJava is OK", encoding="utf-8")
+        (anima_dir / "episodes" / "2026-01-01.md").write_text("Learned Python today", encoding="utf-8")
         results = mm.search_memory_text("python")
         assert len(results) >= 2
 
     def test_search_knowledge_scope(self, mm, anima_dir):
-        (anima_dir / "knowledge" / "test.md").write_text(
-            "keyword here", encoding="utf-8"
-        )
-        (anima_dir / "episodes" / "2026-01-01.md").write_text(
-            "keyword in episode", encoding="utf-8"
-        )
+        (anima_dir / "knowledge" / "test.md").write_text("keyword here", encoding="utf-8")
+        (anima_dir / "episodes" / "2026-01-01.md").write_text("keyword in episode", encoding="utf-8")
         results = mm.search_memory_text("keyword", scope="knowledge")
         assert all("knowledge" in r[0] or r[0] == "test.md" for r in results)
 
     def test_case_insensitive(self, mm, anima_dir):
-        (anima_dir / "knowledge" / "test.md").write_text(
-            "UPPERCASE content", encoding="utf-8"
-        )
+        (anima_dir / "knowledge" / "test.md").write_text("UPPERCASE content", encoding="utf-8")
         results = mm.search_memory_text("uppercase")
         assert len(results) == 1
 
@@ -388,18 +376,14 @@ class TestSearchMemoryTextCommonKnowledge:
         """search_memory_text with scope='common_knowledge' searches the shared dir."""
         ck_dir = data_dir / "common_knowledge"
         ck_dir.mkdir(parents=True, exist_ok=True)
-        (ck_dir / "shared_policy.md").write_text(
-            "Company-wide shared policy document", encoding="utf-8"
-        )
+        (ck_dir / "shared_policy.md").write_text("Company-wide shared policy document", encoding="utf-8")
         results = mm.search_memory_text("shared policy", scope="common_knowledge")
         assert len(results) >= 1
         assert any("shared_policy.md" in r[0] for r in results)
 
     def test_search_common_knowledge_scope_no_personal(self, mm, anima_dir, data_dir):
         """scope='common_knowledge' does NOT search personal knowledge."""
-        (anima_dir / "knowledge" / "personal.md").write_text(
-            "Personal knowledge only", encoding="utf-8"
-        )
+        (anima_dir / "knowledge" / "personal.md").write_text("Personal knowledge only", encoding="utf-8")
         ck_dir = data_dir / "common_knowledge"
         ck_dir.mkdir(parents=True, exist_ok=True)
         results = mm.search_memory_text("Personal knowledge", scope="common_knowledge")
@@ -410,12 +394,8 @@ class TestSearchMemoryTextCommonKnowledge:
         """scope='all' includes common_knowledge dir in search."""
         ck_dir = data_dir / "common_knowledge"
         ck_dir.mkdir(parents=True, exist_ok=True)
-        (ck_dir / "global_info.md").write_text(
-            "Global information for everyone", encoding="utf-8"
-        )
-        (anima_dir / "knowledge" / "local.md").write_text(
-            "Local knowledge for anima", encoding="utf-8"
-        )
+        (ck_dir / "global_info.md").write_text("Global information for everyone", encoding="utf-8")
+        (anima_dir / "knowledge" / "local.md").write_text("Local knowledge for anima", encoding="utf-8")
         results = mm.search_memory_text("information", scope="all")
         filenames = [r[0] for r in results]
         assert any("global_info.md" in f for f in filenames)
@@ -435,9 +415,7 @@ class TestSearchMemoryTextCommonKnowledge:
 
 class TestSearchKnowledge:
     def test_search(self, mm, anima_dir):
-        (anima_dir / "knowledge" / "topic.md").write_text(
-            "Important info here", encoding="utf-8"
-        )
+        (anima_dir / "knowledge" / "topic.md").write_text("Important info here", encoding="utf-8")
         results = mm.search_knowledge("important")
         assert len(results) == 1
         assert "topic.md" in results[0][0]
@@ -445,9 +423,7 @@ class TestSearchKnowledge:
 
 class TestSearchProcedures:
     def test_search(self, mm, anima_dir):
-        (anima_dir / "procedures" / "deploy.md").write_text(
-            "Deploy to production", encoding="utf-8"
-        )
+        (anima_dir / "procedures" / "deploy.md").write_text("Deploy to production", encoding="utf-8")
         results = mm.search_procedures("deploy")
         assert len(results) == 1
 
@@ -475,10 +451,13 @@ class TestReadModelConfig:
         )
         # Redirect ANIMAWORKS_DATA_DIR to a dir without config.json
         monkeypatch.setenv("ANIMAWORKS_DATA_DIR", str(fake_data))
-        with patch("core.memory.manager.get_company_dir", return_value=fake_data / "co"), \
-             patch("core.memory.manager.get_common_skills_dir", return_value=fake_data / "cs"), \
-             patch("core.memory.manager.get_shared_dir", return_value=fake_data / "sh"):
+        with (
+            patch("core.memory.manager.get_company_dir", return_value=fake_data / "co"),
+            patch("core.memory.manager.get_common_skills_dir", return_value=fake_data / "cs"),
+            patch("core.memory.manager.get_shared_dir", return_value=fake_data / "sh"),
+        ):
             from core.config.models import invalidate_cache
+
             invalidate_cache()
             mm = MemoryManager(anima_dir)
             mc = mm.read_model_config()
@@ -539,9 +518,7 @@ class TestReadModelConfigFromMd:
 class TestReadTodayEpisodes:
     def test_reads_today(self, mm):
         today = today_local().isoformat()
-        (mm.episodes_dir / f"{today}.md").write_text(
-            "Today's log", encoding="utf-8"
-        )
+        (mm.episodes_dir / f"{today}.md").write_text("Today's log", encoding="utf-8")
         result = mm.read_today_episodes()
         assert "Today's log" in result
 

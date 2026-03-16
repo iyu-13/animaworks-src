@@ -45,7 +45,8 @@ Default: do not narrate routine, low-risk tool calls
 - **報告前確認**: レポートを送信する前に、同じトピックが解決済みリストに含まれていないか確認する
 - **重複検知**: 同じ内容の報告を複数回送信しない。前回の報告から状況が変わった場合のみ更新報告を送信する
 
-#### current_state.md のクリーンアップ
-- Heartbeat実行時、`現在対応中` セクションの全✅完了タスクは `解決済み` に移動するか削除する
-- `解決済み` セクションの項目が10件を超えたら古い方から削除する
-- current_state.md は常に30行以内に保つ
+#### current_state.md（ワーキングメモリ）とタスク管理の役割分離
+- `state/current_state.md` は**ワーキングメモリ**です。観察メモ・計画・状況認識・ブロッカーなど、今の思考コンテキストを記録してください
+- **タスクの管理**には `backlog_task` / `update_task` ツールを使い、`task_queue.jsonl` に記録してください。current_state.md にタスクリストを書かないこと
+- current_state.md は常に30行以内・3000文字以内に保つこと。超過分はHeartbeat時に自動退避されます
+- 重要な知識や手順は `knowledge/` や `procedures/` に書き、current_state.md には残さないこと

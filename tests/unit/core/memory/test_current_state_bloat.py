@@ -7,11 +7,12 @@ from __future__ import annotations
 """Tests for current_state.md bloat prevention.
 
 Issue: 20260312_current-task-md-bloat-prevention
+Issue #114: Working memory separated from task registry; _prune_auto_detected_resolved removed.
 
 Covers:
-- _prune_auto_detected_resolved() logic
 - HB prompt cleanup instruction injection
-- Integration with _update_state_from_summary()
+- _update_state_from_summary() routes to task_queue.jsonl
+- _enforce_state_size_limit() hard-trim
 """
 
 from unittest.mock import MagicMock, patch
@@ -21,7 +22,6 @@ import pytest
 from core.memory.conversation import (
     ConversationMemory,
     ParsedSessionSummary,
-    _prune_auto_detected_resolved,
 )
 from core.schemas import ModelConfig
 from tests.helpers.filesystem import create_anima_dir, create_test_data_dir
@@ -62,145 +62,31 @@ def conv_memory(anima_dir, model_config):
     return ConversationMemory(anima_dir, model_config)
 
 
-# ── _prune_auto_detected_resolved tests ──────────────────────
+# ── _update_state_from_summary (Issue #114: task_queue routing) ────
 
 
-class TestPruneAutoDetectedResolved:
-    """Tests for the _prune_auto_detected_resolved() helper function."""
+class TestUpdateStateFromSummary:
+    """Tests that _update_state_from_summary() routes to task_queue.jsonl."""
 
-    def test_no_auto_detected_lines(self):
-        """Non-auto-detected content is left untouched."""
-        text = "## 現在対応中\n- [ ] タスクA\n- [x] タスクB\n## 解決済み\n- ☑ 手動完了タスク\n"
-        result, removed = _prune_auto_detected_resolved(text)
-        assert result == text
-        assert removed == []
-
-    def test_under_threshold(self):
-        """When auto-detected lines <= max_keep, nothing is pruned."""
-        lines = []
-        for i in range(8):
-            lines.append(f"- ✅ Task {i}（自動検出: 03/{i + 1:02d} 10:00）")
-        text = "\n".join(lines)
-        result, removed = _prune_auto_detected_resolved(text, max_keep=10)
-        assert result == text
-        assert removed == []
-
-    def test_exactly_at_threshold(self):
-        """When auto-detected lines == max_keep, nothing is pruned."""
-        lines = [f"- ✅ Task {i}（自動検出: 03/{i + 1:02d} 10:00）" for i in range(10)]
-        text = "\n".join(lines)
-        result, removed = _prune_auto_detected_resolved(text, max_keep=10)
-        assert result == text
-        assert removed == []
-
-    def test_prune_oldest(self):
-        """Oldest auto-detected lines are pruned, newest max_keep are kept."""
-        lines = [f"- ✅ Task {i}（自動検出: 03/{i + 1:02d} 10:00）" for i in range(15)]
-        text = "\n".join(lines)
-        result, removed = _prune_auto_detected_resolved(text, max_keep=10)
-
-        assert len(removed) == 5
-        for i in range(5):
-            assert f"Task {i}" in removed[i]
-
-        result_lines = result.split("\n")
-        assert len(result_lines) == 10
-        for i in range(10):
-            assert f"Task {i + 5}" in result_lines[i]
-
-    def test_preserves_non_auto_detected_lines(self):
-        """LLM-written lines (various formats) are never pruned."""
-        text = (
-            "## 現在対応中\n"
-            "- [ ] 進行中タスク\n"
-            "- ✅ Task 0（自動検出: 03/01 10:00）\n"
-            "- ✅ Task 1（自動検出: 03/02 10:00）\n"
-            "- [x] LLMが書いた完了\n"
-            "- ✅ Task 2（自動検出: 03/03 10:00）\n"
-            "- ☑ 別フォーマット完了\n"
-            "## 解決済み\n"
-            "- ✅ Task 3（自動検出: 03/04 10:00）\n"
-        )
-        result, removed = _prune_auto_detected_resolved(text, max_keep=2)
-
-        assert len(removed) == 2
-        assert "Task 0" in removed[0]
-        assert "Task 1" in removed[1]
-
-        assert "進行中タスク" in result
-        assert "[x] LLMが書いた完了" in result
-        assert "☑ 別フォーマット完了" in result
-        assert "## 現在対応中" in result
-        assert "## 解決済み" in result
-
-    def test_preserves_incomplete_auto_detected(self):
-        """Incomplete auto-detected tasks (- [ ] ... 自動検出) are not pruned."""
-        text = (
-            "- [ ] 未完了タスク（自動検出: 03/01 10:00）\n"
-            "- ✅ Task 0（自動検出: 03/02 10:00）\n"
-            "- ✅ Task 1（自動検出: 03/03 10:00）\n"
-        )
-        result, removed = _prune_auto_detected_resolved(text, max_keep=1)
-
-        assert len(removed) == 1
-        assert "Task 0" in removed[0]
-        assert "未完了タスク" in result
-        assert "Task 1" in result
-
-    def test_english_auto_detected_pattern(self):
-        """English 'auto-detected:' pattern is also matched."""
-        lines = [f"- ✅ Task {i} (auto-detected: 03/{i + 1:02d} 10:00)" for i in range(5)]
-        text = "\n".join(lines)
-        result, removed = _prune_auto_detected_resolved(text, max_keep=3)
-
-        assert len(removed) == 2
-        assert "Task 0" in removed[0]
-        assert "Task 1" in removed[1]
-
-    def test_mixed_ja_en_patterns(self):
-        """Both Japanese and English auto-detected patterns are handled together."""
-        text = (
-            "- ✅ タスクA（自動検出: 03/01 10:00）\n"
-            "- ✅ TaskB (auto-detected: 03/02 10:00)\n"
-            "- ✅ タスクC（自動検出: 03/03 10:00）\n"
-            "- ✅ TaskD (auto-detected: 03/04 10:00)\n"
-        )
-        result, removed = _prune_auto_detected_resolved(text, max_keep=2)
-
-        assert len(removed) == 2
-        assert "タスクA" in removed[0]
-        assert "TaskB" in removed[1]
-        assert "タスクC" in result
-        assert "TaskD" in result
-
-    def test_empty_text(self):
-        """Empty text returns empty."""
-        result, removed = _prune_auto_detected_resolved("")
-        assert result == ""
-        assert removed == []
-
-
-# ── _update_state_from_summary pruning integration ────────────
-
-
-class TestUpdateStatePruning:
-    """Tests that _update_state_from_summary() prunes and archives."""
-
-    def test_prune_archives_to_episodes(self, conv_memory, anima_dir):
-        """Pruned auto-detected lines are written to episodes."""
+    def test_resolved_items_mark_task_done(self, conv_memory, anima_dir):
+        """Resolved items update matching task_queue entries to done."""
         from core.memory.manager import MemoryManager
-        from core.time_utils import today_local
+        from core.memory.task_queue import TaskQueueManager
 
         memory_mgr = MemoryManager(anima_dir)
-
-        existing_lines = [f"- ✅ Old {i}（自動検出: 03/{i + 1:02d} 10:00）" for i in range(12)]
-        state_text = "## 現在の状態\n" + "\n".join(existing_lines)
-        (anima_dir / "state" / "current_state.md").write_text(state_text, encoding="utf-8")
+        tqm = TaskQueueManager(anima_dir)
+        tqm.add_task(
+            source="anima",
+            original_instruction="Fix login bug",
+            assignee=anima_dir.name,
+            summary="Fix login bug",
+        )
+        task_id = list(tqm._load_all().keys())[0]
 
         parsed = ParsedSessionSummary(
             title="test",
             episode_body="test body",
-            resolved_items=["new resolved item"],
+            resolved_items=["Fix login bug"],
             new_tasks=[],
             current_status="",
             has_state_changes=True,
@@ -208,44 +94,54 @@ class TestUpdateStatePruning:
 
         conv_memory._update_state_from_summary(memory_mgr, parsed)
 
-        episode_file = anima_dir / "episodes" / f"{today_local().isoformat()}.md"
-        assert episode_file.exists()
-        episode_content = episode_file.read_text(encoding="utf-8")
-        assert "current_state.md" in episode_content
-        assert "Old 0" in episode_content or "Old 1" in episode_content
+        task = tqm.get_task_by_id(task_id)
+        assert task is not None
+        assert task.status == "done"
 
-        updated_state = (anima_dir / "state" / "current_state.md").read_text(encoding="utf-8")
-        auto_lines = [ln for ln in updated_state.split("\n") if "自動検出" in ln and "✅" in ln]
-        assert len(auto_lines) <= 10
-
-    def test_no_prune_when_below_threshold(self, conv_memory, anima_dir):
-        """No pruning when auto-detected count is within threshold.
-
-        Note: resolved_marker i18n adds '自動検出' to the new item too,
-        so 5 existing + 1 new = 6 total (still under max_keep=10).
-        """
+    def test_new_tasks_added_to_queue(self, conv_memory, anima_dir):
+        """New tasks are registered in task_queue.jsonl."""
         from core.memory.manager import MemoryManager
+        from core.memory.task_queue import TaskQueueManager
 
         memory_mgr = MemoryManager(anima_dir)
-
-        existing_lines = [f"- ✅ Task {i}（自動検出: 03/{i + 1:02d} 10:00）" for i in range(5)]
-        state_text = "\n".join(existing_lines)
-        (anima_dir / "state" / "current_state.md").write_text(state_text, encoding="utf-8")
+        tqm = TaskQueueManager(anima_dir)
 
         parsed = ParsedSessionSummary(
             title="test",
             episode_body="test body",
-            resolved_items=["another item"],
-            new_tasks=[],
+            resolved_items=[],
+            new_tasks=["Implement feature X", "Review PR #42"],
             current_status="",
             has_state_changes=True,
         )
 
         conv_memory._update_state_from_summary(memory_mgr, parsed)
 
-        updated = (anima_dir / "state" / "current_state.md").read_text(encoding="utf-8")
-        auto_lines = [ln for ln in updated.split("\n") if "自動検出" in ln and "✅" in ln]
-        assert len(auto_lines) == 6  # 5 existing + 1 newly added resolved
+        pending = tqm.get_pending()
+        summaries = [t.summary for t in pending]
+        assert "Implement feature X" in summaries
+        assert "Review PR #42" in summaries
+
+    def test_current_state_unchanged(self, conv_memory, anima_dir):
+        """current_state.md is NOT modified by _update_state_from_summary."""
+        from core.memory.manager import MemoryManager
+
+        memory_mgr = MemoryManager(anima_dir)
+        original_state = "## 現在の状態\nWorking on something."
+        (anima_dir / "state" / "current_state.md").write_text(original_state, encoding="utf-8")
+
+        parsed = ParsedSessionSummary(
+            title="test",
+            episode_body="test body",
+            resolved_items=["item"],
+            new_tasks=["new task"],
+            current_status="",
+            has_state_changes=True,
+        )
+
+        conv_memory._update_state_from_summary(memory_mgr, parsed)
+
+        assert (anima_dir / "state" / "current_state.md").read_text(encoding="utf-8") == original_state
 
 
 # ── HB cleanup instruction injection ─────────────────────────
