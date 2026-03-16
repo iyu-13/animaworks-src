@@ -12,9 +12,15 @@ from __future__ import annotations
 
 Depends on ``core.execution.base`` for ``ToolCallRecord`` and truncation
 helpers, and ``core.prompt.context`` for ``resolve_context_window``.
+
+Also provides ``StreamingContext`` / ``StreamingState`` and the
+``process_stream_messages`` async generator used by
+``AgentSDKExecutor.execute_streaming``.
 """
 
 import logging
+from collections.abc import AsyncGenerator, Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -237,3 +243,175 @@ def _finalize_pending_records(
             )
         records.append(record)
     return records
+
+
+# ── Streaming message processing ─────────────────────────────
+
+
+@dataclass
+class StreamingContext:
+    """Read-only parameters for the streaming message loop."""
+
+    prompt: str
+    images: list[Any] | None
+    session_stats: dict[str, Any]
+    tracker: Any
+    session_type: str
+    model: str
+    anima_dir: Path
+    cw_overrides: dict[str, int] | None
+    check_interrupted: Callable[[], bool]
+    thread_id: str = "default"
+
+
+@dataclass
+class StreamingState:
+    """Mutable state shared across the streaming message loop and caller."""
+
+    response_text: list[str] = field(default_factory=list)
+    pending_records: dict[str, ToolCallRecord] = field(default_factory=dict)
+    active_tool_ids: set[str] = field(default_factory=set)
+    result_message: Any = None
+    message_count: int = 0
+    usage_acc: Any = None
+
+
+async def process_stream_messages(
+    client: Any,
+    ctx: StreamingContext,
+    state: StreamingState,
+) -> AsyncGenerator[dict[str, Any], None]:
+    """Process streaming messages from an SDK client and yield UI events.
+
+    Extracted from ``AgentSDKExecutor.execute_streaming`` inner
+    ``_stream_messages`` to keep the executor class thin.
+    """
+    from core.execution._sdk_interrupt import _graceful_interrupt_stream
+    from core.execution._sdk_session import _RESUMABLE_SESSION_TYPES, _build_sdk_query_input, _save_session_id
+    from core.execution._tool_summary import make_tool_detail_chunk
+
+    got_stream_event = False
+    _in_thinking_block = False
+    _captured_session_id: str | None = None
+
+    await client.query(_build_sdk_query_input(ctx.prompt, ctx.images))
+    async for message in client.receive_messages():
+        if ctx.check_interrupted():
+            logger.info("Agent SDK streaming interrupted — sending graceful interrupt")
+            yield {"type": "text_delta", "text": "[Session interrupted by user]"}
+            await _graceful_interrupt_stream(
+                client, ctx.anima_dir, ctx.session_type,
+                _captured_session_id, thread_id=ctx.thread_id,
+            )
+            return
+
+        # Lazy imports are cached by Python — negligible cost after first call.
+        from claude_agent_sdk import (
+            AssistantMessage,
+            ResultMessage,
+            SystemMessage,
+            TextBlock,
+            ToolResultBlock,
+            ToolUseBlock,
+            UserMessage,
+        )
+        from claude_agent_sdk.types import StreamEvent
+
+        if isinstance(message, StreamEvent):
+            _captured_session_id = message.session_id
+            got_stream_event = True
+            event = message.event
+            event_type = event.get("type", "")
+
+            if event_type == "message_start":
+                usage = event.get("message", {}).get("usage", {})
+                if usage:
+                    ctx.tracker.update_from_message_start(usage)
+                    state.usage_acc.cache_read_tokens += usage.get("cache_read_input_tokens", 0)
+                    state.usage_acc.cache_write_tokens += usage.get("cache_creation_input_tokens", 0)
+                    yield {
+                        "type": "context_update",
+                        "context_usage_ratio": ctx.tracker.usage_ratio,
+                        "input_tokens": ctx.tracker._input_tokens,
+                        "context_window": ctx.tracker.context_window,
+                        "threshold": ctx.tracker.threshold,
+                    }
+
+            elif event_type == "content_block_start":
+                block = event.get("content_block", {})
+                if block.get("type") == "tool_use":
+                    tool_id = block.get("id", "")
+                    tool_name = block.get("name", "")
+                    state.active_tool_ids.add(tool_id)
+                    yield {"type": "tool_start", "tool_name": tool_name, "tool_id": tool_id}
+                elif block.get("type") == "thinking":
+                    _in_thinking_block = True
+                    yield {"type": "thinking_start"}
+
+            elif event_type == "content_block_delta":
+                delta = event.get("delta", {})
+                if delta.get("type") == "text_delta":
+                    text = delta.get("text", "")
+                    if text:
+                        yield {"type": "text_delta", "text": text}
+                elif delta.get("type") == "thinking_delta":
+                    thinking_text = delta.get("thinking", "")
+                    if thinking_text:
+                        yield {"type": "thinking_delta", "text": thinking_text}
+
+            elif event_type == "content_block_stop":
+                if _in_thinking_block:
+                    _in_thinking_block = False
+                    yield {"type": "thinking_end"}
+
+        elif isinstance(message, AssistantMessage):
+            if not got_stream_event:
+                continue
+            state.message_count += 1
+            for block in message.content:
+                if isinstance(block, TextBlock):
+                    state.response_text.append(block.text)
+                elif isinstance(block, ToolUseBlock):
+                    _handle_tool_use_block(
+                        block, state.pending_records, None, ctx.model,
+                        cw_overrides=ctx.cw_overrides,
+                    )
+                    detail_chunk = make_tool_detail_chunk(block.name, block.id, block.input or {})
+                    if detail_chunk:
+                        yield detail_chunk
+                    if block.id in state.active_tool_ids:
+                        state.active_tool_ids.discard(block.id)
+                        yield {"type": "tool_end", "tool_id": block.id, "tool_name": block.name}
+
+        elif isinstance(message, UserMessage):
+            if not got_stream_event:
+                continue
+            if isinstance(message.content, list):
+                for block in message.content:
+                    if isinstance(block, ToolResultBlock):
+                        ctx.session_stats["total_result_bytes"] += _tool_result_content_len(block)
+                        _handle_tool_result_block(
+                            block, state.pending_records, None, ctx.model,
+                            anima_dir=ctx.anima_dir, cw_overrides=ctx.cw_overrides,
+                        )
+
+        elif isinstance(message, ResultMessage):
+            state.result_message = message
+            if message.session_id and ctx.session_type in _RESUMABLE_SESSION_TYPES:
+                _save_session_id(ctx.anima_dir, message.session_id, ctx.session_type, thread_id=ctx.thread_id)
+            if message.usage:
+                u = message.usage
+                state.usage_acc.input_tokens = u.get("input_tokens", 0) or 0
+                state.usage_acc.output_tokens = u.get("output_tokens", 0) or 0
+            break
+
+        elif isinstance(message, SystemMessage):
+            if message.subtype == "init" and message.data:
+                mcp_servers = message.data.get("mcp_servers", [])
+                for srv in mcp_servers:
+                    name = srv.get("name", "unknown")
+                    status = srv.get("status", "unknown")
+                    if status != "connected":
+                        logger.error("MCP server '%s' failed to connect: status=%s", name, status)
+                    else:
+                        logger.info("MCP server '%s' connected successfully", name)

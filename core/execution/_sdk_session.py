@@ -10,9 +10,11 @@ from __future__ import annotations
 
 """Mode S session persistence, SDK input helpers, and cleanup utilities.
 
-Leaf module in the dependency graph — no internal framework imports.
+Leaf module in the dependency graph — no internal framework imports
+(except ``core.schemas``).
 """
 
+import asyncio
 import json
 import logging
 import shutil
@@ -248,3 +250,77 @@ def _cleanup_tool_outputs(anima_dir: Path) -> None:
     if tool_output_dir.exists():
         shutil.rmtree(tool_output_dir, ignore_errors=True)
         logger.debug("Cleaned up tool output directory: %s", tool_output_dir)
+
+
+# ── Idle compaction ───────────────────────────────────────────
+
+
+async def compact_sdk_session(
+    anima_dir: Path,
+    session_type: str = "chat",
+    thread_id: str = "default",
+) -> bool:
+    """Send /compact to an idle SDK session to trigger compaction.
+
+    Resumes the session and sends ``/compact`` as the query.  The SDK
+    compresses the transcript and the same session_id is preserved for
+    future resume.  On failure the session file is **preserved** so
+    that the next regular chat can still resume from the old state.
+
+    Returns:
+        True if compaction succeeded, False otherwise.
+    """
+    session_id = _load_session_id(anima_dir, session_type, thread_id)
+    if not session_id:
+        logger.info("No session to compact for %s/%s/%s", session_type, anima_dir.name, thread_id)
+        return False
+
+    logger.info(
+        "Starting idle compaction (session=%s, type=%s, thread=%s)",
+        session_id, session_type, thread_id,
+    )
+
+    try:
+        from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
+
+        options = ClaudeAgentOptions(
+            system_prompt=f"{anima_dir.name} session compaction",
+            max_turns=1,
+            resume=session_id,
+        )
+
+        found_session_id = False
+        async with asyncio.timeout(RESUME_TIMEOUT_SEC):
+            async with ClaudeSDKClient(options=options) as client:
+                await client.query("/compact")
+                async for message in client.receive_messages():
+                    if hasattr(message, "session_id") and message.session_id:
+                        _save_session_id(anima_dir, message.session_id, session_type, thread_id)
+                        logger.info(
+                            "Idle compaction completed (session=%s, type=%s, thread=%s)",
+                            message.session_id, session_type, thread_id,
+                        )
+                        found_session_id = True
+
+        if not found_session_id:
+            logger.warning(
+                "Idle compaction did not receive session_id for %s/%s/%s",
+                anima_dir.name, session_type, thread_id,
+            )
+        return found_session_id
+    except ImportError:
+        logger.info("Agent SDK not available; skipping /compact")
+        return False
+    except TimeoutError:
+        logger.warning(
+            "Idle compaction timed out for %s/%s/%s; session preserved for next resume",
+            anima_dir.name, session_type, thread_id,
+        )
+        return False
+    except Exception:
+        logger.warning(
+            "Idle compaction failed for %s/%s/%s; session preserved for next resume",
+            anima_dir.name, session_type, thread_id,
+            exc_info=True,
+        )
+        return False
