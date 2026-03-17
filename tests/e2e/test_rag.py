@@ -139,7 +139,7 @@ def test_chromadb_create_collection(temp_vector_store):
     """Test creating a ChromaDB collection."""
 
     store = temp_vector_store
-    store.create_collection("test_knowledge", dimension=384)
+    store.create_collection("test_knowledge")
 
     collections = store.list_collections()
     assert "test_knowledge" in collections
@@ -150,7 +150,7 @@ def test_chromadb_upsert_and_query(temp_vector_store):
     from core.memory.rag.store import Document
 
     store = temp_vector_store
-    store.create_collection("test_collection", dimension=3)
+    store.create_collection("test_collection")
 
     # Create test documents with simple embeddings
     docs = [
@@ -192,7 +192,7 @@ def test_chromadb_metadata_filter(temp_vector_store):
     from core.memory.rag.store import Document
 
     store = temp_vector_store
-    store.create_collection("test_filter", dimension=3)
+    store.create_collection("test_filter")
 
     docs = [
         Document(

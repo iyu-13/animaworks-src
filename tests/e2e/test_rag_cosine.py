@@ -43,7 +43,7 @@ def temp_vectordb():
 def test_create_collection_sets_cosine(temp_vectordb):
     """New collections must use cosine distance metric."""
     store = temp_vectordb
-    store.create_collection("cosine_test", dimension=3)
+    store.create_collection("cosine_test")
 
     coll = store.client.get_collection(name="cosine_test")
     assert coll.metadata.get("hnsw:space") == "cosine"
@@ -74,7 +74,7 @@ def test_cosine_scores_in_valid_range(temp_vectordb):
     from core.memory.rag.store import Document
 
     store = temp_vectordb
-    store.create_collection("score_range_test", dimension=3)
+    store.create_collection("score_range_test")
 
     docs = [
         Document(id="same", content="identical direction", embedding=_normalize([1.0, 0.0, 0.0]), metadata={"t": "a"}),
@@ -99,7 +99,7 @@ def test_cosine_identical_vector_scores_near_one(temp_vectordb):
     from core.memory.rag.store import Document
 
     store = temp_vectordb
-    store.create_collection("identical_test", dimension=3)
+    store.create_collection("identical_test")
 
     vec = _normalize([0.5, 0.5, 0.5])
     store.upsert(
@@ -117,7 +117,7 @@ def test_cosine_ordering(temp_vectordb):
     from core.memory.rag.store import Document
 
     store = temp_vectordb
-    store.create_collection("ordering_test", dimension=3)
+    store.create_collection("ordering_test")
 
     query = _normalize([1.0, 0.0, 0.0])
     docs = [
@@ -143,8 +143,8 @@ def test_needs_cosine_migration_empty(temp_vectordb):
 def test_needs_cosine_migration_all_cosine(temp_vectordb):
     """Cosine collections → empty migration list."""
     store = temp_vectordb
-    store.create_collection("coll_a", dimension=3)
-    store.create_collection("coll_b", dimension=3)
+    store.create_collection("coll_a")
+    store.create_collection("coll_b")
 
     assert store.needs_cosine_migration() == []
 
@@ -154,7 +154,7 @@ def test_needs_cosine_migration_detects_l2(temp_vectordb):
     store = temp_vectordb
 
     store.client.create_collection(name="legacy_l2", metadata={"dimension": 3})
-    store.create_collection("new_cosine", dimension=3)
+    store.create_collection("new_cosine")
 
     l2_list = store.needs_cosine_migration()
     assert "legacy_l2" in l2_list

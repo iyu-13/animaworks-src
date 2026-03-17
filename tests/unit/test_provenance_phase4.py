@@ -96,8 +96,7 @@ class TestIndexerOriginMetadata:
         indexer.vector_store.create_collection = MagicMock()
         indexer.vector_store.upsert = MagicMock()
 
-        with patch("core.memory.rag.singleton.get_embedding_dimension", return_value=384):
-            indexer.index_file(test_file, "knowledge", origin="consolidation", force=True)
+        indexer.index_file(test_file, "knowledge", origin="consolidation", force=True)
 
         assert indexer.vector_store.upsert.called
         call_args = indexer.vector_store.upsert.call_args
@@ -117,8 +116,7 @@ class TestIndexerOriginMetadata:
         indexer.vector_store.create_collection = MagicMock()
         indexer.vector_store.upsert = MagicMock()
 
-        with patch("core.memory.rag.singleton.get_embedding_dimension", return_value=384):
-            indexer.index_file(test_file, "knowledge", force=True)
+        indexer.index_file(test_file, "knowledge", force=True)
 
         call_args = indexer.vector_store.upsert.call_args
         documents = call_args[0][1]

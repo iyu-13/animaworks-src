@@ -74,11 +74,11 @@ class TestCosineMetric:
             yield store
 
     def test_create_collection_uses_cosine(self, mock_store):
-        mock_store.create_collection("test_coll", dimension=384)
+        mock_store.create_collection("test_coll")
 
         mock_store.client.create_collection.assert_called_once_with(
             name="test_coll",
-            metadata={"hnsw:space": "cosine", "dimension": 384},
+            metadata={"hnsw:space": "cosine"},
         )
 
     def test_get_or_create_collection_uses_cosine(self, mock_store):

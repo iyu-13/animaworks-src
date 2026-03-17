@@ -395,7 +395,7 @@ class TestUpdateMetadataOnVectorStore:
         vectordb_dir.mkdir()
 
         store = ChromaVectorStore(persist_dir=vectordb_dir)
-        store.create_collection("test_col", dimension=3)
+        store.create_collection("test_col")
 
         # Upsert a document
         doc = Document(

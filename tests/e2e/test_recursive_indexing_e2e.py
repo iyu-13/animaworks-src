@@ -229,10 +229,8 @@ def test_common_skills_only_indexes_skill_md(temp_dirs, vector_store):
     assert "shared_common_skills" in collections
 
     # Verify that template files were NOT indexed
-    from core.memory.rag.singleton import get_embedding_dimension
-
-    dim = get_embedding_dimension()
-    query_embedding = [0.0] * dim
+    # Use 384 (multilingual-e5-small dimension) for dummy query
+    query_embedding = [0.0] * 384
     results = vector_store.query(
         "shared_common_skills", query_embedding, top_k=20,
     )
@@ -255,15 +253,14 @@ def test_source_file_metadata_includes_subdirectory(temp_dirs, vector_store):
     _, ckdir, _, data_dir = temp_dirs
 
     from core.memory.rag.indexer import MemoryIndexer
-    from core.memory.rag.singleton import get_embedding_dimension
 
     shared_indexer = MemoryIndexer(
         vector_store, "shared", data_dir, collection_prefix="shared",
     )
     shared_indexer.index_directory(ckdir, "common_knowledge")
 
-    dim = get_embedding_dimension()
-    query_embedding = [0.0] * dim
+    # Use 384 (multilingual-e5-small dimension) for dummy query
+    query_embedding = [0.0] * 384
     results = vector_store.query(
         "shared_common_knowledge", query_embedding, top_k=20,
     )

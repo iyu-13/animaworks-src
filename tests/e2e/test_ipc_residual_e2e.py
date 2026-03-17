@@ -89,7 +89,7 @@ class TestPerAnimaChromaDBIsolation:
         assert "bob" in str(store_b.persist_dir)
 
         # Create a collection and insert data in store_a
-        store_a.create_collection("test_collection", dimension=3)
+        store_a.create_collection("test_collection")
         from core.memory.rag.store import Document
         doc = Document(
             id="doc1",
@@ -113,7 +113,7 @@ class TestPerAnimaChromaDBIsolation:
         assert "test_collection" not in collections_b
 
         # Verify store_b returns empty results even after creating same-named collection
-        store_b.create_collection("test_collection", dimension=3)
+        store_b.create_collection("test_collection")
         results_b = store_b.query(
             "test_collection",
             embedding=[1.0, 0.0, 0.0],

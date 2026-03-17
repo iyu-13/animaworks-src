@@ -239,11 +239,8 @@ class MemoryIndexer:
             for i, chunk in enumerate(chunks)
         ]
 
-        # Upsert to vector store
-        from core.memory.rag.singleton import get_embedding_dimension
-
         collection_name = f"{self.collection_prefix}_{memory_type}"
-        self.vector_store.create_collection(collection_name, get_embedding_dimension())
+        self.vector_store.create_collection(collection_name)
         self.vector_store.upsert(collection_name, documents)
 
         # Update index metadata
@@ -355,11 +352,10 @@ class MemoryIndexer:
         embeddings = self._generate_embeddings([c.content for c in chunks])
 
         # Build documents and upsert
-        from core.memory.rag.singleton import get_embedding_dimension
         from core.memory.rag.store import Document
 
         collection_name = f"{self.collection_prefix}_conversation_summary"
-        self.vector_store.create_collection(collection_name, get_embedding_dimension())
+        self.vector_store.create_collection(collection_name)
 
         documents = [
             Document(

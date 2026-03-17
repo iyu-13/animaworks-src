@@ -48,12 +48,11 @@ class VectorStore(ABC):
     """Abstract base class for vector storage backends."""
 
     @abstractmethod
-    def create_collection(self, name: str, dimension: int) -> None:
+    def create_collection(self, name: str) -> None:
         """Create a new collection.
 
         Args:
             name: Collection name (e.g., "sakura_knowledge")
-            dimension: Embedding dimension (e.g., 384 for multilingual-e5-small)
         """
 
     @abstractmethod
@@ -138,14 +137,14 @@ class ChromaVectorStore(VectorStore):
         self.client = chromadb.PersistentClient(path=str(persist_dir))
         self.persist_dir = persist_dir
 
-    def create_collection(self, name: str, dimension: int) -> None:
+    def create_collection(self, name: str) -> None:
         """Create a new collection or get existing one."""
         try:
             self.client.create_collection(
                 name=name,
-                metadata={"hnsw:space": "cosine", "dimension": dimension},
+                metadata={"hnsw:space": "cosine"},
             )
-            logger.info("Created collection '%s' (dimension=%d, space=cosine)", name, dimension)
+            logger.info("Created collection '%s' (space=cosine)", name)
         except Exception as e:
             # Collection already exists
             logger.debug("Collection '%s' already exists: %s", name, e)
