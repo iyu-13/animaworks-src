@@ -211,6 +211,6 @@ class TestSTemplateContent:
         assert "bash send" not in content
 
     def test_communication_rules_s_has_routing_rules(self) -> None:
-        """communication_rules_s.md must contain routing rules (MCP refs moved to messaging_s)."""
+        """communication_rules_s.md must contain routing rules (compressed format)."""
         content = (TEMPLATES_DIR / "ja" / "prompts" / "communication_rules_s.md").read_text(encoding="utf-8")
-        assert "経路ルール" in content
+        assert "経路" in content
