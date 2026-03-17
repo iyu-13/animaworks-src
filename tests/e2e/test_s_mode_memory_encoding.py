@@ -363,9 +363,9 @@ class TestConversationSummaryKeywordSearch:
         )
 
         # Should find a match from conversation_summary
-        summary_results = [r for r in results if r[0] == "conversation_summary"]
+        summary_results = [r for r in results if r["memory_type"] == "conversation_summary"]
         assert len(summary_results) > 0
-        assert any("consolidation" in r[1].lower() for r in summary_results)
+        assert any("consolidation" in r["content"].lower() for r in summary_results)
 
     def test_keyword_search_conversation_summary_scope(
         self, data_dir: Path, make_anima,
@@ -406,7 +406,7 @@ class TestConversationSummaryKeywordSearch:
         )
 
         assert len(results) > 0
-        assert any("Hasegawa" in r[1] for r in results)
+        assert any("Hasegawa" in r["content"] for r in results)
 
     def test_keyword_search_no_conversation_file(
         self, data_dir: Path, make_anima,
