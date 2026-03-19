@@ -262,17 +262,17 @@ def _match_pattern_table(
 
 
 def _normalise_mode(raw: str) -> str:
-    """Normalise a mode value to S/A/B, applying legacy mapping if needed.
+    """Normalise a mode value to S/C/A/B/D, applying legacy mapping if needed.
 
     Accepts legacy values (``"A1"``, ``"A2"``, ``"autonomous"``, etc.) and
-    canonical values (``"S"``, ``"A"``, ``"B"``).  Returns uppercase S/A/B.
+    canonical values (``"S"``, ``"C"``, ``"A"``, ``"B"``, ``"D"``).
     """
     lower = raw.strip().lower()
     mapped = _LEGACY_MODE_MAP.get(lower)
     if mapped:
         return mapped
     upper = raw.strip().upper()
-    if upper in ("S", "A", "B", "C"):
+    if upper in ("S", "C", "A", "B", "D"):
         return upper
     # Unrecognised — return as-is (upper) for forward compat
     logger.warning("Unrecognised execution mode '%s'; passing through as '%s'", raw, upper)
@@ -331,8 +331,8 @@ def resolve_execution_mode(
             When set, takes highest priority.
 
     Returns:
-        One of ``"S"`` (SDK), ``"C"`` (Codex), ``"A"`` (Autonomous),
-        or ``"B"`` (Basic).
+        One of ``"S"`` (SDK), ``"C"`` (Codex), ``"D"`` (Cursor Agent),
+        ``"A"`` (Autonomous), or ``"B"`` (Basic).
     """
     # 1. Per-anima explicit override
     if explicit_override:

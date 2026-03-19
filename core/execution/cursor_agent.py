@@ -71,6 +71,10 @@ class CursorAgentExecutor(BaseExecutor):
     MCP integration with core/mcp/server.py provides AnimaWorks tools.
     """
 
+    @property
+    def supports_streaming(self) -> bool:  # noqa: D102
+        return False
+
     def __init__(
         self,
         model_config: ModelConfig,
