@@ -17,8 +17,16 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def _reset_singletons():
-    """Reset singletons before and after each test for isolation."""
+def _reset_singletons(monkeypatch):
+    """Reset singletons before and after each test for isolation.
+
+    Also clears ANIMAWORKS_VECTOR_URL / ANIMAWORKS_EMBED_URL so that
+    tests always exercise the local (ChromaVectorStore / SentenceTransformer)
+    code-paths regardless of the host environment.
+    """
+    monkeypatch.delenv("ANIMAWORKS_VECTOR_URL", raising=False)
+    monkeypatch.delenv("ANIMAWORKS_EMBED_URL", raising=False)
+
     from core.memory.rag.singleton import _reset_for_testing
 
     _reset_for_testing()

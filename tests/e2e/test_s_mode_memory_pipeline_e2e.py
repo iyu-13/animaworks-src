@@ -274,6 +274,10 @@ class TestCompressedSummaryToRAGSearchPipeline:
             reason="sentence-transformers not installed",
         )
 
+        # Clear HTTP delegation env vars so MemoryIndexer uses local model
+        monkeypatch.delenv("ANIMAWORKS_VECTOR_URL", raising=False)
+        monkeypatch.delenv("ANIMAWORKS_EMBED_URL", raising=False)
+
         # Set up isolated data directory
         data_dir = tmp_path / ".animaworks"
         data_dir.mkdir()

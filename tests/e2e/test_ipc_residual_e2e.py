@@ -55,7 +55,10 @@ class TestPerAnimaChromaDBIsolation:
         return tmp_path
 
     @pytest.fixture(autouse=True)
-    def _reset(self):
+    def _reset(self, monkeypatch):
+        """Reset RAG singletons and clear HTTP delegation env vars."""
+        monkeypatch.delenv("ANIMAWORKS_VECTOR_URL", raising=False)
+        monkeypatch.delenv("ANIMAWORKS_EMBED_URL", raising=False)
         from core.memory.rag.singleton import _reset_for_testing
         _reset_for_testing()
         yield

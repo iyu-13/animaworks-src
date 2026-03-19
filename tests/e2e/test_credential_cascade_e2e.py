@@ -30,6 +30,13 @@ def _clean_cache():
     invalidate_cache()
 
 
+@pytest.fixture(autouse=True)
+def _isolate_vault():
+    """Prevent vault from leaking real credentials into test resolution."""
+    with patch("core.tools._base._lookup_vault_credential", return_value=None):
+        yield
+
+
 @pytest.fixture
 def config_dir(tmp_path, monkeypatch):
     """Isolated config directory with ANIMAWORKS_DATA_DIR set."""
