@@ -82,4 +82,16 @@ STRINGS: dict[str, dict[str, str]] = {
         "ja": "[cursor-agent タイムアウト: {timeout}秒以内に完了しませんでした]",
         "en": "[cursor-agent timeout: did not complete within {timeout} seconds]",
     },
+    "gemini_cli.not_installed": {
+        "ja": "Gemini CLIが見つかりません。`npm install -g @google/gemini-cli` でインストールし、`gemini auth login` でログインしてください。",
+        "en": "Gemini CLI not found. Install with `npm install -g @google/gemini-cli` and run `gemini auth login`.",
+    },
+    "gemini_cli.not_authenticated": {
+        "ja": "Gemini CLIが未認証です。`gemini auth login` を実行してGoogleアカウントにログインしてください。",
+        "en": "Gemini CLI is not authenticated. Run `gemini auth login` to sign in to your Google account.",
+    },
+    "gemini_cli.timeout": {
+        "ja": "[Gemini CLI タイムアウト: {timeout}秒以内に完了しませんでした]",
+        "en": "[Gemini CLI timeout: did not complete within {timeout} seconds]",
+    },
 }

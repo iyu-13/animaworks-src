@@ -199,6 +199,49 @@ class ExecutorFactoryMixin:
                     interrupt_event=self._interrupt_event,
                 )
 
+        if mode == "g":
+            try:
+                from core.execution.gemini_cli import (
+                    GeminiCLIExecutor,
+                    is_gemini_cli_available,
+                )
+
+                if not is_gemini_cli_available():
+                    raise ImportError("gemini CLI not found")
+                return GeminiCLIExecutor(
+                    model_config=self.model_config,
+                    anima_dir=self.anima_dir,
+                    tool_registry=self._tool_registry,
+                    personal_tools=self._personal_tools,
+                    interrupt_event=self._interrupt_event,
+                )
+            except ImportError:
+                logger.warning(
+                    "GeminiCLIExecutor unavailable (gemini CLI not installed), falling back to LiteLLM (Mode A)"
+                )
+                fallback_model_config = self.model_config.model_copy(deep=True)
+                model_name = fallback_model_config.model
+                if model_name.startswith("gemini/"):
+                    bare = model_name.split("/", 1)[1]
+                    if bare.startswith("gemini-"):
+                        fallback_model_config.model = f"google/{bare}"
+                    else:
+                        fallback_model_config.model = f"google/gemini-{bare}"
+                    logger.warning(
+                        "Mode G fallback remapped model: %s -> %s",
+                        self.model_config.model,
+                        fallback_model_config.model,
+                    )
+                return LiteLLMExecutor(
+                    model_config=fallback_model_config,
+                    anima_dir=self.anima_dir,
+                    tool_handler=self._tool_handler,
+                    tool_registry=self._tool_registry,
+                    memory=self.memory,
+                    personal_tools=self._personal_tools,
+                    interrupt_event=self._interrupt_event,
+                )
+
         if mode == "a":
             return LiteLLMExecutor(
                 model_config=self.model_config,

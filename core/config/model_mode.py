@@ -5,7 +5,7 @@
 # This file is part of AnimaWorks core/server, licensed under Apache-2.0.
 # See LICENSE for the full license text.
 
-"""Model execution mode resolution (S/A/B/C) from model name patterns."""
+"""Model execution mode resolution (S/C/D/G/A/B) from model name patterns."""
 
 from __future__ import annotations
 
@@ -22,8 +22,9 @@ logger = logging.getLogger("animaworks.config")
 # Order matters for specificity — more specific patterns should appear first,
 # but the resolver sorts by specificity automatically.
 #
-# Mode values: S = SDK (Agent SDK / Claude Code), A = Autonomous (tool_use),
-#              C = Codex (Codex CLI wrapper), B = Basic (no tool_use)
+# Mode values: S = SDK (Agent SDK / Claude Code), C = Codex (Codex CLI wrapper),
+#              D = Cursor Agent CLI, G = Gemini CLI,
+#              A = Autonomous (tool_use), B = Basic (no tool_use)
 #
 # IMPORTANT: When status.json omits "execution_mode", resolve_execution_mode()
 # falls through to these patterns to determine the mode from the model name.
@@ -37,6 +38,8 @@ DEFAULT_MODEL_MODE_PATTERNS: dict[str, str] = {
     "codex/*": "C",
     # ── D: Cursor Agent CLI ──────────────────────────────
     "cursor/*": "D",
+    # ── G: Gemini CLI ────────────────────────────────────
+    "gemini/*": "G",
     # ── A: Cloud API providers (LiteLLM + tool_use) ──────
     "openai/*": "A",
     "azure/*": "A",
@@ -262,17 +265,17 @@ def _match_pattern_table(
 
 
 def _normalise_mode(raw: str) -> str:
-    """Normalise a mode value to S/C/A/B/D, applying legacy mapping if needed.
+    """Normalise a mode value to S/C/D/G/A/B, applying legacy mapping if needed.
 
     Accepts legacy values (``"A1"``, ``"A2"``, ``"autonomous"``, etc.) and
-    canonical values (``"S"``, ``"C"``, ``"A"``, ``"B"``, ``"D"``).
+    canonical values (``"S"``, ``"C"``, ``"D"``, ``"G"``, ``"A"``, ``"B"``).
     """
     lower = raw.strip().lower()
     mapped = _LEGACY_MODE_MAP.get(lower)
     if mapped:
         return mapped
     upper = raw.strip().upper()
-    if upper in ("S", "C", "A", "B", "D"):
+    if upper in ("S", "C", "A", "B", "D", "G"):
         return upper
     # Unrecognised — return as-is (upper) for forward compat
     logger.warning("Unrecognised execution mode '%s'; passing through as '%s'", raw, upper)
