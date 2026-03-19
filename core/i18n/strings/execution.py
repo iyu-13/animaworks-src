@@ -74,6 +74,10 @@ STRINGS: dict[str, dict[str, str]] = {
         "ja": "cursor-agentが未認証です。`agent login` を実行してCursorアカウントにログインしてください。",
         "en": "cursor-agent is not authenticated. Run `agent login` to sign in to your Cursor account.",
     },
+    "cursor_agent.session_resume_failed": {
+        "ja": "cursor-agentセッションの復元に失敗しました（chatId={chat_id}）。新規セッションで再試行します。",
+        "en": "Failed to resume cursor-agent session (chatId={chat_id}). Retrying with a fresh session.",
+    },
     "cursor_agent.timeout": {
         "ja": "[cursor-agent タイムアウト: {timeout}秒以内に完了しませんでした]",
         "en": "[cursor-agent timeout: did not complete within {timeout} seconds]",

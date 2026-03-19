@@ -36,13 +36,23 @@ from core.schemas import ImageData, ModelConfig
 
 logger = logging.getLogger("animaworks.execution.cursor_agent")
 
-__all__ = ["CursorAgentExecutor", "is_cursor_agent_available"]
+__all__ = [
+    "CursorAgentExecutor",
+    "is_cursor_agent_available",
+    "_RESUMABLE_TRIGGERS",
+    "_chat_id_path",
+    "_clear_chat_id",
+    "_load_chat_id",
+    "_resolve_session_type",
+    "_save_chat_id",
+]
 
 # ── Constants ───────────────────────────────────────────────────
 
 _CURSOR_AGENT_BINARY_NAMES = ("agent", "cursor-agent", "cursor")
 _DEFAULT_TIMEOUT_SECONDS = 600
 _GRACEFUL_KILL_WAIT = 3.0
+_RESUMABLE_TRIGGERS = frozenset({"chat"})
 
 # ── Binary discovery ───────────────────────────────────────────
 
@@ -59,6 +69,42 @@ def _find_cursor_agent_binary() -> str | None:
 def is_cursor_agent_available() -> bool:
     """Return True when cursor-agent CLI is available on PATH."""
     return _find_cursor_agent_binary() is not None
+
+
+# ── Session (chat ID) persistence ─────────────────────────────
+
+
+def _resolve_session_type(trigger: str) -> str:
+    """Map a trigger string to its session type for chatId isolation."""
+    if not trigger or trigger.startswith("chat"):
+        return "chat"
+    return trigger.split(":")[0]
+
+
+def _chat_id_path(anima_dir: Path, session_type: str, thread_id: str = "default") -> Path:
+    base = anima_dir / "shortterm" / session_type
+    if thread_id != "default":
+        return base / thread_id / "cursor_chat_id.txt"
+    return base / "cursor_chat_id.txt"
+
+
+def _save_chat_id(anima_dir: Path, chat_id: str, session_type: str, thread_id: str = "default") -> None:
+    p = _chat_id_path(anima_dir, session_type, thread_id)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(chat_id, encoding="utf-8")
+
+
+def _load_chat_id(anima_dir: Path, session_type: str, thread_id: str = "default") -> str | None:
+    p = _chat_id_path(anima_dir, session_type, thread_id)
+    if p.is_file():
+        cid = p.read_text(encoding="utf-8").strip()
+        return cid or None
+    return None
+
+
+def _clear_chat_id(anima_dir: Path, session_type: str, thread_id: str = "default") -> None:
+    p = _chat_id_path(anima_dir, session_type, thread_id)
+    p.unlink(missing_ok=True)
 
 
 # ── Executor ───────────────────────────────────────────────────
@@ -131,12 +177,12 @@ class CursorAgentExecutor(BaseExecutor):
             return model[len("cursor/") :]
         return model
 
-    def _build_command(self, prompt: str) -> list[str]:
+    def _build_command(self, prompt: str, *, resume_chat_id: str | None = None) -> list[str]:
         """Build CLI command for cursor-agent."""
         binary = self._find_binary()
         if not binary:
             return []
-        return [
+        cmd = [
             binary,
             "-p",
             "--force",
@@ -149,8 +195,11 @@ class CursorAgentExecutor(BaseExecutor):
             "--output-format",
             "stream-json",
             "--stream-partial-output",
-            prompt,
         ]
+        if resume_chat_id:
+            cmd.extend(["--resume", resume_chat_id])
+        cmd.append(prompt)
+        return cmd
 
     def _build_env(self) -> dict[str, str]:
         """Build environment for subprocess.
@@ -263,7 +312,13 @@ class CursorAgentExecutor(BaseExecutor):
         max_turns_override: int | None = None,
         thread_id: str = "default",
     ) -> ExecutionResult:
-        """Run cursor-agent subprocess and parse NDJSON output."""
+        """Run cursor-agent subprocess and parse NDJSON output.
+
+        For resumable triggers (currently ``chat`` only), persists the
+        cursor-agent session ID to disk and passes ``--resume <chatId>``
+        on subsequent calls.  If resume fails the chatId is cleared and
+        a fresh session is attempted once.
+        """
         if self._check_interrupted():
             return ExecutionResult(text="[Session interrupted by user]")
 
@@ -279,11 +334,52 @@ class CursorAgentExecutor(BaseExecutor):
         else:
             combined_prompt = prompt
 
-        cmd = self._build_command(combined_prompt)
+        session_type = _resolve_session_type(trigger)
+        is_resumable = session_type in _RESUMABLE_TRIGGERS
+        resume_chat_id = _load_chat_id(self._anima_dir, session_type, thread_id) if is_resumable else None
+
+        if resume_chat_id:
+            logger.info(
+                "Resuming cursor-agent session %s (type=%s, thread=%s)",
+                resume_chat_id[:12],
+                session_type,
+                thread_id,
+            )
+
+        result, session_id, failed = await self._run_subprocess(combined_prompt, resume_chat_id=resume_chat_id)
+
+        if failed and resume_chat_id:
+            logger.warning(
+                "Session resume failed (chat_id=%s), retrying with fresh session",
+                resume_chat_id[:12],
+            )
+            _clear_chat_id(self._anima_dir, session_type, thread_id)
+            result, session_id, _failed = await self._run_subprocess(combined_prompt, resume_chat_id=None)
+
+        if session_id and is_resumable:
+            _save_chat_id(self._anima_dir, session_id, session_type, thread_id)
+            logger.debug("Saved cursor-agent chat_id %s for %s/%s", session_id[:12], session_type, thread_id)
+
+        return result
+
+    async def _run_subprocess(
+        self,
+        combined_prompt: str,
+        *,
+        resume_chat_id: str | None = None,
+    ) -> tuple[ExecutionResult, str | None, bool]:
+        """Spawn cursor-agent and parse its NDJSON output.
+
+        Returns ``(result, session_id, failed)`` where *failed* is True
+        when the process exited with a non-zero code for a non-auth reason.
+        """
+        cmd = self._build_command(combined_prompt, resume_chat_id=resume_chat_id)
         env = self._build_env()
 
         accumulated_text = ""
         tool_records: list[ToolCallRecord] = []
+        session_id: str | None = None
+        failed = False
 
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -302,9 +398,13 @@ class CursorAgentExecutor(BaseExecutor):
                             break
                         if self._check_interrupted():
                             await self._kill_process(proc)
-                            return ExecutionResult(
-                                text=accumulated_text or "[Session interrupted by user]",
-                                tool_call_records=tool_records,
+                            return (
+                                ExecutionResult(
+                                    text=accumulated_text or "[Session interrupted by user]",
+                                    tool_call_records=tool_records,
+                                ),
+                                session_id,
+                                False,
                             )
 
                         event = self._parse_ndjson_event(line.decode("utf-8", errors="replace").strip())
@@ -313,13 +413,21 @@ class CursorAgentExecutor(BaseExecutor):
 
                         etype = event.get("type", "")
 
-                        if etype == "assistant":
+                        if etype == "system" and event.get("subtype") == "init":
+                            sid = event.get("session_id")
+                            if sid:
+                                session_id = str(sid)
+
+                        elif etype == "assistant":
                             content_list = event.get("message", {}).get("content", [])
+                            parts: list[str] = []
                             for item in content_list:
                                 if isinstance(item, dict) and item.get("type") == "text":
-                                    accumulated_text += item.get("text", "")
+                                    parts.append(item.get("text", ""))
                                 elif isinstance(item, str):
-                                    accumulated_text += item
+                                    parts.append(item)
+                            if parts:
+                                accumulated_text = "".join(parts)
 
                         elif etype == "tool_call":
                             subtype = event.get("subtype", "")
@@ -338,15 +446,20 @@ class CursorAgentExecutor(BaseExecutor):
                 logger.warning("Cursor agent timed out after %ds", _DEFAULT_TIMEOUT_SECONDS)
                 await self._kill_process(proc)
                 timeout_msg = t("cursor_agent.timeout", timeout=_DEFAULT_TIMEOUT_SECONDS)
-                return ExecutionResult(
-                    text=accumulated_text + f"\n\n{timeout_msg}" if accumulated_text else timeout_msg,
-                    tool_call_records=tool_records,
+                return (
+                    ExecutionResult(
+                        text=accumulated_text + f"\n\n{timeout_msg}" if accumulated_text else timeout_msg,
+                        tool_call_records=tool_records,
+                    ),
+                    session_id,
+                    True,
                 )
 
             stderr_bytes = await proc.stderr.read() if proc.stderr else b""
             await proc.wait()
 
             if proc.returncode != 0:
+                failed = True
                 stderr_text = stderr_bytes.decode("utf-8", errors="replace")
                 logger.warning(
                     "Cursor agent exited with code %d: %s",
@@ -358,19 +471,23 @@ class CursorAgentExecutor(BaseExecutor):
                     or "login" in stderr_text.lower()
                     or "unauthorized" in stderr_text.lower()
                 ):
-                    return ExecutionResult(text=t("cursor_agent.not_authenticated"))
+                    return (ExecutionResult(text=t("cursor_agent.not_authenticated")), session_id, False)
                 if not accumulated_text:
                     accumulated_text = f"[Cursor Agent Error (exit {proc.returncode}): {stderr_text[:500]}]"
 
         except FileNotFoundError:
-            return ExecutionResult(text=t("cursor_agent.not_installed"))
+            return (ExecutionResult(text=t("cursor_agent.not_installed")), None, True)
         except Exception as e:
             logger.exception("Cursor agent execution error")
-            return ExecutionResult(text=f"[Cursor Agent Error: {e}]")
+            return (ExecutionResult(text=f"[Cursor Agent Error: {e}]"), None, True)
 
         replied_to = self._read_replied_to_file()
-        return ExecutionResult(
-            text=accumulated_text,
-            replied_to_from_transcript=replied_to,
-            tool_call_records=tool_records,
+        return (
+            ExecutionResult(
+                text=accumulated_text,
+                replied_to_from_transcript=replied_to,
+                tool_call_records=tool_records,
+            ),
+            session_id,
+            failed,
         )
