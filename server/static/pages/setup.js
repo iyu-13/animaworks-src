@@ -38,6 +38,13 @@ export function render(container) {
     </div>
 
     <div class="card" style="margin-bottom: 1.5rem;">
+      <div class="card-header">${t("setup.cli_tools_auth")}</div>
+      <div class="card-body" id="cliToolsAuth">
+        <div class="loading-placeholder">${t("common.loading")}</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom: 1.5rem;">
       <div class="card-header">${t("setup.auth_settings")}</div>
       <div class="card-body" id="authSettings">
         <div class="loading-placeholder">${t("common.loading")}</div>
@@ -48,6 +55,7 @@ export function render(container) {
   _loadChecklist();
   _loadConfig();
   _loadOpenAIAuthSettings();
+  _loadCliToolsAuth();
   _loadAuthSettings();
 }
 
@@ -361,6 +369,38 @@ async function _loadAuthSettings() {
     }
   } catch {
     el.innerHTML = `<div class="loading-placeholder">${t("setup.auth_fetch_failed")}</div>`;
+  }
+}
+
+// ── CLI tools (read-only detection) ─────────
+
+async function _loadCliToolsAuth() {
+  const el = document.getElementById("cliToolsAuth");
+  if (!el) return;
+
+  try {
+    const env = await api("/api/setup/environment");
+    const rows = [
+      { label: t("setup.cli_tools_claude_code"), ok: !!env.claude_code_available },
+      { label: t("setup.cli_tools_codex_cli"), ok: !!env.codex_cli_available },
+      { label: t("setup.cli_tools_codex_login"), ok: !!env.codex_login_available },
+      { label: t("setup.cli_tools_cursor_agent"), ok: !!env.cursor_agent_available },
+      { label: t("setup.cli_tools_cursor_auth"), ok: !!env.cursor_agent_authenticated },
+      { label: t("setup.cli_tools_gemini_cli"), ok: !!env.gemini_cli_available },
+      { label: t("setup.cli_tools_gemini_auth"), ok: !!env.gemini_authenticated },
+    ];
+    el.innerHTML = `
+      <div style="display:grid; gap:0.5rem;">
+        ${rows.map(r => `
+          <div style="display:flex; align-items:center; gap:0.75rem;">
+            <span style="font-size:1.1rem;">${r.ok ? "\u2705" : "\u274C"}</span>
+            <span>${escapeHtml(r.label)}</span>
+          </div>
+        `).join("")}
+      </div>
+    `;
+  } catch {
+    el.innerHTML = `<div class="loading-placeholder">${t("setup.network_error")}</div>`;
   }
 }
 

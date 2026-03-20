@@ -122,7 +122,7 @@ then read it with `read_memory_file(path="common_knowledge/...")`.
 | `task-management.md` | Task management (current_state.md usage and task queue, state transitions, priorities) |
 | `task-board-guide.md` | Task board (human-facing dashboard) — structure and operational guidelines |
 | `heartbeat-cron-guide.md` | Scheduling and running Heartbeat and cron (how Heartbeat works, cron definitions, self-updates) |
-| `tool-usage-overview.md` | Tool usage overview (S/A/B mode tool sets, internal/external tools, how to call them) |
+| `tool-usage-overview.md` | Tool usage overview (S/C/D/G/A/B mode tool sets, internal/external tools, how to call them) |
 | `background-tasks.md` | Background task guide (using submit, when to use it, how to get results) |
 | `workspace-guide.md` | Workspace guide (concept, registration, tool usage, troubleshooting) |
 | `model-guide.md` | → Moved to `reference/operations/model-guide.md`. Model selection and configuration |
@@ -182,7 +182,7 @@ then read it with `read_memory_file(path="common_knowledge/...")`.
 | Heartbeat, heartbeat, periodic check | `operations/heartbeat-cron-guide.md` |
 | cron, schedule, scheduled task | `operations/heartbeat-cron-guide.md` |
 | tool, animaworks-tool, MCP, skill | `operations/tool-usage-overview.md` |
-| execution mode, S-mode, A-mode, B-mode, C-mode | `operations/tool-usage-overview.md` |
+| execution mode, S-mode, C-mode, D-mode, G-mode, A-mode, B-mode | `operations/tool-usage-overview.md` |
 | background, submit, long-running tool | `operations/background-tasks.md` |
 | workspace, working_directory, project directory | `operations/workspace-guide.md` |
 | model, models.json, credential, set-model, context window | `reference/operations/model-guide.md` |
