@@ -535,6 +535,29 @@ def step_models_json_create(data_dir: Path, dry_run: bool, verbose: bool) -> Ste
         return StepResult(changed=0, skipped=0, details=[], error=str(exc))
 
 
+def step_global_permissions_create(data_dir: Path, dry_run: bool, verbose: bool) -> StepResult:
+    """Create permissions.global.json from template if missing."""
+    details: list[str] = []
+    try:
+        from core.paths import TEMPLATES_DIR
+
+        dst = data_dir / "permissions.global.json"
+        if dst.exists():
+            return StepResult(changed=0, skipped=1, details=["permissions.global.json already exists"])
+        src = TEMPLATES_DIR / "_shared" / "config_defaults" / "permissions.global.json"
+        if not src.is_file():
+            return StepResult(changed=0, skipped=1, details=["permissions.global.json template not found"])
+        if dry_run:
+            details.append("Would copy permissions.global.json from template")
+            return StepResult(changed=1, skipped=0, details=details)
+        shutil.copy2(src, dst)
+        details.append("Created permissions.global.json from template")
+        return StepResult(changed=1, skipped=0, details=details)
+    except Exception as exc:
+        logger.exception("step_global_permissions_create failed")
+        return StepResult(changed=0, skipped=0, details=[], error=str(exc))
+
+
 # ── Category 4: SQLite DB sync ──────────────────────────────────
 
 
@@ -766,6 +789,12 @@ def register_all_steps(runner: Any) -> None:
         MigrationStep("common_skills_resync", "Resync common_skills/", "template_sync", step_common_skills_resync),
         MigrationStep("reference_resync", "Resync reference/", "template_sync", step_reference_resync),
         MigrationStep("models_json_create", "Create models.json if missing", "template_sync", step_models_json_create),
+        MigrationStep(
+            "global_permissions_create",
+            "Create permissions.global.json if missing",
+            "template_sync",
+            step_global_permissions_create,
+        ),
         MigrationStep("tool_prompt_db_init", "Init tool prompt DB", "db_sync", step_tool_prompt_db_init),
         MigrationStep("system_sections_resync", "Resync system_sections in DB", "db_sync", step_system_sections_resync),
         MigrationStep(
