@@ -303,13 +303,22 @@ class LocalDiffusersClient:
 
             result = pipe(**common_kwargs, width=width, height=height)
 
+            # Unload IP-Adapter after generation so the shared UNet doesn't
+            # break subsequent img2img calls (bustup/expressions) that derive
+            # from this pipeline via from_pipe().
+            if text2img_key in _IP_ADAPTER_LOADED:
+                try:
+                    pipe.unload_ip_adapter()
+                    _IP_ADAPTER_LOADED.discard(text2img_key)
+                    # Also invalidate the img2img cache since it shared the UNet
+                    img2img_key = ("img2img", self._img2img_source, self._device, self._dtype_name)
+                    _PIPELINE_CACHE.pop(img2img_key, None)
+                    logger.info("IP-Adapter unloaded; img2img cache cleared for clean bustup generation")
+                except Exception:
+                    logger.warning("Failed to unload IP-Adapter", exc_info=True)
+
         elif vibe_image is not None:
             pipe = self._load_img2img_pipeline()
-            # Disable IP-Adapter if it was previously loaded on the text2img pipe
-            if text2img_key in _IP_ADAPTER_LOADED:
-                t2i_pipe = _PIPELINE_CACHE.get(text2img_key)
-                if t2i_pipe is not None:
-                    t2i_pipe.set_ip_adapter_scale(0.0)
             reference = self._read_image(vibe_image).resize((width, height))
             result = pipe(
                 **common_kwargs,
@@ -319,9 +328,6 @@ class LocalDiffusersClient:
 
         else:
             pipe = self._load_text2img_pipeline()
-            # Disable IP-Adapter if loaded but no face reference this time
-            if text2img_key in _IP_ADAPTER_LOADED:
-                pipe.set_ip_adapter_scale(0.0)
             result = pipe(**common_kwargs, width=width, height=height)
 
         return self._to_png_bytes(result.images[0])
