@@ -494,6 +494,40 @@ class TestImageGenPipeline:
             assert call_kwargs["vibe_strength"] == 0.3
             assert call_kwargs["vibe_info_extracted"] == 0.5
 
+    @patch("core.tools.anima_icon_url.persist_anima_icon_path_template")
+    def test_generate_all_icon_step_uses_square_aspect_ratio(
+        self,
+        _mock_persist: MagicMock,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        monkeypatch.setenv("FAL_KEY", "test-fal-key")
+        from core.config.models import ImageGenConfig
+
+        assets = tmp_path / "assets"
+        assets.mkdir()
+        (assets / "avatar_bustup.png").write_bytes(b"\x89PNG\r\n\x1a\nbust")
+
+        pipe = ImageGenPipeline(tmp_path, config=ImageGenConfig(image_style="anime"))
+
+        with patch("core.tools.image_gen.FluxKontextClient") as mock_cls:
+            mock_client = MagicMock()
+            mock_client.generate_from_reference.return_value = b"ICON-BYTES"
+            mock_cls.return_value = mock_client
+
+            result = pipe.generate_all(
+                prompt="ignored",
+                skip_existing=False,
+                steps=["icon"],
+            )
+
+        mock_client.generate_from_reference.assert_called_once()
+        kw = mock_client.generate_from_reference.call_args.kwargs
+        assert kw["aspect_ratio"] == "1:1"
+        assert kw["guidance_scale"] == 4.0
+        assert result.icon_path == tmp_path / "assets" / "icon.png"
+        assert result.icon_path.read_bytes() == b"ICON-BYTES"
+
 
 # ── get_tool_schemas ──────────────────────────────────────────────
 
