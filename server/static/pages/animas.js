@@ -233,19 +233,45 @@ function _bindEditableCard({ id, name, field }) {
 
 // ── Permissions UI ─────────────────────────
 
+function _permPathRowHtml(path, access, idx) {
+  const isRw = access !== "r";
+  return `
+    <div style="display:flex; align-items:center; gap:0.4rem; margin-bottom:0.3rem;" data-perm-path-row="${idx}" data-access-value="${isRw ? "rw" : "r"}">
+      <input type="text" value="${escapeHtml(path)}" data-perm-path="${idx}"
+        style="flex:1; min-width:0; padding:0.3rem 0.5rem; font-family:monospace; font-size:0.85rem; border:1px solid var(--border,#ddd); border-radius:4px; background:var(--bg-secondary,#f9f9f9); color:var(--text-primary,#333);">
+      <div style="display:flex; border:1px solid var(--border,#ddd); border-radius:4px; overflow:hidden; flex-shrink:0;">
+        <button class="perm-access-btn" data-access="rw"
+          style="padding:0.2rem 0.5rem; font-size:0.75rem; border:none; cursor:pointer; transition:background 0.15s;
+                 background:${isRw ? "var(--color-primary,#0066cc)" : "var(--bg-secondary,#f9f9f9)"};
+                 color:${isRw ? "#fff" : "var(--text-secondary,#666)"};">
+          ${t("animas.permissions_access_rw")}
+        </button>
+        <button class="perm-access-btn" data-access="r"
+          style="padding:0.2rem 0.5rem; font-size:0.75rem; border:none; border-left:1px solid var(--border,#ddd); cursor:pointer; transition:background 0.15s;
+                 background:${!isRw ? "var(--color-warning,#e8a000)" : "var(--bg-secondary,#f9f9f9)"};
+                 color:${!isRw ? "#fff" : "var(--text-secondary,#666)"};">
+          🔒 ${t("animas.permissions_access_r")}
+        </button>
+      </div>
+      <button class="btn-secondary perm-remove-path-btn" style="font-size:0.75rem; padding:0.2rem 0.4rem; color:var(--color-danger,#dc3545); flex-shrink:0;">${t("animas.permissions_remove_path")}</button>
+    </div>
+  `;
+}
+
 function _permissionsCardHtml(perm) {
   const fileRoots = perm.file_roots || [];
+  const fileRootsReadonly = perm.file_roots_readonly || [];
   const cmds = perm.commands || {};
   const extTools = perm.external_tools || {};
   const toolCreation = perm.tool_creation || {};
 
-  const pathRows = fileRoots.map((p, i) => `
-    <div style="display:flex; align-items:center; gap:0.4rem; margin-bottom:0.3rem;" data-perm-path-row="${i}">
-      <input type="text" value="${escapeHtml(p)}" data-perm-path="${i}"
-        style="flex:1; padding:0.3rem 0.5rem; font-family:monospace; font-size:0.85rem; border:1px solid var(--border,#ddd); border-radius:4px; background:var(--bg-secondary,#f9f9f9); color:var(--text-primary,#333);">
-      <button class="btn-secondary perm-remove-path-btn" data-idx="${i}" style="font-size:0.75rem; padding:0.2rem 0.4rem; color:var(--color-danger,#dc3545);">${t("animas.permissions_remove_path")}</button>
-    </div>
-  `).join("");
+  // Merge rw + r paths into one unified list with access metadata
+  const allPaths = [
+    ...fileRoots.map(p => ({ path: p, access: "rw" })),
+    ...fileRootsReadonly.map(p => ({ path: p, access: "r" })),
+  ];
+
+  const pathRows = allPaths.map((entry, i) => _permPathRowHtml(entry.path, entry.access, i)).join("");
 
   return `
     <div class="card" style="margin-bottom: 1.5rem;" id="permissionsCard">
@@ -312,43 +338,70 @@ function _bindPermissionsCard(name, perm) {
   const pathList = document.getElementById("permPathList");
   if (!saveBtn || !pathList) return;
 
-  // Add path button
-  addBtn?.addEventListener("click", () => {
-    const idx = pathList.querySelectorAll("[data-perm-path-row]").length;
-    const row = document.createElement("div");
-    row.style.cssText = "display:flex; align-items:center; gap:0.4rem; margin-bottom:0.3rem;";
-    row.dataset.permPathRow = idx;
-    row.innerHTML = `
-      <input type="text" value="" data-perm-path="${idx}"
-        style="flex:1; padding:0.3rem 0.5rem; font-family:monospace; font-size:0.85rem; border:1px solid var(--border,#ddd); border-radius:4px; background:var(--bg-secondary,#f9f9f9); color:var(--text-primary,#333);"
-        placeholder="/path/to/dir">
-      <button class="btn-secondary perm-remove-path-btn" data-idx="${idx}" style="font-size:0.75rem; padding:0.2rem 0.4rem; color:var(--color-danger,#dc3545);">${t("animas.permissions_remove_path")}</button>
-    `;
-    pathList.appendChild(row);
-    // Bind remove
+  // Helper: bind access toggle buttons within a row
+  function _bindAccessButtons(row) {
+    row.querySelectorAll(".perm-access-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const access = btn.dataset.access;
+        // Store on the row element itself
+        row.dataset.accessValue = access;
+        // Update button styles in this row
+        row.querySelectorAll(".perm-access-btn").forEach(b => {
+          const active = b.dataset.access === access;
+          const bRw = b.dataset.access === "rw";
+          if (active) {
+            b.style.background = bRw ? "var(--color-primary,#0066cc)" : "var(--color-warning,#e8a000)";
+            b.style.color = "#fff";
+          } else {
+            b.style.background = "var(--bg-secondary,#f9f9f9)";
+            b.style.color = "var(--text-secondary,#666)";
+          }
+        });
+      });
+    });
+  }
+
+  // Bind existing rows
+  pathList.querySelectorAll("[data-perm-path-row]").forEach(row => {
     row.querySelector(".perm-remove-path-btn")?.addEventListener("click", () => row.remove());
-    row.querySelector("input")?.focus();
+    _bindAccessButtons(row);
   });
 
-  // Bind remove buttons for initial rows
-  pathList.querySelectorAll(".perm-remove-path-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      btn.closest("[data-perm-path-row]")?.remove();
-    });
+  // Add path button — new rows default to read-write
+  addBtn?.addEventListener("click", () => {
+    const idx = Date.now(); // unique idx
+    const div = document.createElement("div");
+    div.innerHTML = _permPathRowHtml("", "rw", idx);
+    const row = div.firstElementChild;
+    pathList.appendChild(row);
+    row.querySelector(".perm-remove-path-btn")?.addEventListener("click", () => row.remove());
+    _bindAccessButtons(row);
+    row.querySelector("input")?.focus();
   });
 
   // Save
   saveBtn.addEventListener("click", async () => {
-    // Collect file_roots from inputs
-    const paths = [];
-    pathList.querySelectorAll("input[data-perm-path]").forEach(inp => {
-      const v = inp.value.trim();
-      if (v) paths.push(v);
+    // Collect paths split by access level
+    const rwPaths = [];
+    const roPaths = [];
+
+    pathList.querySelectorAll("[data-perm-path-row]").forEach(row => {
+      const inp = row.querySelector("input[data-perm-path]");
+      const v = inp?.value.trim();
+      if (!v) return;
+      // Read access value from data attribute (set by toggle buttons)
+      const access = row.dataset.accessValue ?? "rw";
+      if (access === "r") {
+        roPaths.push(v);
+      } else {
+        rwPaths.push(v);
+      }
     });
 
     const updated = {
       version: perm.version || 1,
-      file_roots: paths,
+      file_roots: rwPaths,
+      file_roots_readonly: roPaths,
       commands: {
         allow_all: document.getElementById("permCmdAllowAll")?.checked ?? true,
         allow: perm.commands?.allow || [],

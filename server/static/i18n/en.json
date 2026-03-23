@@ -90,6 +90,8 @@
   "animas.permissions_file_roots": "Accessible paths",
   "animas.permissions_add_path": "Add path",
   "animas.permissions_remove_path": "Remove",
+  "animas.permissions_access_rw": "Read/Write",
+  "animas.permissions_access_r": "Read only",
   "animas.permissions_commands": "Command execution",
   "animas.permissions_external_tools": "External tools",
   "animas.permissions_tool_creation": "Tool creation",

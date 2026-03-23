@@ -599,6 +599,7 @@ class PermissionsConfig(BaseModel):
 
     version: int = 1
     file_roots: list[str] = Field(default_factory=lambda: ["/"])
+    file_roots_readonly: list[str] = Field(default_factory=list)
     commands: CommandsPermission = Field(default_factory=CommandsPermission)
     external_tools: ExternalToolsPermission = Field(default_factory=ExternalToolsPermission)
     tool_creation: ToolCreationPermission = Field(default_factory=ToolCreationPermission)
@@ -644,10 +645,13 @@ def _format_permissions_for_prompt(config: PermissionsConfig, anima_name: str) -
     lines = [f"## Permissions: {anima_name}"]
     if config.file_roots == ["/"]:
         lines.append("- File access: unrestricted")
-    elif not config.file_roots:
+    elif not config.file_roots and not config.file_roots_readonly:
         lines.append("- File access: own directory and shared framework directories only")
     else:
-        lines.append(f"- File access limited to: {', '.join(config.file_roots)}")
+        if config.file_roots:
+            lines.append(f"- Read/write access: {', '.join(config.file_roots)}")
+        if config.file_roots_readonly:
+            lines.append(f"- Read-only access: {', '.join(config.file_roots_readonly)}")
     if config.commands.allow_all:
         lines.append("- Commands: all allowed (global permission blocks still apply)")
     else:
