@@ -37,9 +37,7 @@ from server.websocket import WebSocketManager
 logger = logging.getLogger("animaworks.server")
 
 # Public embeddable avatars (e.g. Slack) — no session cookie required
-_PUBLIC_ICON_ASSET_PATH = re.compile(
-    r"^/api/animas/[^/]+/assets/icon(?:_realistic)?\.png$"
-)
+_PUBLIC_ICON_ASSET_PATH = re.compile(r"^/api/animas/[^/]+/assets/icon(?:_realistic)?\.png$")
 
 # Paths to exclude from request logging (noisy health checks, etc.)
 _NOISY_PATHS = frozenset(

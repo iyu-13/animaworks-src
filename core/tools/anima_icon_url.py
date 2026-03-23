@@ -78,11 +78,7 @@ def template_is_external_icon_url(template: str) -> bool:
 
 
 def _icon_path_template_from_mapping(channel_config: dict[str, Any]) -> str:
-    raw = (
-        channel_config.get(ICON_PATH_TEMPLATE_CONFIG_KEY)
-        or channel_config.get(ICON_URL_TEMPLATE_CONFIG_KEY)
-        or ""
-    )
+    raw = channel_config.get(ICON_PATH_TEMPLATE_CONFIG_KEY) or channel_config.get(ICON_URL_TEMPLATE_CONFIG_KEY) or ""
     return str(raw).strip()
 
 
@@ -197,9 +193,7 @@ def persist_anima_icon_path_template() -> None:
         return
     style = cfg.image_gen.image_style or "anime"
     want = (
-        DEFAULT_INTERNAL_ICON_PATH_TEMPLATE_REALISTIC
-        if style == "realistic"
-        else DEFAULT_INTERNAL_ICON_PATH_TEMPLATE
+        DEFAULT_INTERNAL_ICON_PATH_TEMPLATE_REALISTIC if style == "realistic" else DEFAULT_INTERNAL_ICON_PATH_TEMPLATE
     )
     changed = False
     for ch in cfg.human_notification.channels:
