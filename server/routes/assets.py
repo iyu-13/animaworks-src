@@ -661,6 +661,45 @@ def create_assets_router() -> APIRouter:
                     except Exception:
                         pass
 
+            async def _emit_ready(source_bytes: bytes) -> None:
+                """Save source_bytes as avatar + preview, then emit ready event."""
+                output_filename = "avatar_fullbody_realistic.png" if is_realistic else "avatar_fullbody.png"
+                assets_dir.mkdir(parents=True, exist_ok=True)
+                out_path = assets_dir / output_filename
+                out_path.write_bytes(source_bytes)
+                counter = _next_preview_counter(assets_dir, is_realistic)
+                preview_filename = (
+                    f"_preview_{counter:03d}_realistic.png" if is_realistic else f"_preview_{counter:03d}.png"
+                )
+                _shutil.copy2(out_path, assets_dir / preview_filename)
+                preview_url = f"/api/animas/{name}/assets/{preview_filename}?v={int(_time.time())}"
+                await _ws_emit("anima.remake_preview_ready", {
+                    "name": name,
+                    "preview_url": preview_url,
+                    "preview_file": preview_filename,
+                    "seed_used": _seed_used,
+                    "backup_id": backup_id,
+                })
+
+            # ── Fast path: PIL resize when a reference image is available ──
+            # When vibe_image (style_from fullbody) is provided and VRAM is low,
+            # skip SDXL entirely — just resize the reference to target dimensions.
+            # This is instant and produces a usable preview without any GPU work.
+            if _low_vram_mode and vibe_image is not None:
+                try:
+                    import io as _io
+                    from PIL import Image as _Img
+                    img = _Img.open(_io.BytesIO(vibe_image)).convert("RGB")
+                    target_w, target_h = (512, 768) if is_realistic else (512, 512)
+                    img = img.resize((target_w, target_h), _Img.LANCZOS)
+                    buf = _io.BytesIO()
+                    img.save(buf, format="PNG", optimize=True)
+                    logger.info("Fast PIL resize used for '%s' (low-VRAM, vibe reference available)", name)
+                    await _emit_ready(buf.getvalue())
+                    return
+                except Exception as _pil_exc:
+                    logger.warning("PIL fast path failed (%s), falling back to SDXL", _pil_exc)
+
             try:
                 result = await bg_loop.run_in_executor(
                     None,
@@ -683,24 +722,11 @@ def create_assets_router() -> APIRouter:
                     })
                     return
 
-                # Save preview as numbered file for history navigation
+                # Save preview via shared helper
                 output_filename = "avatar_fullbody_realistic.png" if is_realistic else "avatar_fullbody.png"
                 source_path = assets_dir / output_filename
-                counter = _next_preview_counter(assets_dir, is_realistic)
-                preview_filename = (
-                    f"_preview_{counter:03d}_realistic.png" if is_realistic else f"_preview_{counter:03d}.png"
-                )
                 if source_path.exists():
-                    _shutil.copy2(source_path, assets_dir / preview_filename)
-
-                preview_url = f"/api/animas/{name}/assets/{preview_filename}?v={int(_time.time())}"
-                await _ws_emit("anima.remake_preview_ready", {
-                    "name": name,
-                    "preview_url": preview_url,
-                    "preview_file": preview_filename,
-                    "seed_used": _seed_used,
-                    "backup_id": backup_id,
-                })
+                    await _emit_ready(source_path.read_bytes())
 
             except Exception as exc:
                 logger.exception("Background fullbody generation failed for %s", name)
