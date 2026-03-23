@@ -268,7 +268,7 @@ def _fetch_thread_context_for_reply(
             try:
                 _user_name_cache[parent_user] = client.resolve_user_name(parent_user)
             except Exception:
-                pass
+                logger.debug("Failed to resolve display name for user %s, using raw ID", parent_user)
         parent_display = _user_name_cache.get(parent_user, parent_user)
         parent_text = _resolve_slack_mentions(parent_text, token)
         reply_count = len(replies) - 1
