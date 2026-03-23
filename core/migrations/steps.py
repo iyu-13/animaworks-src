@@ -804,6 +804,28 @@ def step_v060_resync(data_dir: Path, dry_run: bool, verbose: bool) -> StepResult
     return StepResult(changed=total, skipped=0, details=details)
 
 
+def step_cross_anima_write_guidance(data_dir: Path, dry_run: bool, verbose: bool) -> StepResult:
+    """Resync common_knowledge + prompts to deploy cross-Anima write boundary guidance.
+
+    Templates now include guidance that subordinates cannot write to another
+    Anima's knowledge/ directory, and that common_knowledge/ should be used
+    for shared output.  Affected: memory_guide.md, task-delegation-guide.md,
+    hierarchy-rules.md.
+    """
+    details: list[str] = []
+    total = 0
+
+    r1 = step_common_knowledge_resync(data_dir, dry_run, verbose)
+    total += r1.changed
+    details.extend(r1.details)
+
+    r2 = step_prompt_resync(data_dir, dry_run, verbose)
+    total += r2.changed
+    details.extend(r2.details)
+
+    return StepResult(changed=total, skipped=0, details=details)
+
+
 # ── Category 5: Version tracking ────────────────────────────────
 
 
@@ -878,6 +900,12 @@ def register_all_steps(runner: Any) -> None:
             "v0.6.0: Full template resync + Mode D/G models.json",
             "template_sync",
             step_v060_resync,
+        ),
+        MigrationStep(
+            "cross_anima_write_guidance",
+            "Deploy cross-Anima write boundary guidance to prompts + common_knowledge",
+            "template_sync",
+            step_cross_anima_write_guidance,
         ),
         MigrationStep("update_version", "Update migration_state.json", "version", step_update_version),
     ]

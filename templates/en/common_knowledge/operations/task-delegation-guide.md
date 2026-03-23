@@ -112,6 +112,7 @@ submit_tasks(batch_id="deploy-20260301", tasks=[
 - ❌ Instructions without file paths (executor would have to start by exploring)
 - ❌ Empty context (executor makes poor decisions without background info)
 - ❌ Manually creating JSON in `state/pending/` (always use `submit_tasks`)
+- ❌ Instructing writes to another Anima's directory (e.g. their `knowledge/`) — subordinates cannot write there. Use `common_knowledge/` for shared output
 
 ### Task Results
 

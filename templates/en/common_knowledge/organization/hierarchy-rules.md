@@ -128,6 +128,7 @@ All Anima that have you set as their `supervisor` are included.
 - Task instructions MUST include:
   - **Purpose**: Why this task is needed
   - **Expected deliverable**: What to produce or do
+  - **Output path**: Subordinate's own directory or `common_knowledge/` (never your own `knowledge/` — subordinates cannot write there)
   - **Deadline and priority**: When and how urgent
 - MUST provide feedback on completion when receiving reports from subordinates
 - MUST regularly check subordinate status with `org_dashboard`

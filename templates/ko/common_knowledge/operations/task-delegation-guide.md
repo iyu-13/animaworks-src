@@ -112,6 +112,7 @@ submit_tasks(batch_id="deploy-20260301", tasks=[
 - ❌ 파일 경로 없는 지시 (실행자가 탐색부터 시작해야 함)
 - ❌ 빈 context (배경 정보 없이는 실행자가 잘못된 판단을 내림)
 - ❌ `state/pending/`에 JSON을 수동 생성 (반드시 `submit_tasks`를 사용)
+- ❌ 다른 Anima의 디렉토리(`knowledge/` 등)에 기록하도록 지시 (부하는 해당 경로에 기록할 수 없음. 공유에는 `common_knowledge/`를 사용)
 
 ### 작업 결과
 

@@ -179,8 +179,9 @@ STRINGS: dict[str, dict[str, str]] = {
         ),
     },
     "schema.delegate_task.instruction": {
-        "ja": "タスクの指示内容",
-        "en": "Task instructions",
+        "ja": "タスクの指示内容（成果物パスは委譲先が書き込み可能な場所のみ。自分のknowledge/は指定不可、共有にはcommon_knowledge/を使う）",
+        "en": "Task instructions (output paths must be writable by the subordinate — never your own knowledge/; use common_knowledge/ for shared output)",
+        "ko": "태스크 지시 내용 (산출물 경로는 위임 대상이 기록 가능한 곳만 지정. 자신의 knowledge/는 지정 불가, 공유에는 common_knowledge/를 사용)",
     },
     "schema.delegate_task.name": {
         "ja": "委譲先の直属部下Anima名",

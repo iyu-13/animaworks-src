@@ -112,6 +112,7 @@ submit_tasks(batch_id="deploy-20260301", tasks=[
 - ❌ ファイルパスなしの指示（実行者は探索から始めることになる）
 - ❌ context が空（背景情報なしでは実行者が判断を誤る）
 - ❌ `state/pending/` にJSONを手動作成（必ず `submit_tasks` を使うこと）
+- ❌ 他Animaのディレクトリ（`knowledge/` 等）への書き込み指示（部下はそのパスに書き込めない。共有には `common_knowledge/` を使うこと）
 
 ### タスク結果
 

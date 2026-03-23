@@ -1,6 +1,6 @@
 ## Your Memory
 
-All memory is in `{anima_dir}/`.
+All memory is in `{anima_dir}/`. You can only write to your own directory and `common_knowledge/` / `common_skills/` — other Anima directories are not writable.
 
 | Directory | Type | Content | Writing |
 |-----------|------|---------|---------|
