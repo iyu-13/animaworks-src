@@ -43,14 +43,17 @@ if ! git rebase origin/main >> "$LOG" 2>&1; then
   # Slack #ops-logs にもコンフリクト通知
   SLACK_TOKEN_CONFLICT=$(python3 -c "import json; d=json.load(open('/root/.animaworks/shared/credentials.json')); print(d.get('SLACK_BOT_TOKEN',''))" 2>/dev/null)
   if [ -n "$SLACK_TOKEN_CONFLICT" ]; then
-    /root/animaworks/.venv/bin/animaworks-tool slack send "#ops-logs" "⚠️ *AnimaWorks* 自動アップデート失敗
+    if /root/animaworks/.venv/bin/animaworks-tool slack send "#ops-logs" "⚠️ *AnimaWorks* 自動アップデート失敗
 
 *原因:* rebaseコンフリクト（手動対応が必要）
 *🕐 時刻:* ${TIMESTAMP}
 *📋 ログ:* \`${LOG}\`
 
-yさん、手動でコンフリクト解消をお願いします 🙏" >> "$LOG" 2>&1
-    echo "[$TIMESTAMP] slack conflict notification sent" >> "$LOG"
+yさん、手動でコンフリクト解消をお願いします 🙏" >> "$LOG" 2>&1; then
+      echo "[$TIMESTAMP] slack conflict notification sent" >> "$LOG"
+    else
+      echo "[$TIMESTAMP] ERROR: slack conflict notification failed (exit $?)" >> "$LOG"
+    fi
   fi
   exit 1
 fi
@@ -73,6 +76,19 @@ echo "[$TIMESTAMP] pushing to iyu13 fork..." >> "$LOG"
 if ! git push iyu13 main --force-with-lease >> "$LOG" 2>&1; then
   echo "[$TIMESTAMP] push to iyu13 failed!" >> "$LOG"
   /root/animaworks/.venv/bin/animaworks send leader y "【AnimaWorks自動アップデート】rebaseは成功しましたが、forkへのpushが失敗しました。手動で確認してください。ログ: $LOG" --intent report
+  # push失敗時もSlack通知
+  SLACK_TOKEN_PUSH=$(python3 -c "import json; d=json.load(open('/root/.animaworks/shared/credentials.json')); print(d.get('SLACK_BOT_TOKEN',''))" 2>/dev/null)
+  if [ -n "$SLACK_TOKEN_PUSH" ]; then
+    /root/animaworks/.venv/bin/animaworks-tool slack send "#ops-logs" "⚠️ *AnimaWorks* 自動アップデート: forkへのpush失敗
+
+*原因:* \`git push iyu13 main\` が失敗
+*🕐 時刻:* ${TIMESTAMP}
+*📋 ログ:* \`${LOG}\`
+
+yさん、手動確認をお願いします 🙏" >> "$LOG" 2>&1 && \
+      echo "[$TIMESTAMP] slack push-failure notification sent" >> "$LOG" || \
+      echo "[$TIMESTAMP] ERROR: slack push-failure notification also failed" >> "$LOG"
+  fi
   exit 1
 fi
 
@@ -96,8 +112,11 @@ ${COMMIT_BULLETS}
 
 ⚠️ *反映にはAnimaWorksの再起動が必要です。*
 yさん、再起動をお願いします 🙏"
-  /root/animaworks/.venv/bin/animaworks-tool slack send "#ops-logs" "$SLACK_MSG" >> "$LOG" 2>&1
-  echo "[$TIMESTAMP] slack notification sent" >> "$LOG"
+  if /root/animaworks/.venv/bin/animaworks-tool slack send "#ops-logs" "$SLACK_MSG" >> "$LOG" 2>&1; then
+    echo "[$TIMESTAMP] slack notification sent" >> "$LOG"
+  else
+    echo "[$TIMESTAMP] ERROR: slack notification failed (exit $?)" >> "$LOG"
+  fi
 fi
 
 echo "[$TIMESTAMP] notification sent to y" >> "$LOG"
