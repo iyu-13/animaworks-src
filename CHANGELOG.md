@@ -1198,7 +1198,8 @@ memory, and decision-making criteria.
 - Moved model mode patterns from config.json to models.json
 - Tool permissions changed from whitelist to default-allow (blacklist) model
 
-[Unreleased]: https://github.com/xuiltul/animaworks/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/xuiltul/animaworks/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/xuiltul/animaworks/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/xuiltul/animaworks/compare/v0.5.5...v0.6.0
 [0.4.3]: https://github.com/xuiltul/animaworks/compare/v0.4.2...v0.4.3
 [0.4.0]: https://github.com/xuiltul/animaworks/compare/v0.3.1...v0.4.0
