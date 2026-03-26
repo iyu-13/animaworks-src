@@ -1,20 +1,52 @@
 # Detailed Guide to Sending Limits
 
-Details of the 3-layer rate limit system that prevents message storms (excessive message sending).
-Refer to this when send errors occur or when you want to understand how the limits work.
+Multi-layer rate limiting that prevents excessive outbound traffic (message storms).
+Refer to this when send errors occur or when you need to understand how the limits work.
 
-**Implementation**: `core/cascade_limiter.py` (depth and global limits), `core/messenger.py` (pre-send checks), `core/tooling/handler_comms.py` (per-run and Board limits), `core/outbound.py` (recipient resolution and external delivery)
+## Where It Is Implemented
 
-## 3-Layer Rate Limits
+| Role | Module |
+|------|--------|
+| Recipient resolution and external delivery to Slack/Chatwork | `core/outbound.py` (`resolve_recipient`, `send_external`) |
+| Global budget and conversation depth (activity_log–based) | `core/cascade_limiter.py` (`ConversationDepthLimiter`) |
+| Internal DM delivery and logging | `core/messenger.py` (`Messenger.send`) |
+| `send_message` / `post_channel` per-run limits and external routing entry | `core/tooling/handler_comms.py` |
+| Message-triggered heartbeat cooldown and cascade detection | `core/supervisor/inbox_rate_limiter.py` (`InboxRateLimiter`), `core/lifecycle/inbox_watcher.py` |
+| Recent-send priming (behavior awareness) | `core/memory/priming/outbound.py` (`collect_recent_outbound`) |
 
-### Unified Outbound Budget (DM + Board)
+### `core/outbound.py` (recipient resolution and external delivery)
 
-DM (`send_message`) and Board (`post_channel`) are counted in the **same outbound budget**.
-Both `message_sent` and `channel_post` events count toward the hourly and 24-hour caps.
+`send_message` resolves the recipient via `resolve_recipient()` from `handler_comms`: internal Anima → `Messenger.send`; otherwise → `send_external()` to Slack / Chatwork. The set of known Anima names is built from directory names under `~/.animaworks/animas/`.
+
+**Resolution order** (`resolve_recipient`):
+
+1. **Exact match**: Known Anima name (case-sensitive) → internal
+2. **User alias**: `external_messaging.user_aliases` in `config.json` (keys are case-insensitive) → check `preferred_channel` (slack / chatwork) for `slack_user_id` / `chatwork_room_id`; if present, resolve externally on that channel. Otherwise fall back to the other configured channel when available. An alias with **no contact on either channel** raises `RecipientNotFoundError` (message prompts configuring `slack_user_id` or `chatwork_room_id`)
+3. **`slack:USERID` prefix** (trim after the first 6 characters `slack:`, then normalize case)—Slack external resolution **only when USERID is non-empty**. If empty, this step does not resolve; evaluation continues to later steps
+4. **`chatwork:ROOMID` prefix** (trim after the first 9 characters `chatwork:`)—Chatwork external resolution **only when ROOMID is non-empty**
+5. **Bare Slack user ID**: Regex `^U[A-Z0-9]{8,}$` with `re.IGNORECASE`—leading `U` may be upper or lower case, followed by **8 or more** alphanumeric characters (at least 9 characters total) → Slack DM
+6. **Case-insensitive Anima name match** → internal (normalized to the canonical directory name)
+7. If none of the above apply → `RecipientNotFoundError` (message includes known Anima and alias lists). Empty-string recipients are rejected with a separate message
+
+**External send** (`send_external`):
+
+- Attempt order follows `_build_channel_order`: first `ResolvedRecipient.channel`, then append any not-yet-tried channel that has `slack_user_id` / `chatwork_room_id`.
+- If a channel raises an exception, the next channel is tried; if all fail, a JSON string is returned with `status: "error"` and `error_type: "DeliveryFailed"`.
+- If no external channel can be assembled, `NoChannelConfigured` is raised (message indicates insufficient `external_messaging` configuration).
+- **Slack**: If the per-Anima `SLACK_BOT_TOKEN__{anima_name}` (vault / shared) exists, post with the bot token via `chat.postMessage`. Otherwise prefix the body with `[SenderName] `. Display name is `anima_name` (or `sender_name`); `icon_url` comes from `core.tools._anima_icon_url.resolve_anima_icon_url` (`_resolve_outbound_icon` inside `outbound`).
+- **Chatwork**: Post using `CHATWORK_API_TOKEN_WRITE` (via `get_credential`). Body may similarly use a `[SenderName] ` prefix. Markdown is converted with `md_to_chatwork`.
+
+## Unified Outbound Budget (DM + Board)
+
+Counts **`dm_sent` / `message_sent` / `channel_post`** in activity_log over the last hour and 24 hours and compares them to caps from the role (or `status.json` overrides) (`cascade_limiter.check_global_outbound`).
+
+- **DM to internal Anima**: Checked immediately before `Messenger.send`. On exceed, no send; an error `Message` is returned.
+- **Board (`post_channel`)**: `handler_comms` runs the same `check_global_outbound` before posting.
+- **DM to humans / external platforms** (via `send_external`): **The global budget is not checked immediately before `send_external`** (only per-run intent, recipient count, and duplicate prevention). However, `handler_comms` writes `message_sent` to activity_log **before** `send_external` on the external path. Therefore, even if the Slack / Chatwork API fails and JSON error is returned, **the attempt may still count** toward the 1-hour / 24-hour global totals if the log entry was written. Also, `_replied_to` is updated before delivery, so **a resend to the same `to` in the same session remains blocked**.
 
 ### Role-Based Defaults
 
-Limit values follow role-based defaults from `status.json` `role`. Unset roles use `general` defaults.
+Limits use defaults for `status.json` `role` (`core.config.schemas.ROLE_OUTBOUND_DEFAULTS`). If unset, behavior matches `general`.
 
 | Role | Per hour | Per 24h | DM recipients per run |
 |------|----------|---------|------------------------|
@@ -25,68 +57,65 @@ Limit values follow role-based defaults from `status.json` `role`. Unset roles u
 | ops | 20 | 80 | 2 |
 | general | 15 | 50 | 2 |
 
-**Per-Anima override**: Override via `max_outbound_per_hour` / `max_outbound_per_day` / `max_recipients_per_run` in `status.json`. Use the CLI:
+**Per-Anima override**: `max_outbound_per_hour` / `max_outbound_per_day` / `max_recipients_per_run` in `status.json`. CLI:
 
 ```bash
 animaworks anima set-outbound-limit <name> --per-hour 40 --per-day 200 --per-run 5
 animaworks anima set-outbound-limit <name> --clear   # Revert to role defaults
 ```
 
-### Layer 1: Session Guard (per-run)
+## Layer 1: Session Guard (per-run)
 
-Limits applied within a single session (heartbeat, chat, task execution, etc.).
-
-| Limit | Description |
-|-------|-------------|
-| DM intent restriction | Only `report` and `question` intents are allowed for `send_message`. Use delegate_task for task delegation. Use Board for acknowledgments, thanks, and FYI |
-| No duplicate sends to same recipient | One DM reply per recipient per session |
-| DM recipient cap | Max N recipients per session (set by role/status.json); use Board for N+ |
-| Board: 1 post per session | One post per channel per session |
-
-### Layer 2: Cross-Run Limits
-
-Limits computed from activity_log sliding window across sessions.
-**Combines** `message_sent` and `channel_post` events. **Applies only to internal Anima DMs** (external platform sends use a separate path).
+Limits within one session (heartbeat, chat, task execution, etc.) (`handler_comms`).
 
 | Limit | Description |
 |-------|-------------|
-| Hourly cap | Outbound count (DM + Board combined) in last hour. Set by role/status.json |
-| 24h cap | Outbound count (DM + Board combined) in last 24 hours. Set by role/status.json |
-| Board post cooldown | 300s (`heartbeat.channel_post_cooldown_s`). Min gap between posts to same channel. **Applied independently** of outbound budget (0 disables) |
+| DM intent | `send_message` allows only **`report` and `question`**. `intent=delegation` is treated as deprecated and errors (use `delegate_task` for delegation). Any other intent errors |
+| No resend to same recipient | At most one DM per session to the same `to` string (internal and external; keyed by `to`) |
+| DM recipient cap | At most N recipients per session (role / `status.json`). For N+ recipients, use Board |
+| Board channel posts | At most one `post_channel` per channel per session (other channels allowed) |
 
-**Excluded**: `ack` (acknowledgment), `error` (error notification), `system_alert` (system alert), `call_human` (human notification) are not subject to rate or depth limits (they are not blocked).
+## Layer 2: Cross-Run Limits (Global Budget and Board Cooldown)
 
-### Layer 3: Behavior-Aware Priming
+- **Global budget**: See “Unified Outbound Budget” above (enforced immediately before internal DM and Board sends. **External DM has no global check before the API call**, but because `handler_comms` may write **`message_sent` before the API**, the attempt can still count toward the budget).
+- **Board post cooldown**: `heartbeat.channel_post_cooldown_s` (default 300 seconds). Minimum gap between consecutive posts to the same channel, using last post time in the channel JSONL. **Independent of the global budget** (set to 0 to disable).
 
-Recent send history (within 2 hours: `channel_post` / `message_sent`, up to 3 items) is injected into the system prompt.
-This lets you make send decisions with awareness of your recent sending activity.
+**Excluded**: In `Messenger.send`, messages with `msg_type` `ack` / `error` / `system_alert` skip depth and global budget. `call_human` uses a separate path and is outside DM rate limits.
 
-## Conversation Depth Limit (Bilateral DM)
+**Note**: Notification DMs to internal Anima from Board `@mentions` (`board_mention`) go through `Messenger.send`, so they **can** be subject to the global budget and depth checks.
 
-When DM exchanges between two parties exceed a threshold, `send_message` to **internal Anima recipients** is blocked.
+## Layer 3: Behavior-Aware Priming
+
+`collect_recent_outbound` formats up to three `channel_post` / `message_sent` events within the last 2 hours and injects them into the system prompt (`core/memory/priming/outbound.py`).
+
+## Conversation Depth Limit (Two-Party DM)
+
+When exchanges between two parties exceed `max_depth` within `depth_window_s`, **`Messenger.send` to internal Anima** is blocked (`check_depth`, using activity_log `dm_sent`/`dm_received` and aliases `message_sent`/`message_received`).
 
 | Setting | Default | Config Key | Description |
 |---------|---------|------------|-------------|
 | Depth window | 600s (10 min) | `heartbeat.depth_window_s` | Sliding window |
-| Max depth | 6 turns | `heartbeat.max_depth` | 6 turns = 3 round-trips; blocks send above this |
+| Max depth | 6 turns | `heartbeat.max_depth` | 6 turns ≈ 3 round-trips; send blocked above this |
 
-Error: `ConversationDepthExceeded: Conversation with {peer} reached 6 turns in 10 minutes. Please wait until the next heartbeat cycle.`
+User-facing text comes from `core/i18n` `messenger.depth_exceeded` (Japanese currently uses a fixed “6 turns in 10 minutes” string; actual thresholds follow the settings above).
 
-## Cascade Detection (Inbox Heartbeat Suppression)
+If activity log reads fail, depth check is **fail-closed** (send blocked).
 
-When exchanges between two parties exceed a threshold within a time window, **message-triggered heartbeat is suppressed**.
-Sending is not blocked, but immediate heartbeat on messages from that peer will not fire.
+## Suppressing Message-Triggered Heartbeat (Inbox)
 
-| Setting | Default | Config Key | Description |
-|---------|---------|------------|-------------|
-| Cascade window | 1800s (30 min) | `heartbeat.cascade_window_s` | Sliding window |
-| Cascade threshold | 3 round-trips | `heartbeat.cascade_threshold` | Heartbeat suppressed above this |
+`inbox_watcher` and `InboxRateLimiter` work together to reduce spam from immediate heartbeats.
 
-## Configuration
+| Mechanism | Setting / behavior |
+|-----------|-------------------|
+| **Intent filter** | `heartbeat.actionable_intents` (default `report`, `question`). Receipts that do not match skip message-triggered heartbeat (human / external platform traffic with intent is handled separately) |
+| **Cascade detection** | `heartbeat.cascade_window_s` (default 1800s), `heartbeat.cascade_threshold` (default 3). Above threshold, message-triggered heartbeat is suppressed (sending itself is not blocked) |
+| **Message HB cooldown** | `heartbeat.msg_heartbeat_cooldown_s` (default 300s). Suppresses retriggers too soon after the last message-triggered heartbeat ended |
+| **Same-sender backlog** | If **5 or more** unprocessed messages from the same sender exist, defer message-triggered heartbeat to the scheduled heartbeat |
 
-- **Role defaults**: See table above. Determined by `status.json` `role`
-- **Per-Anima override**: Use `animaworks anima set-outbound-limit` to write `max_outbound_per_hour` / `max_outbound_per_day` / `max_recipients_per_run` to `status.json`
-- **Other (config.json)**: Depth, cascade, and Board cooldown are configurable in the `heartbeat` section of `config.json`:
+## Configuration Summary
+
+- **Role defaults / Per-Anima**: Tables above and `animaworks anima set-outbound-limit`
+- **Depth, cascade, Board cooldown, inbox behavior** (`heartbeat` in `config.json`):
 
 ```json
 {
@@ -95,42 +124,44 @@ Sending is not blocked, but immediate heartbeat on messages from that peer will 
     "max_depth": 6,
     "channel_post_cooldown_s": 300,
     "cascade_window_s": 1800,
-    "cascade_threshold": 3
+    "cascade_threshold": 3,
+    "msg_heartbeat_cooldown_s": 300,
+    "actionable_intents": ["report", "question"]
   }
 }
 ```
 
 ## When Limits Are Hit
 
-### Error Messages
+### Example Error Messages
 
-When limits are reached, errors like the following are returned:
-- `GlobalOutboundLimitExceeded: Hourly send limit (N messages) reached...` (N from role/status.json)
-- `GlobalOutboundLimitExceeded: 24-hour send limit (N messages) reached...` (N from role/status.json)
-- `ConversationDepthExceeded: Conversation with {peer} reached 6 turns in 10 minutes. Please wait until the next heartbeat cycle.`
+- `GlobalOutboundLimitExceeded: ...` — per-hour send limit (N messages) reached (when internal DM / Board is blocked)
+- `GlobalOutboundLimitExceeded: ...` — per-24h send limit (N messages) reached
+- `GlobalOutboundLimitExceeded: Sending blocked because the activity log could not be read` (log read failure, fail-closed)
+- `ConversationDepthExceeded: ...` — depth exceeded (`messenger.depth_exceeded` in `core/i18n`; exact wording follows locale and may not reflect custom `heartbeat` thresholds)
 
 ### What to Do
 
-1. **Hour limit**: Wait for the next hour slot. If not urgent, retry in the next heartbeat
-2. **24h limit**: Focus on truly necessary messages. Record content in `current_state.md` for the next session
-3. **Depth limit**: Wait until the next heartbeat cycle. Move complex discussions to a Board channel
-4. **Urgent contact needed**: `call_human` uses a different channel and is not subject to DM rate limits. Human notification remains available
+1. **Hour limit**: Wait for the next hour window. If not urgent, retry on the next heartbeat
+2. **24-hour limit**: Keep only truly necessary sends. Record content in `current_state.md` and send in a later session
+3. **Depth limit**: Wait until the window clears or move complex discussion to Board
+4. **Urgent contact**: `call_human` is outside DM rate limits; human notification remains available
 
 ### Best Practices for Conserving Send Volume
 
-- **Combine multiple updates** into one message
-- Use one Board post for routine reports instead of spreading across multiple channels
-- Avoid short replies like "OK" when you can include next steps in a single message
-- Keep DM exchanges to one round-trip (see `communication/messaging-guide.md`)
+- Combine multiple report items into **one message**
+- Put routine reports in a **single Board post** (avoid scattering across channels)
+- Avoid bare “OK” replies; finish in one message with the next action when possible
+- Complete DM exchanges in one round (see `communication/messaging-guide.md`)
 
 ## DM Log Archive
 
-DM history was stored in `shared/dm_logs/`; now **activity_log is the primary data source**.
-`dm_logs` is rotated every 7 days and used only for fallback reads.
-Use the `read_dm_history` tool when checking DM history (it prefers activity_log internally).
+DM history also lives under `shared/dm_logs/`, but the **primary source is activity_log**.
+`dm_logs` rotates every 7 days and is used only for fallback reads.
+Use the `read_dm_history` tool to inspect DM history (it prefers activity_log internally).
 
 ## Avoiding Loops
 
-- Before replying again to a peer's message, consider whether another reply is really needed
-- Acknowledgments and simple confirmations tend to cause loops
+- Before replying again to a peer, consider whether it is really needed
+- Acknowledgment-only replies often cause loops
 - Move complex discussions to Board channels

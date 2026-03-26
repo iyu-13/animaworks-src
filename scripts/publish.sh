@@ -105,7 +105,7 @@ run_pii_check() {
 '"$diff_content"
 
     local result
-    result=$(cursor-agent -p --model composer-1.5 "$prompt" 2>&1) || {
+    result=$(cursor-agent -p --model composer-2 "$prompt" 2>&1) || {
         echo "WARNING: PII check failed. Continue? [y/N]"
         read -r confirm
         [[ "$confirm" == [yY] ]] || exit 1

@@ -8,6 +8,12 @@ import { t } from "/shared/i18n.js";
 
 const TOOL_RESULT_TRUNCATE = 500;
 
+function _escapeAttr(str) {
+  if (!str) return "";
+  return str.replace(/&/g, "&amp;").replace(/"/g, "&quot;")
+            .replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 // Container reference for async operations
 let _container = null;
 
@@ -258,7 +264,7 @@ function _renderToolCallDetail(tc) {
     html += `<div class="tool-call-label">${t("ws.tool_result")}</div>`;
     if (resultStr.length > TOOL_RESULT_TRUNCATE) {
       const truncated = resultStr.slice(0, TOOL_RESULT_TRUNCATE);
-      html += `<div class="tool-call-content" data-full-result="${escapeHtml(resultStr)}">${escapeHtml(truncated)}...</div>`;
+      html += `<div class="tool-call-content" data-full-result="${_escapeAttr(resultStr)}">${escapeHtml(truncated)}...</div>`;
       html += `<button class="tool-call-show-more">${t("ws.show_more")}</button>`;
     } else {
       html += `<div class="tool-call-content">${escapeHtml(resultStr)}</div>`;

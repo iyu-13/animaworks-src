@@ -65,6 +65,12 @@ export function escapeHtml(str) {
   return div.innerHTML;
 }
 
+export function escapeAttr(str) {
+  if (!str) return "";
+  return str.replace(/&/g, "&amp;").replace(/"/g, "&quot;")
+            .replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 export function statusClass(status) {
   if (!status) return "status-offline";
   const s = status.toLowerCase();
@@ -113,12 +119,12 @@ _markedRenderer.code = function (token) {
   const content = token.text || "";
   if (content.length > 100 * 1024) {
     const id = window.__registerArtifactContent?.(content) || "";
-    return `<div class="text-artifact-card" data-filename="${escapeHtml(filename)}" data-content-id="${escapeHtml(id)}">` +
+    return `<div class="text-artifact-card" data-filename="${escapeAttr(filename)}" data-content-id="${escapeAttr(id)}">` +
       `<span class="text-artifact-icon">\uD83D\uDCC4</span>` +
       `<span class="text-artifact-name">${escapeHtml(filename)}</span>` +
       `</div>`;
   }
-  return `<div class="text-artifact-card" data-filename="${escapeHtml(filename)}" data-content="${escapeHtml(content)}">` +
+  return `<div class="text-artifact-card" data-filename="${escapeAttr(filename)}" data-content="${escapeAttr(content)}">` +
     `<span class="text-artifact-icon">\uD83D\uDCC4</span>` +
     `<span class="text-artifact-name">${escapeHtml(filename)}</span>` +
     `</div>`;
@@ -126,10 +132,24 @@ _markedRenderer.code = function (token) {
 
 const _markedOptions = { breaks: true, renderer: _markedRenderer };
 
+// ── Foster-parenting prevention ──────────────────
+// An unclosed <table> in the HTML string makes the HTML5 parser enter
+// "in table" mode where non-table end tags (</div>) are ignored.
+// This causes subsequent chat-msg-row elements to nest inside the
+// previous bubble.  Round-tripping through a detached element forces
+// the browser to auto-close every tag, producing well-formed HTML.
+const _sanitizerEl = document.createElement("div");
+
+function _ensureClosedTags(html) {
+  if (!html || !html.includes("<table")) return html;
+  _sanitizerEl.innerHTML = html;
+  return _sanitizerEl.innerHTML;
+}
+
 export function renderMarkdown(text, animaName) {
   _mdAnimaCtx = animaName || null;
   try {
-    return marked.parse(text, _markedOptions);
+    return _ensureClosedTags(marked.parse(text, _markedOptions));
   } catch {
     return escapeHtml(text);
   } finally {
@@ -140,7 +160,7 @@ export function renderMarkdown(text, animaName) {
 export function renderSafeMarkdown(text) {
   if (!text) return "";
   try {
-    return marked.parse(escapeHtml(text), _markedOptions);
+    return _ensureClosedTags(marked.parse(escapeHtml(text), _markedOptions));
   } catch {
     return escapeHtml(text);
   }

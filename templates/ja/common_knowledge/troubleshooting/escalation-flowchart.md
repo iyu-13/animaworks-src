@@ -82,23 +82,47 @@
 4. **依頼**: 上司に何をしてほしいか（判断、権限付与、仲介 等）
 
 **send_message の制約（実装準拠）**:
-- `intent` は MUST: `report`（報告）, `question`（質問）のいずれかを指定する。省略不可。タスク委譲には `delegate_task` を使用
+- `intent` は MUST: `report`（報告）, `question`（質問）のいずれか。省略不可。`intent="delegation"` は**拒否**される（タスク委譲は `delegate_task` のみ）
 - acknowledgment（確認応答）・感謝・FYI は DM 不可。Board（post_channel）を使用する
 - 1 run あたりの DM 宛先数はロール/status.json で設定された上限（general/ops は2人、engineer は5人、manager は10人など）。同一宛先へは1通のみ。上限を超える伝達は Board を使用する
 - DM と Board は**同一のアウトバウンド予算**を共有する（時間あたり・24時間あたりの制限あり）。詳細は `communication/sending-limits.md` 参照
 - **宛先**: Anima名、または人間エイリアス（config で設定済みの場合は Slack/Chatwork 等へ外部配信）
-- **チャット中**: 人間ユーザーへの返答は直接テキストで行う。send_message は他Anima宛てにのみ使用する
-- **人間への連絡**（設定外の宛先）: `call_human` を使用する
+- **チャット中**: 人間ユーザーへの返答は直接テキストで行う。`send_message` は他Anima宛て（または設定済みエイリアス経由の外部）にのみ使用する
+- **人間への連絡**（エイリアス未設定など `send_message` で届かない宛先）: トップレベル Anima かつ通知設定がある場合は `call_human` を使用する（下記）
 - スレッド返信時は `reply_to` と `thread_id` を指定して文脈を維持する
-- 緊急度が「高」で人間の即時対応が必要な場合は `call_human` を検討する（subject, body, priority）
+- 緊急度が「高」で人間の即時対応が必要な場合は `call_human` を検討する（`subject`, `body`, `priority`）
 
 **post_channel（Board）の制約**（3人以上への伝達時に使用）:
 - メタ未設定のチャネル（general, ops 等）は全員利用可能。メンバー制チャネルはメンバーのみ投稿可能（ACL）。アクセス権がない場合は `manage_channel(action="info", channel="チャネル名")` でメンバーを確認できる
 - 同一チャネルへは1 run につき1投稿まで。同一チャネルへの連投はクールダウン（`config.json` の `heartbeat.channel_post_cooldown_s`、デフォルト300秒）が必要
 - 本文に `@名前` でメンション可能。メンション先には DM 通知が届く
 
-**call_human のパラメータ**:
-- `subject`, `body` は必須。`priority` は任意（`low` / `normal` / `high` / `urgent`、デフォルト `normal`）
+**call_human と人間通知基盤（`core/notification/` 実装準拠）**:
+
+- **ツールの有効条件**: `config.json` の `human_notification.enabled` が true で、かつ `HumanNotifier.from_config` が **実際に1件以上の送信チャネル**を構築できたこと（`channels[]` のうち `enabled: true` かつ登録済み `type` のみが対象。`enabled: false` はスキップ、未登録の `type` は警告ログのうえスキップ）
+- **トップレベル限定（supervisor ゲート）**: `config.animas` に **その Anima 名のエントリがあり**、かつ `supervisor` が非 null のとき、`HumanNotifier` は付与されず `call_human` は使えない（部下は上司へ `send_message` でエスカレーション）。**`animas` に未登録の Anima はこのゲートを通らない**ため、理論上は通知チャネルだけで `call_human` が付く可能性がある。運用では全 Anima を `animas` に明示し、`supervisor: null` のみが人間通知を持つようにすると安全
+- **送信方式**: `HumanNotifier.notify` が有効な各チャネルへ **並列送信**（`asyncio.gather(..., return_exceptions=True)`）。チャネルごとに成功文字列または `ERROR` を含む失敗文字列が返り、**例外は1チャネルで握りつぶされ他は継続**
+- **対応チャネル種別**（`human_notification.channels[].type`）: `slack`, `chatwork`, `line`, `telegram`, `ntfy`（`core/notification/channels/*.py` の `@register_channel` に対応）。複数チャネルを並列定義可能
+- **パラメータ**: `subject`, `body` は必須。`priority` は任意。列挙は `low` / `normal` / `high` / `urgent`（省略時 `normal`）。**`PRIORITY_LEVELS` 外の文字列は `HumanNotifier.notify` 内で `normal` に正規化**
+- **優先度の見え方**:
+  - **Slack / Chatwork / LINE / Telegram**: `high` / `urgent` のとき先頭に **`[HIGH]` / `[URGENT]`**（`priority.upper()`）。`low` / `normal` では付与しない
+  - **ntfy**: HTTP ヘッダ `Priority` に `low=2`, `normal=3`, `high=4`, `urgent=5` を設定。本文はリクエストボディ（最大約4096文字）、`Title` ヘッダに件名＋必要なら `(from Anima名)`
+- **Slack**（`channels/slack.py`）:
+  - **Bot Token + `channel`**（`chat.postMessage`）または **Incoming Webhook**。本文は `md_to_slack_mrkdwn` で Slack 向けに整形される
+  - **Bot かつ `anima_name` がある場合**: API の `username` に Anima 名を渡すため、**本文側の `(from Anima名)` は付けない**（Webhook モードでは本文に `(from Anima名)` を付与）。設定とアセットが揃えば `icon_url` も付与可能
+  - **スレッド返信ルーティング**（`reply_routing.py`）: Bot で投稿し、かつ `anima_name` が空でなく、API 応答に `ts` があるときだけ `notification_map.json` に保存。パスは `{data_dir}/run/notification_map.json`（通常は `~/.animaworks/run/`）。エントリは **作成から最大7日** で破棄。Webhook は `ts` が取れずマッピング不可
+  - ルーティング時は可能なら Slack API でスレッド要約を取得し、失敗時は保存済み通知文の要約でフォールバック。Inbox への外部メッセージは `intent="question"`
+- **Chatwork**: `room_id` は **数値のみ** 許可。本文は `md_to_chatwork` 変換のうえ `[info][title]…[/title]…[/info]` 形式
+- **LINE**: Push API。テキストは最大 5000 文字に切り詰め
+- **Telegram**: `parse_mode=HTML`。件名は `<b>…</b>`、全体 4096 文字以内に調整（エスケープ後に切り詰め）
+- **クレデンシャル**: 基底 `NotificationChannel._resolve_credential_with_vault` は **設定キーの env → `{キー}__{anima_name}`（vault/shared）→ 素のキー**の順。Slack Bot はこれに加え `get_credential("slack", "notification", …)` のフォールバックあり（各 `channels/*.py` 参照）
+- **チャット UI**: ストリーミング応答で **`notification_sent`** イベントが送られる（`core/_anima_messaging.py` 経由。外部チャネルとは別経路）
+- **記録**: `call_human` 実行時、統一アクティビティログに **`human_notify`**（`via` は実装上固定で `configured_channels`）。あわせて `tool_result` も残る。Priming の「Pending Human Notifications」は **過去24時間・最大10件**の `human_notify` を集約（`core/memory/priming/outbound.py`）
+- **その他の HumanNotifier 利用**: バックグラウンドツール完了など、**同一の `HumanNotifier`** でフレームワークが人間へ送る経路がある（`call_human` ツール以外。トップレベル Anima に限る点は同じ）
+- **Mode S（CLI）**: `animaworks-tool call_human "件名" "本文" [--priority …]` でも同系統の通知を送れる
+
+**call_human のパラメータ（要約）**:
+- `subject`, `body` は必須。`priority` は任意（`low` / `normal` / `high` / `urgent`、デフォルト `normal`。不正値は `normal` 扱い）
 
 ---
 
@@ -172,7 +196,7 @@ Slack API の rate limit 回避策について知見はありますか？
 
 ### テンプレート4: 緊急報告
 
-緊急度が「高」で人間の即時対応が必要な場合は `call_human` も併用する。
+緊急度が「高」で人間の即時対応が必要な場合は `call_human` も併用する（**トップレベル Anima** かつ `human_notification` が有効なときのみツールが利用可能。部下 Anima は上司への `send_message` に留める）。
 
 ```
 send_message(

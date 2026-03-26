@@ -7,6 +7,39 @@ description: >-
   「cron追加」「cron更新」「cron削除」「定期実行」「定時」等の場面で使用。
 ---
 
+## フレームワーク側の実装（参照用）
+
+### cron（定時タスク）
+
+cron の**パース**は `core/schedule_parser.py`（`parse_cron_md` / `parse_schedule`）、**登録・実行・リロード**は `core/supervisor/scheduler_manager.py`（APScheduler、`AsyncIOScheduler(timezone=get_app_timezone())`）が担当する。
+
+### `core/background.py`（cron とは別系統）
+
+このモジュールは **cron のスケジューリングをしない**。長時間ツール呼び出しのバックグラウンド実行と、DM ログのローテーションを担当する。cron と混同しないこと。
+
+**`BackgroundTaskManager`**
+
+- **役割**: 対象ツールを `asyncio` 上で非同期実行し、状態をディスクに保存する。
+- **永続化先**: `state/background_tasks/{task_id}.json`（`pending` / `running` / `completed` / `failed`、結果文字列・エラー・タイムスタンプ）。
+- **公開 API（概要）**:
+  - `submit(tool_name, tool_args, execute_fn)` — 同期実行関数をスレッドプールで走らせる。
+  - `submit_async(...)` — 非同期 `execute_fn` 版。
+  - `get_task` / `list_tasks` / `active_count` — 照会。
+  - `cleanup_old_tasks(max_age_hours=24)` — 完了・失敗タスクを **24 時間**超で削除。加えて `running` のまま **48 時間**超経過した JSON（クラッシュ孤児）も削除。
+- **`from_profiles(anima_dir, ..., profiles, config_eligible)`**: バックグラウンド対象ツール集合は次の **3 層マージ**（後勝ち）。
+  1. コード内デフォルト `_DEFAULT_ELIGIBLE_TOOLS`（Mode A 互換の固定一覧）
+  2. 各ツールモジュールの `EXECUTION_PROFILE` から `background_eligible: true` のエントリ（`core.tools._base.get_eligible_tools_from_profiles`）。キーは `"{tool}:{subcommand}"` 形式（Mode S の `submit` と整合）
+  3. `config.json` 等から渡る `config_eligible`（明示上書き）
+- **`is_eligible(tool_name)`**: 次のどちらの名前でも照合可能 — スキーマ名（例: `generate_3d_model`）、プロファイルキー（例: `image_gen:3d`）。
+- **デフォルトで `_DEFAULT_ELIGIBLE_TOOLS` に含まれる例**（値は目安秒）: `generate_character_assets` / `generate_fullbody` / `generate_bustup` / `generate_icon` / `generate_chibi` / `generate_3d_model` / `generate_rigged_model` / `generate_animations`（各 30）、`local_llm` / `run_command`（各 60）、`machine_run`（600）。
+- **完了フック**: `on_complete` に `Callable[[BackgroundTask], Awaitable[None]]` を設定可能。アプリ側でここから `state/background_notifications/` への Markdown 通知などを書く（`background.py` 自体は通知ディレクトリを触らない）。
+
+**`rotate_dm_logs`**
+
+- `shared/dm_logs/*.jsonl` のエントリを `max_age_days`（デフォルト **7 日**）で切り、古い行を `{stem}.{YYYYMMDD}.archive.jsonl` に追記アーカイブする。cron タスクではないが、バックグラウンド系メンテと同一ファイルに定義されているため参照用に記載。
+
+---
+
 ## cron.mdの構造
 
 ### 全体構成
@@ -149,6 +182,7 @@ type: llm
 - 説明文はそのままLLMへのプロンプトとして渡される
 - 具体的なアウトプット（何を書き出すか）を明記すると効果的
 - 複数行OK
+- 本文にフェンス付きコードブロック（\`\`\`）が含まれると、パーサーが警告ログを出す（確定コマンドなら `type: command` を検討）
 
 ### type: command — コマンド実行タスク
 
@@ -173,19 +207,19 @@ command: /usr/local/bin/backup.sh
 ## Slack朝の通知
 schedule: 0 9 * * 0-4
 type: command
-tool: slack_send
+tool: slack_channel_post
 args:
-  channel: "#general"
-  message: "おはようございます！"
+  channel_id: "C0123456789"
+  text: "おはようございます！"
 ```
 
-- `tool:` にツール名（`get_tool_schemas()` で定義されたスキーマ名）
+- `tool:` にツール名（`get_tool_schemas()` / `permissions.md` で許可されたスキーマ名。例: Slack 投稿は `slack_channel_post` など）
 - `args:` 以降はYAMLブロック形式でインデント2スペース
-- `dispatch(tool_name, args)` 経由で実行される
+- `ToolHandler.handle(tool, args)` で実行され、結果文字列が stdout 相当として扱われる
 
 ### オプション: skip_pattern
 
-コマンドの標準出力が特定パターンにマッチした場合、cron LLMセッション（フォローアップ分析）をスキップする。
+`type: command` でコマンドが**成功**（`exit_code == 0`）し、かつ標準出力が空でない場合にだけ走る**フォローアップ cron LLM**（heartbeat 同等コンテキストの分析セッション）を、stdout がこの正規表現にマッチするとき**抑制**する。
 
 ```markdown
 ## Chatwork未返信チェック
@@ -195,14 +229,15 @@ command: chatwork_cli.py unreplied --json
 skip_pattern: "^\[\]$"
 ```
 
-- `skip_pattern:` には正規表現を書く
+- `skip_pattern:` には正規表現を書く（実行時は `re.search(skip_pattern, stdout)`）
 - 正規表現に `[]` 等のYAML特殊文字を含む場合は引用符（`"..."` または `'...'`）で囲む。パーサーは外側の引用符を自動除去する
-- 無効な正規表現の場合は警告ログが出て、skip_patternは無視され（cron LLMが実行される）
-- 上の例では、未返信が0件（`[]`）の場合にスキップする
+- **パース時**に無効な正規表現 → 警告ログのうえ `skip_pattern` は未設定扱い（フォローアップ抑制なし）
+- **実行時**に `re.search` が例外（無効パターンの残存など）→ 警告ログのうえ**抑制せず**フォローアップを実行
+- 上の例では、未返信が0件（`[]`）の場合にフォローアップをスキップする
 
 ### オプション: trigger_heartbeat
 
-コマンド出力時にLLM分析セッションをトリガーするかをタスク単位で制御する。
+コマンド成功時にフォローアップ cron LLM を走らせるかをタスク単位で制御する（`SchedulerManager._run_cron_task` の評価順に従う）。
 
 ```markdown
 ## Chatwork未返信チェック
@@ -213,11 +248,13 @@ skip_pattern: "^\[\]$"
 trigger_heartbeat: false
 ```
 
-- `trigger_heartbeat: false` — コマンド出力があってもcron LLMセッション（フォローアップ分析）をスキップ
-- `trigger_heartbeat: true`（デフォルト）— コマンド出力があればcron LLMセッションで分析・対応
-- `false`, `no`, `0` を指定するとLLM分析抑制。それ以外はtrue扱い
-- `skip_pattern` と併用可能。`trigger_heartbeat: false` は `skip_pattern` より先に評価される
-- LLM分析セッションはheartbeat同等のコンテキスト（記憶・知識・組織情報）を持つ
+- **フォローアップが検討される条件**（すべて満たすとき）: `exit_code == 0` かつ stdout（`.strip()` 後）が空でない
+- **stdout の長さ**: `run_cron_command` がスケジューラに返す `stdout` は先頭 **1000 文字**に切り詰められる。フォローアップ LLM に渡るのもこのプレビュー。完全ログは `state/cron_logs/`（JSONL）側を参照
+- `trigger_heartbeat: false` — 上記条件を満たしてもフォローアップ cron LLM を**実行しない**（`skip_pattern` より先に評価）
+- `trigger_heartbeat: true`（デフォルト）— 条件を満たせばフォローアップを実行（次に `skip_pattern` を評価）
+- `false`, `no`, `0` を指定すると抑制。それ以外は true 扱い
+- フォローアップ cron LLM は heartbeat 同等のプロンプトフィルタ（バックグラウンド用コンテキスト）で動く
+- `exit_code != 0` や stdout が空のときは、フォローアップは**そもそも起動しない**（`skip_pattern` / `trigger_heartbeat` は無関係）
 
 ---
 
@@ -244,6 +281,20 @@ type: command は人間がスクリプトを保存するのと同じ。
 Animaの価値は結果を見て判断する力にある。
 確定的な実行はフレームワークに任せ、
 Animaには判断・分析・報告に集中させること。
+
+---
+
+## cron ヘルス通知（自動）
+
+スケジューラは問題検知時に `state/background_notifications/cron_health_{タイムスタンプ}.md` を生成する。次回の heartbeat または cron 実行のコンテキストで読み取り・対応される想定。
+
+**レイヤー1（セットアップ／`reload_schedule` 直後）** — `parse_cron_md` 結果と raw テキストを照合:
+
+- タスクは定義されているが**有効なスケジュールが1件も登録できない**（式がすべて無効など）
+- 行頭に空白がある `schedule:` 行が raw に含まれる（コードフェンス内のインデント付き行なども検出。通常は **`schedule:` を行頭（または行全体を trim して `schedule:` で始まる形）** に書く）
+- raw に `schedule:` という文字列があるのに、パーサーが **1件もタスクを返さない**
+
+**レイヤー2（3時間ごと）** — 登録済みのユーザー cron ジョブが1件以上あるのに、直近 **3時間** の activity_log に `cron_executed` が **0件** のとき警告（実行自体が動いていない可能性）
 
 ---
 
@@ -303,6 +354,7 @@ cron.mdを更新する前に、以下を**必ず**確認すること:
 - [ ] command型の場合、`command:` または `tool:` があるか
 - [ ] tool型の場合、`args:` のインデントが正しいか（2スペース）
 - [ ] タスク間に空行があるか
+- [ ] `schedule:` をコードブロック内に書いていないか（ヘルス警告の原因になりうる）
 
 ### バリデーション方法
 
@@ -351,10 +403,10 @@ trigger_heartbeat: false
 ## Slack朝の挨拶
 schedule: 0 9 * * 0-4
 type: command
-tool: slack_send
+tool: slack_channel_post
 args:
-  channel: "#general"
-  message: "おはようございます！今日もよろしくお願いします。"
+  channel_id: "C0123456789"
+  text: "おはようございます！今日もよろしくお願いします。"
 
 ## 週次振り返り
 schedule: 0 17 * * 4
@@ -390,9 +442,11 @@ type: llm
 
 ## 注意事項
 
-- cron.mdの変更は、Animaが `write_memory_file` で保存した場合は即時反映される。外部編集（直接ファイル編集）の場合は、次回heartbeatまたはcron実行時にmtimeを検出して自動リロードされる
-- タイムゾーンは `config.json` の `system.timezone` で設定可能。未設定時はシステムタイムゾーンを自動検出
-- 同時刻に複数タスクが重なった場合は並列実行される
-- command型のタスクが失敗してもサーバーは停止しない（ログに記録される）
-- LLM型タスクの実行には現在のモデル設定（status.json）が使われる
+- **ホットリロード**: `cron.md` / `heartbeat.md` を Anima の `write_memory_file` 等で更新すると、スケジュール変更コールバックで `reload_schedule` が走り即時再登録される。外部の直接編集は、次回 **heartbeat または任意の cron が発火する直前** の mtime チェック（`_check_schedule_freshness`）でも検出され、同様にリロードされる
+- **リロード直後の古いジョブ**: mtime 変化を検知したタイミングでスケジューラが再構築されると、**直前の定義に紐づいた cron 発火は「stale」としてスキップ**されうる（意図的な二重実行防止）
+- **タイムゾーン**: APScheduler は `get_app_timezone()` を使用。`config.json` の `system.timezone` に IANA 名（例: `Asia/Tokyo`）を設定可能。**空文字**のときは OS タイムゾーンを自動検出し、失敗時は `Asia/Tokyo` にフォールバック
+- **同時実行**: **タスク名が異なれば**、同一分に複数ジョブが重なっても `asyncio.create_task` により並行しうる。同一タスク名は実行中に再入しない（`_cron_running` でスキップ）。各ジョブは `max_instances=1`
+- command 型は失敗してもプロセスは止めない（`cron_executed` が記録され、`stderr` / exit_code がログに残る）。**フォローアップ cron LLM は成功かつ stdout があるときのみ**（前述）
+- `type: llm` の定期実行には **バックグラウンド用モデル**（`status.json` の `background_model` 等、未設定時はメインモデル）が使われる
+- command の詳細出力は `state/cron_logs/`（日次 JSONL）に蓄積され、保持日数は設定の `cron_log_retention_days`（デフォルト30日）でハウスキーピングされる
 - **他のAnimaのtools/ディレクトリにアクセスする場合は、権限を事前に確認すること**

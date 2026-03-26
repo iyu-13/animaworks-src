@@ -488,7 +488,7 @@ export function renderToolCallDetail(tc, opts) {
     html += `<div class="tool-call-label">${t("ws.tool_result")}</div>`;
     if (resultStr.length > truncLen) {
       const truncated = resultStr.slice(0, truncLen);
-      html += `<div class="tool-call-content" data-full-result="${escapeHtml(resultStr)}">${escapeHtml(truncated)}...</div>`;
+      html += `<div class="tool-call-content" data-full-result="${_escapeAttr(resultStr)}">${escapeHtml(truncated)}...</div>`;
       html += `<button class="tool-call-show-more">${t("chat.show_more")}</button>`;
     } else {
       html += `<div class="tool-call-content">${escapeHtml(resultStr)}</div>`;

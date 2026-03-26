@@ -63,7 +63,7 @@ python3 scripts/doc_freshness.py --fix --dry-run
 python3 scripts/doc_freshness.py --fix
 
 # モデル指定
-python3 scripts/doc_freshness.py --fix --model composer-1.5
+python3 scripts/doc_freshness.py --fix --model composer-2
 
 # en翻訳をスキップ（jaだけ更新）
 python3 scripts/doc_freshness.py --fix --skip-en
@@ -84,7 +84,7 @@ python3 scripts/doc_freshness.py --fix --dry-run --category common_skills
 |--------|------|
 | `--fix` | cursor-agentで自動更新 |
 | `--dry-run` | fixコマンドのプレビューのみ |
-| `--model MODEL` | cursor-agentのモデル（デフォルト: `composer-1.5`） |
+| `--model MODEL` | cursor-agentのモデル（デフォルト: `composer-2`） |
 | `--all` | マッピング外ドキュメントも対象に含める |
 | `--file PATH` | 特定ファイルだけ処理 |
 | `--category CAT` | カテゴリで絞り込み |

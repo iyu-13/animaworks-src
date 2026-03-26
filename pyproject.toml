@@ -13,7 +13,7 @@ dependencies = [
     "claude-agent-sdk>=0.1.40; platform_system != 'Windows'",
     "anthropic>=0.42.0",
     "openai-codex-sdk>=0.1.11,<0.2",
-    "litellm>=1.55.0",
+    "litellm>=1.82.6",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.34.0",
     "apscheduler>=3.10.0",

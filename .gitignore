@@ -122,3 +122,6 @@ scripts/benchmark/results/
 # SWE-bench evaluation
 swe/runtime/
 swe/results/
+
+# Temp output
+.cmd_output/

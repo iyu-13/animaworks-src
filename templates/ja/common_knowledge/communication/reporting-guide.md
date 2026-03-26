@@ -11,20 +11,48 @@
 
 | ツール | 用途 | 備考 |
 |--------|------|------|
-| `send_message` | 上司・同僚への1対1報告 | `intent="report"` 必須。進捗・結果・判断依頼。Anima名または人間エイリアス宛て |
-| `post_channel` | チーム全体へのお知らせ（Board） | acknowledgments・感謝・FYI は Board を使用。同一チャネル1回/run、再投稿はクールダウン（デフォルト300秒）が必要 |
+| `send_message` | 上司・同僚への1対1報告・質問 | 報告・進捗・判断依頼は `intent="report"`、質問は `intent="question"`。Anima 名・エイリアス・`slack:`/`chatwork:` 等（下記参照） |
+| `post_channel` | チーム全体へのお知らせ（Board） | acknowledgments・感謝・FYI は Board を使用。同一チャネル1回/run、再投稿はクールダウン（`heartbeat.channel_post_cooldown_s`、既定300秒）が必要 |
 | `call_human` | 人間への緊急通知 | サービス停止・セキュリティインシデント等 |
 
 **send_message の制約**:
-- `intent` は必須。報告には `report` を指定する（タスク委譲は `delegate_task`、`question`=質問）
-- 1 run あたり最大2宛先まで、同一宛先へは1通のみ。3人以上への伝達は Board を使用
+- `intent` は必須で、値は **`report` または `question` のみ**（報告・進捗は `report`、質問は `question`）。**`delegation` は `send_message` では使えない**（ツールが拒否する）。タスク委譲は `delegate_task` を使う
+- 1 run あたりの宛先数は **`max_recipients_per_run`**（`status.json` で上書き可、未設定時はロール既定。例: `general` は 2）。同一宛先へは 1 通のみ。3人以上への伝達は Board を使用
 - 追加の連絡は Board（post_channel）を使用する
-- **宛先**: Anima名（上司・同僚）または人間エイリアス（`config.external_messaging.user_aliases` 設定時は Slack/Chatwork 等へ外部配信）
+- **宛先** は下記「宛先の解決」を参照（Anima 名・人間エイリアス・`slack:` / `chatwork:` 直指定など）
 - **注**: チャットセッション中は人間宛てに send_message は使えない。直接テキストで返答する
 
-**送信制限（cross-run）**:
-- グローバル: 30通/時、100通/日（超過時は送信ブロック。内容を current_state.md に記録し次セッションで送信）
-- 同一ペア間: 10分間に6ターンまで（超過時は次のハートビートサイクルまで待機）
+### 宛先の解決と外部配信（`core/outbound.py`）
+
+`send_message` の `to` は次の **優先順位** で内部 inbox か外部（Slack / Chatwork）かに解決される。空文字は解決できずエラーになる。
+
+1. **既知 Anima 名との完全一致**（大文字小文字は区別）→ 内部 inbox。既知一覧は `~/.animaworks/animas/` 直下のディレクトリ名
+2. **`config.json` の `external_messaging.user_aliases` のキーと一致**（エイリアスは **大小無視**）→ 外部配信。`external_messaging.preferred_channel`（`slack` / `chatwork`）が `slack` のときは `slack_user_id` があれば Slack、なければ `chatwork_room_id` があれば Chatwork。`preferred_channel` が `chatwork` のときは `chatwork_room_id` を優先し、無ければ `slack_user_id` があれば Slack。**どちらの ID も無い**エイリアスはエラー（`external_messaging.user_aliases` に連絡先を設定すること）
+3. **`slack:USERID`**（先頭が `slack:`、続きが Slack ユーザー ID）→ Slack DM へ直接（USERID は実装上 **大文字に正規化**）
+4. **`chatwork:ROOMID`**（先頭が `chatwork:`、ROOMID 部分は前後空白のみ除去）→ Chatwork ルームへ直接
+5. **Slack ユーザー ID 単体**（`U` + 英数字 **8 文字以上**、大文字小文字はマッチ時に許容。例 `U0123456789`）→ Slack DM へ直接
+6. **既知 Anima 名との大小無視一致** → 内部（ディスク上の正式名に正規化）
+7. いずれにも該当しない → 不明宛先エラー（ツール層ではチャット実行中とそれ以外でヒント文言が切り替わることがある）
+
+**外部向け設定**（`config.json` の `external_messaging`）:
+
+| フィールド | 役割 |
+|-----------|------|
+| `preferred_channel` | エイリアス宛ての既定チャネル（`slack` / `chatwork`） |
+| `user_aliases` | エイリアス名 → `{ "slack_user_id": "...", "chatwork_room_id": "..." }`（**少なくとも一方**が必要） |
+
+**外部送信の挙動**（`send_external`）:
+
+- 試行順は **解決されたチャネルを先に** 送り、失敗したら **もう一方のチャネル** を試す（エイリアスなどで Slack・Chatwork の両方の宛先 ID が揃っている場合のみ 2 番目がある。`slack:` / `chatwork:` 直指定は通常そのチャネルのみ）
+- 外部チャネルが構成されていないなどの理由で送れない場合は、ツール結果に JSON で `NoChannelConfigured` や `DeliveryFailed` が返ることがある
+- 本文は **Markdown → Slack mrkdwn / Chatwork 向け**に変換される
+- **Slack**: Anima 名に紐づく `SLACK_BOT_TOKEN__{anima名}`（Vault または共有 credentials）があれば Bot トークンで送信し、表示名（Anima 名）と **アイコン URL**（Anima アセット由来）を付与。**Bot トークンが無い**場合は本文先頭に `[送信者Anima名] ` を付けて送る
+- **Chatwork**: 書き込み用トークン（環境変数 `CHATWORK_API_TOKEN_WRITE` 等で解決）を使用。`send_message` 経由では本文先頭に `[Anima名] ` プレフィックスが付く
+
+**送信制限（実装に基づく）**:
+
+- **グローバル（時間窓）**: 内部 Anima への `send_message`（`Messenger.send` 経由）と **`post_channel` は同じ送信カウント**を共有する。`activity_log` 上の直近 1 時間・24 時間の `dm_sent` / `message_sent` / `channel_post` で判定。上限は **`status.json` の `max_outbound_per_hour` / `max_outbound_per_day`** があればそれを使い、なければ **ロール別既定**（例: `general` は 15/時・50/日、`manager` は 60/時・300/日）。超過時はブロックされ、ツール結果に従い内容を `current_state.md` 等へ退避して次セッションで送る運用になる
+- **同一ペア（内部 Anima DM のみ）**: `heartbeat.depth_window_s`（既定 600 秒＝10 分）の窓内で、`heartbeat.max_depth`（既定 6 ターン）まで。超過時は相手への送信がブロックされる（次の窓まで待つ）
 
 ## 報告のタイミング
 
@@ -347,7 +375,7 @@ send_message(
 
 ### やるべきこと（MUST/SHOULD）
 
-- MUST: `send_message` の `intent` に `"report"` を指定すること（省略するとエラーになる）
+- MUST: `send_message` の `intent` に **`"report"`（報告・進捗）または `"question"`（質問）** を指定すること。`"delegation"` は不可（委譲は `delegate_task`）
 - MUST: 事実と推測を区別して書くこと。推測には「可能性が高い」「おそらく」等を付ける
 - MUST: 影響範囲を明記すること。「何が」「誰に」影響しているか
 - SHOULD: 自分が試した対策とその結果を含めること。上司が同じ対策を提案する無駄を避ける
@@ -359,4 +387,4 @@ send_message(
 - 「問題が起きました」だけで具体的な情報がない報告
 - 複数の異なるトピックを1つのメッセージにまとめること（トピックごとに分ける）
 - 問題を隠したり、軽く見せようとすること（正確な状況を伝える）
-- 同一 run で同一宛先に2回以上 send_message を送ること（1通まで。追加連絡は Board を使用）
+- 同一 run で同一宛先に2回以上 send_message を送ること（1通まで。追加連絡は Board を使用）。また `max_recipients_per_run` を超える人数への DM は送れない

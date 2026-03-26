@@ -691,8 +691,8 @@ class HeartbeatMixin:
                     exc_info=True,
                 )
 
-            # Hard-trim current_state.md if it exceeds the cleanup threshold
-            self._enforce_state_size_limit()
+            # Archive current_state.md and reset (session boundary cleanup)
+            self.memory.archive_and_reset_state()
 
             return result
         finally:

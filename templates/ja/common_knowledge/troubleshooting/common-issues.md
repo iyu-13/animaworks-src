@@ -18,18 +18,36 @@
 
 ### 原因
 
-1. 相手の名前（Anima名）が間違っている
+1. 宛先指定の誤り（Anima 正式名・ユーザーエイリアス・`slack:` / `chatwork:` プレフィックス等）や、解決順に合わない指定
 2. サーバーが停止している
 3. 相手がハートビート間隔の合間にいる（次の起動まで未読のまま）
-4. 送信処理自体がエラーで失敗していた
-5. `intent` が未指定または不正（report / question のみ許可。タスク委譲は `delegate_task` を使用）
-6. セッション内DM制限超過（同一宛先へは1回のみ、1セッションあたりの宛先数上限。ロールにより異なり、general は2人まで）
+4. 送信処理がエラーで失敗していた（グローバル送信上限・会話深度上限・セッション内 DM 上限、`RecipientResolutionError` など）
+5. `intent` が未指定または不正。DM では `report` / `question` のみ。タスク委譲は `delegate_task` を使う（`send_message` に `intent="delegation"` を付けると非推奨メッセージが返る）
+6. セッション内 DM 制限超過（**同一宛先には 1 セッション 1 通まで**。**別宛先の最大人数**は `status.json` の `role` に応じた `max_recipients_per_run` — 下表。個別上書きは `status.json` の同名フィールド）
+
+**ロール別 `max_recipients_per_run`（`core/config/schemas.py` `ROLE_OUTBOUND_DEFAULTS`）**
+
+| role | 1セッションあたり最大宛先数（各1通） |
+|------|--------------------------------------|
+| manager | 10 |
+| engineer | 5 |
+| writer | 3 |
+| researcher | 3 |
+| ops | 2 |
+| general | 2 |
 
 ### 対処手順
 
-1. **送信先の名前を確認する**
-   - `send_message` の `to` パラメータに指定した名前が正しいか確認する
-   - 名前は大文字・小文字を区別する。`identity.md` に記載された正式名称を使うこと
+1. **送信先の名前・宛先形式を確認する**
+   - `send_message` の `to` パラメータが意図した相手に解決されるか確認する
+   - 実装（`core/outbound.py` `resolve_recipient`）の解決順は概ね次のとおり:
+     1. 既知 Anima 名との**完全一致**（大文字小文字区別）→ 内部
+     2. `config.json` `external_messaging.user_aliases` の**エイリアス**（大文字小文字無視）→ 外部（preferred_channel）
+     3. `slack:USERID` / `chatwork:ROOMID` → 外部直接
+     4. ベア Slack ユーザー ID（`U` + 英数字 8 文字以上）→ Slack 直接
+     5. 既知 Anima 名の**大文字小文字無視一致** → 内部
+     6. 上記以外 → 解決失敗
+   - 内部 Anima へ確実に届けるには、`~/.animaworks/animas/<名前>/` または `reference/organization/structure.md` 上の**正式名**を使う
    - 確認方法:
      ```
      search_memory(query="組織", scope="common_knowledge")
@@ -58,8 +76,8 @@
 send_message(to="Aoi", content="...", intent="report")   # OK
 send_message(to="aoi", content="...", intent="report")  # 名前が異なればエラーになる可能性あり
 
-# DM は intent 必須（report / question のみ）
-# 1セッションあたりの宛先数はロールにより異なる（general は2人まで）。同一宛先へは1回のみ
+# DM は intent 必須（report / question のみ）。委譲は delegate_task
+# 1セッションあたりの「別宛先」数はロールにより異なる（例: general は最大2人、engineer は5人まで）。同一宛先へは1回のみ
 send_message(
     to="aoi",
     content="了解しました。作業を開始します。",
@@ -84,7 +102,7 @@ send_message(
 ### 原因
 
 1. 依存タスクが未完了
-2. 権限不足（permissions.json で許可されていない操作を実行しようとした）
+2. 権限不足（`permissions.json` で許可されていない操作。`permissions.md` のみの環境でも、初回 `load_permissions` で JSON が生成され MD は `.bak` に退避される）
 3. 必要な情報が不足している
 4. 外部サービスの障害
 
@@ -126,7 +144,8 @@ send_message(
    ```
 
 5. **ブロック中でも進められる作業がないか確認する**
-   - 永続タスクキュー（`Bash: animaworks-tool task list`）および `state/pending/` 配下のタスクに他の作業がないか確認する
+   - 永続タスクキュー: ツールが使える場合は `list_tasks`、または `Bash: animaworks-tool task list` で確認する
+   - Heartbeat が書き出す LLM タスク（`state/pending/*.json`）に他の作業がないか確認する
    - ブロックされていない別のタスクに着手する
 
 ---
@@ -176,8 +195,8 @@ send_message(
      ```
 
 4. **ディレクトリを直接確認する**
-   - 検索でヒットしない場合は `Glob` でディレクトリの内容を一覧する。`path` を省略すると anima_dir のルートが表示され、knowledge/, procedures/, episodes/ 等のサブディレクトリが確認できる
-   - ファイル名から目的のファイルを見つけて直接読む:
+   - Mode S（Claude Agent SDK）などでは組み込み `Glob` で Anima ディレクトリ配下を一覧できる。Mode A 等では `read_memory_file` で既知のパスを開くか、`search_memory` で広く当たる
+   - ファイル名が分かっていれば直接読む:
      ```
      read_memory_file(path="procedures/slack-setup.md")
      read_memory_file(path="knowledge/xxx-findings.md")
@@ -212,9 +231,9 @@ send_message(
 
 ### 原因
 
-1. `permissions.json` で許可されていない操作を実行しようとした
-2. 外部ツールのカテゴリが未有効化
-3. ファイルパスが許可範囲外
+1. `permissions.json` で許可されていない操作（`permissions.md` のみの場合は `load_permissions` が読み込み時に JSON 相当へ正規化。無効 JSON は警告のうえ開放デフォルトにフォールバックすることもある）
+2. 外部ツールのカテゴリがレジストリに未有効化（`check_permissions` の `available_but_not_enabled`）
+3. ファイルパスが許可範囲外（保護ファイルへの書き込み、`file_roots` 外など）。加えて**グローバル**拒否は `permissions.global.json` とフレームワーク側パターンがある
 
 ### 対処手順
 
@@ -222,17 +241,13 @@ send_message(
    ```
    check_permissions()
    ```
-   - 利用可能な内部ツール・外部ツール・ファイルアクセス・制限事項が一覧で返る
-   - 詳細は `read_memory_file(path="permissions.json")` で確認可能
-   - `permissions.json` の主なセクション:
-     - 「ファイル操作」「読める場所」: 読み取り可能なパス
-     - 「コマンド実行」「実行できるコマンド」: 実行可能なコマンドのホワイトリスト
-     - 「実行できないコマンド」: ブロック対象コマンド
-     - 外部ツール: permissions.json で許可されたカテゴリが有効化される
+   - JSON で返る。`internal_tools`・`external_tools.enabled` / `available_but_not_enabled`・`file_access`（read/write）・`restrictions`（コマンド deny 等）を確認する
+   - 生の設定は `read_memory_file(path="permissions.json")`（存在しない場合は `permissions.md`）で確認可能
+   - システムプロンプトに注入される権限説明は、ランタイムが JSON から整形したテキストになる
 
 2. **許可されている操作か確認する**
-   - 自分の anima_dir 内は読み書き可能。共有ディレクトリ・部下の管理ファイル等は `check_permissions` で確認
-   - コマンド: 「実行できるコマンド」に列挙されたコマンドのみ実行可能
+   - 自分の `anima_dir` 内は原則読み書き可能（`identity.md` 等の保護ファイルは除く）。上司・同僚の `activity_log` や配下の `state/` 読み取りはロール次第で `check_permissions` の `file_access` に反映される
+   - シェルコマンド: `permissions.json` の `commands`（allow/deny）に従う。グローバル危険パターンはフレームワーク側でもブロックされる
 
 3. **権限が必要な場合の対応**
    - その操作が本当に必要か再検討する
@@ -262,26 +277,26 @@ send_message(
 
 ### 原因
 
-1. そのツール自体が `permissions.json` で許可されていない
+1. そのツールが `permissions.json`（または読み込み時に正規化された MD 由来設定）で許可されていない、またはゲート付きアクションが明示許可されていない
 2. スキルファイルが見つからない
 3. 外部サービスの認証情報が設定されていない
 
 ### 対処手順
 
 1. **スキルでツールの使い方を確認する**
-   - `skill` ツールでスキル名を指定し、手順の全文を取得する。スキル一覧はツール説明の `<available_skills>` ブロックに表示される
+   - `skill` ツールでスキル名を指定し、手順の全文を取得する（利用可能スキルはセッションのツールガイド等で確認）
    - B-mode で外部ツールが許可されている場合、`Bash: animaworks-tool <ツール> <サブコマンド>` で呼び出しが可能
 
 2. **権限を確認する**
    ```
    check_permissions()
    ```
-   - `external_tools.enabled` に現在有効なカテゴリ、`external_tools.available_but_not_enabled` に許可済みだが未有効のカテゴリが返る
-   - permissions.json で許可されていないカテゴリは使用できない
+   - `external_tools.enabled`: この Anima のツールレジストリに載っている外部ツールカテゴリ（セッションに実際に渡るもの）
+   - `external_tools.available_but_not_enabled`: フレームワークに実装はあるが、この Anima ではレジストリに入っていないカテゴリ。`permissions.json` の許可・ゲート付きアクション・実行モードとあわせて確認する
 
-3. **カテゴリが許可されていない場合**
-   - 上司に利用許可を依頼する
-   - 依頼時は「なぜそのツールが必要か」を明記すること
+3. **利用できない場合**
+   - `permissions.json` で該当ツール／アクションが許可されているか、認証情報（`shared/credentials.json` 等）があるかを確認する
+   - それでも不可なら上司に依頼する（「なぜそのツールが必要か」を明記）
 
 4. **MCP 統合モード（S/C/D/G: Claude Agent SDK / Codex CLI / Cursor Agent / Gemini CLI）の場合**
    - 組み込みツールはプレフィックスなしで利用可能（例: `send_message`）。見つからない場合はプロセス再起動が必要
@@ -304,8 +319,8 @@ send_message(
 8. **ツールがエラーを返す場合**
    - エラーメッセージを正確に記録する
    - 認証エラーの場合は上司に報告する（認証情報の設定は管理者の責務）
-   - タイムアウトの場合はリトライする（最大3回まで）
-   - リトライでも解決しない場合はブロックとして報告する
+   - 一時的なタイムアウト・レート制限なら短時間待って再試行する（回数・間隔はツール実装・サーバー設定による）
+   - 改善しない場合はブロックとして報告する
 
 ツール体系の全体像は `operations/tool-usage-overview.md` を参照。
 
@@ -374,23 +389,38 @@ send_message(
 ### 症状
 
 - `send_message` や `post_channel` を実行したらエラーが返された
-- `GlobalOutboundLimitExceeded: 1時間あたりの送信上限（N通）に到達しています...` 等のメッセージが表示された
+- `GlobalOutboundLimitExceeded: 1時間あたりの送信上限（N通）に到達しています...` または 24 時間版の同種メッセージが表示された
+- `GlobalOutboundLimitExceeded: アクティビティログ読み取り失敗のため送信をブロックしました` と表示された（`core/cascade_limiter.py` — 送信者の `activity_log` が読めないとき）
 - `ConversationDepthExceeded: {相手}との会話が10分間に6ターンに達しました...` と表示された
 
 ### 原因
 
-- **ロール別制限**: 1時間あたり・24時間あたりの送信上限は `status.json` の `role` に応じたデフォルト値が適用される（例: general 15/50通、manager 60/300通）。`status.json` の `max_outbound_per_hour` / `max_outbound_per_day` で個別に上書き可能
-- 同一チャネルへの連続投稿がクールダウン期間内だった（`config.json` の `heartbeat.channel_post_cooldown_s`、デフォルト300秒）
-- 2者間のDM往復が深度制限（10分間に6ターン）を超えた（`heartbeat.depth_window_s` / `heartbeat.max_depth`）
+- **ロール別グローバル上限**: `dm_sent` / `message_sent` / `channel_post` を activity_log から集計し、1 時間・24 時間の件数で判定（`ConversationDepthLimiter.check_global_outbound`）。上限は `status.json` の `max_outbound_per_hour` / `max_outbound_per_day` で個別上書きし、未設定なら `role` のデフォルト（`ROLE_OUTBOUND_DEFAULTS`）を使う
+
+**ロール別 1時間 / 24時間 上限（コードデフォルト）**
+
+| role | 1時間 | 24時間 |
+|------|-------|--------|
+| manager | 60 | 300 |
+| engineer | 40 | 200 |
+| writer | 30 | 150 |
+| researcher | 30 | 150 |
+| ops | 20 | 80 |
+| general | 15 | 50 |
+
+- 同一チャネルへの連続投稿がクールダウン期間内だった（`config.json` `heartbeat.channel_post_cooldown_s`、デフォルト 300 秒）
+- 2 者間の往復が深度制限を超えた（`Messenger.send` 内の `ConversationDepthLimiter.check_depth`。**内部 Anima 宛ての DM のみ**が対象。`heartbeat.depth_window_s` / `heartbeat.max_depth`、デフォルト **600 秒**・**最大 6 ターン**。文言は「10 分・6 ターン」）
+- アクティビティログの読み取りエラー（ディスク・権限・破損等）→ 安全側で送信ブロック
 
 ### 対処手順
 
-1. **エラーメッセージを確認する**: 時間制限・24時間制限・深度制限のいずれかを特定する
+1. **エラーメッセージを確認する**: 時間制限・24 時間制限・深度制限・activity_log 失敗のいずれかを特定する
 2. **送信履歴を振り返る**: 不要な送信がなかったか確認する
-3. **待機する**: 時間制限なら次の1時間枠まで、24時間制限なら翌日まで、深度制限なら次のハートビートサイクルまで待つ
-4. **送信内容を記録する**: このターンでは `send_message` を使わず、送信したい内容を `state/current_state.md` に記録し、次のセッションで送信する
-5. **緊急連絡**: `call_human` は制限対象外なので、人間への連絡は引き続き可能
-6. **送信を統合する**: 複数の報告を1通にまとめる。深度制限に達した場合は、複雑な議論を Board チャネルに移行する
+3. **待機する**: 時間制限なら次の 1 時間枠まで（メッセージに「次の送信可能時刻（目安）」が付くことがある）、24 時間制限なら翌日まで、深度制限ならウィンドウが空くまで
+4. **送信内容を記録する**: 上限到達時はメッセージの指示どおり、このターンでは `send_message` を使わず `state/current_state.md` に書き、次セッションで送る
+5. **activity_log 失敗のとき**: 管理者にログ・ディスク・該当 Anima の `activity_log/` を確認してもらう（ブロックは送信者側のログ読取に依存）
+6. **緊急連絡**: `call_human` はこれらのグローバル上限の対象外
+7. **送信を統合する**: 複数の報告を 1 通にまとめる。深度制限に達したら Board（`post_channel`）へ移行する
 
 詳細は `communication/sending-limits.md` を参照。
 
@@ -405,16 +435,16 @@ send_message(
 
 ### 原因
 
-1. システム全体のブロックリストに含まれるコマンド（`rm -rf /` 等の危険なコマンド）
-2. `permissions.json` の「実行できないコマンド」セクションに記載されたコマンド
+1. フレームワーク／`permissions.global.json` のグローバル拒否パターンに該当するコマンド（例: `rm -rf /` 等）
+2. `permissions.json` の `commands.deny` に列挙されたコマンド
 
 ### 対処手順
 
 1. **自分の権限を確認する**
    ```
-   read_memory_file(path="permissions.json")
+   check_permissions()
    ```
-   - `## 実行できないコマンド` セクションにブロック対象が記載されている
+   - `restrictions` に deny されたコマンドが列挙される。併せて `read_memory_file(path="permissions.json")` で設定を直接確認（レガシー環境では `permissions.md`）
 
 2. **代替手段を検討する**
    - ブロックされたコマンドと同等の操作を、許可されたツールで実現できないか考える
@@ -430,26 +460,31 @@ send_message(
 
 ### 症状
 
-- 通常表示されるはずの情報（組織コンテキスト、記憶ガイド等）がシステムプロンプトに含まれていない
-- ツールの種類が少ない
-- 記憶の自動想起（Priming）が動作していないように見える
+- 通常よりシステムプロンプトが薄い、Priming（自動想起）が空に近い
+- 長い会話や大きなユーザーメッセージのあと、応答前にプロンプトが再構築されたような挙動がある
 
 ### 原因
 
-コンテキストウィンドウが小さいモデルを使用している場合、システムプロンプトが段階的に縮小される（Tiered System Prompt）。
-`status.json` のモデル名からコンテキストウィンドウを推定し、`~/.animaworks/models.json` または `config.json` の `model_context_windows` でオーバーライド可能。
+大きく 2 層ある。
 
-| ティア | コンテキストウィンドウ | 省略される情報 |
-|--------|----------------------|--------------|
-| T1 (FULL) | 128k+ トークン | なし（全情報を表示） |
-| T2 (STANDARD) | 32k〜128k トークン | 蒸留知識（廃止予定）・Priming バジェット縮小 |
-| T3 (LIGHT) | 16k〜32k トークン | bootstrap, vision, specialty, 蒸留知識, 記憶ガイド 省略 |
-| T4 (MINIMAL) | 16k 未満 トークン | permissions, Priming, org, messaging, emotion も省略 |
+**1. Priming（自動想起）のティア** — `core/prompt/builder.py` の `resolve_prompt_tier(context_window)` が、推定コンテキストウィンドウからティアを決める。ウィンドウの解決順は `core/prompt/context.py` `resolve_context_window`: **`~/.animaworks/models.json`（SSoT）** → 非推奨の `config.json` `model_context_windows` → `MODEL_CONTEXT_WINDOWS` 等のコード内フォールバック → 既定 128k。
+
+| ティア | 条件（`context_window`） | Priming の扱い（`core/_agent_priming.py`） |
+|--------|--------------------------|---------------------------------------------|
+| full | **≥ 128_000** | 6 チャネル分を `format_priming_section` で整形しそのまま載せる |
+| standard | **≥ 32_000 かつ < 128_000** | 上記と同様に取得したうえで、**整形後テキストが 4000 文字を超える場合は先頭 4000 文字 + 省略マーカー** |
+| light | **≥ 16_000 かつ < 32_000** | **送信者プロファイル（Channel A）のみ**（i18n ヘッダ付き）。他チャネルは捨てる |
+| minimal | **< 16_000** | **Priming 全体をスキップ**（空文字） |
+
+ハートビート／cron 用のクエリ文は、直近の `[REFLECTION]` を activity_log から集めたテキストになる（長いテンプレ全文ではない）。
+
+**2. システムプロンプト本体の収縮** — `core/_agent_priming.py` `_fit_prompt_to_context_window`: システム＋ユーザーの推定トークン + ツールスキーマ overhead が **コンテキストウィンドウの約 80%** を超えると、`build_system_prompt` を **システムバジェット 75% → 50% → 25%** と段階的に縮めて再構築する。**25% 以下の段**では **Priming ブロックと人間向け通知ブロックを空にして**から当てる。それでも収まらなければシステムプロンプトを**バイト単位でハードトランケート**する。
 
 ### 対処手順
 
-1. **必要な情報は自分で検索する**: 省略された情報は `search_memory` や `read_memory_file` で明示的に取得する
-2. **上司に相談する**: モデルの変更が必要な場合は上司に依頼する
+1. **足りない文脈は明示取得する**: `search_memory` / `read_memory_file` で組織・手順・共有知識を読む（特に `minimal` / `light` では Priming が弱い）
+2. **作業状態をディスクに残す**: `state/current_state.md` や `shortterm/` に要約を書いておき、セッションが切れても再開できるようにする
+3. **上司・管理者に相談する**: 実運用で窮屈なら `models.json` の `context_window` やモデル変更を検討する
 
 ---
 
@@ -458,8 +493,8 @@ send_message(
 ### ファイルが見つからない
 
 - **原因**: パスの指定ミス、ファイルが存在しない
-- **対処**: `Glob` でディレクトリ内容を確認してからパスを指定する
-- **注意**: `read_memory_file` は Anima ディレクトリからの相対パス（例: `knowledge/xxx.md`, `reference/organization/structure.md`）。`Read` は絶対パスを使用する
+- **対処**: Mode S では `Glob`、それ以外は `search_memory` や既知パスの `read_memory_file` で当たる
+- **注意**: `read_memory_file` は Anima ディレクトリ相対（例: `knowledge/xxx.md`）に加え、`common_knowledge/`・`reference/`・`common_skills/` プレフィックスで共有ディレクトリを読める。`Read`（エージェント組み込み）は別ルールでパスが決まる
 
 ### read_channel で inbox を指定できない
 

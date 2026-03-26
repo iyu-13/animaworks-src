@@ -33,7 +33,7 @@ RECORDS_DIR = ROOT / "docs" / "records"
 DEFAULT_OUTPUT = Path("/tmp/animaworks_release_notes.md")
 
 REPO_NAME = "AnimaWorks"
-LLM_MODEL = "composer-1.5"
+LLM_MODEL = "composer-2"
 
 
 # ── Stage 1: Mechanical extraction ──────────────────────
