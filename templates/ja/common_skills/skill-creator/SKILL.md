@@ -202,7 +202,7 @@ create_skill(
 
 `references` / `templates` の `filename` にパス成分は含めない。`_validate_filename()` で親ディレクトリ外に解決されないことを確認し、不正なら**黙ってスキップ**（そのファイルは作られない）。
 
-※ 新規スキルには必ず `create_skill` を使うこと。`write_memory_file` で `skills/foo.md` のような**直下の単一ファイル**だけを作ると、Priming の一覧には載る可能性があっても **`skill(skill_name="foo")` は `skills/foo/SKILL.md` を要求するため失敗**しうる。
+※ 新規スキルには必ず `create_skill` を使うこと。`write_memory_file` で `skills/foo.md` のような**直下の単一ファイル**だけを作ると、Priming の一覧には載る可能性があっても **`skill(skill_name="foo")` は `skills/foo/SKILL.md` を要求するため参照できない**（失敗しうる）。
 
 ※ 手続きは `procedures/{name}.md`（フラット1ファイル）。フロントマターはスキルと同様に `name` / `description`（＋任意 `allowed_tools`）を推奨。
 
@@ -254,6 +254,6 @@ description: >-
 
 - スキルはMarkdown手順書であり、Pythonコード（ツール）とは異なる
 - フロントマターの必須フィールドは `name` と `description`
-- `create_skill` が設定できる任意フィールドは **`allowed_tools` のみ**（他キーは手編集可だが、メタ抽出・`skill` 返却で使うのは基本 `name` / `description` / `allowed_tools`）
+- `create_skill` が設定できる任意フィールドは **`allowed_tools` のみ**（`tags` 等の他キーは手編集可だが、メタ抽出・`skill` 返却で使うのは基本 `name` / `description` / `allowed_tools`）
 - bodyが長くなりすぎるとコンテキストを圧迫するため、150行以内を目安にする
 - 外部リソース参照（Level 3）は `references/` を活用して本文を簡潔に保つ
