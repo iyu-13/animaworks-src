@@ -826,6 +826,48 @@ def step_cross_anima_write_guidance(data_dir: Path, dry_run: bool, verbose: bool
     return StepResult(changed=total, skipped=0, details=details)
 
 
+# Pre-rename paths under common_knowledge/operations/ (en/ja templates moved
+# these files into operations/machine/ in 2026-03).
+_STALE_MACHINE_DOC_PATHS: tuple[str, ...] = (
+    "operations/machine-tool-usage.md",
+    "operations/machine-workflow-engineer.md",
+    "operations/machine-workflow-pdm.md",
+    "operations/machine-workflow-reviewer.md",
+    "operations/machine-workflow-tester.md",
+)
+
+
+def step_common_knowledge_team_design_resync(data_dir: Path, dry_run: bool, verbose: bool) -> StepResult:
+    """Deploy team-design templates, machine/ layout, and updated 00_index.
+
+    Re-runs common_knowledge template sync so new paths (team-design/, etc.)
+    appear in ~/.animaworks/common_knowledge/. Removes obsolete flat
+    machine-*.md files under operations/ left from older template layouts.
+    """
+    details: list[str] = []
+    total = 0
+
+    r_ck = step_common_knowledge_resync(data_dir, dry_run, verbose)
+    total += r_ck.changed
+    details.extend(r_ck.details)
+
+    ck_root = data_dir / "common_knowledge"
+    removed = 0
+    for rel in _STALE_MACHINE_DOC_PATHS:
+        path = ck_root / rel
+        if not path.is_file():
+            continue
+        if dry_run:
+            details.append(f"Would remove stale {rel}")
+        else:
+            path.unlink()
+            details.append(f"Removed stale {rel}")
+        removed += 1
+    total += removed
+
+    return StepResult(changed=total, skipped=0, details=details)
+
+
 # ── Category 5: Version tracking ────────────────────────────────
 
 
@@ -906,6 +948,12 @@ def register_all_steps(runner: Any) -> None:
             "Deploy cross-Anima write boundary guidance to prompts + common_knowledge",
             "template_sync",
             step_cross_anima_write_guidance,
+        ),
+        MigrationStep(
+            "common_knowledge_team_design_resync",
+            "Resync common_knowledge (team-design + operations/machine layout)",
+            "template_sync",
+            step_common_knowledge_team_design_resync,
         ),
         MigrationStep("update_version", "Update migration_state.json", "version", step_update_version),
     ]
