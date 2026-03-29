@@ -7,7 +7,7 @@ from __future__ import annotations
 
 Tests the full integration of:
 1. Knowledge failure tracking (success_count/failure_count lifecycle)
-2. Channel D vector search (semantic skill matching)
+2. Channel D stub (priming returns no matched skills; catalog lives in system prompt)
 3. Contradiction history persistence + failure_count auto-increment
 
 Requires ChromaDB and sentence-transformers.
