@@ -1,10 +1,8 @@
 ---
 name: skill-creator
 description: >-
-  올바른 YAML frontmatter 형식으로 Markdown 스킬 파일(.md)을 생성하는 메타 스킬.
-  개인 스킬(skills/)과 공통 스킬(common_skills/)의 description 작성 규칙,
-  「」키워드 설계, Progressive Disclosure 구조, create_skill 도구를 통한 생성을 제공합니다.
-  "스킬 생성", "스킬 만들기", "새 스킬", "절차서 작성", "스킬 파일"
+  Markdown 스킬을 만드는 메타 스킬. SKILL.md frontmatter·본문과 Progressive Disclosure·create_skill 절차를 다룬다.
+  Use when: 신규 스킬 추가, skill 도구용 기술 규칙 확인, references·templates 포함 생성이 필요할 때.
 ---
 
 # skill-creator

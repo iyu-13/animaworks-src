@@ -1,10 +1,8 @@
 ---
 name: skill-creator
 description: >-
-  Meta-skill for creating Markdown Skill files (.md) with correct YAML frontmatter format.
-  Provides description rules for personal skills (skills/) and common skills (common_skills/),
-  keyword design with 「」, Progressive Disclosure structure, and creation via create_skill tool.
-  Use for: "create skill", "create a skill", "new skill", "create procedure", "skill file".
+  Meta-skill for authoring Markdown Skill files with YAML frontmatter and progressive disclosure via create_skill.
+  Use when: adding a new skill, generating SKILL.md with references or templates, or checking description rules.
 ---
 
 # skill-creator

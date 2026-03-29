@@ -1,13 +1,8 @@
 ---
 name: skill-creator
 description: >-
-  Markdownスキルをディレクトリ構造で作成するメタスキル。
-  create_skillツールでSKILL.md（frontmatter + 本文）を生成し、
-  オプションでreferences/やtemplates/にファイルを配置する。
-  description記述ルール、「」キーワード設計、Progressive Disclosure構造を提供する。
-  skillツールの解決順・手続き(procedures)・ビルトイン置換など読み込み側の挙動は
-  core/tooling/skill_tool.py に準拠する。
-  「スキル作成」「スキルを作りたい」「新しいスキル」「手順書を作成」「スキルファイル」
+  Markdownスキルを作成するメタスキル。SKILL.mdのfrontmatterと本文、Progressive Disclosureとcreate_skillの手順を扱う。
+  Use when: 新規スキル追加、skillツール向けの記述ルール確認、referencesやtemplates付きスキル生成が必要なとき。
 ---
 
 # skill-creator
