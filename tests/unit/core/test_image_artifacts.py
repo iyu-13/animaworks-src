@@ -172,3 +172,38 @@ def test_resolve_local_image_paths_mixed(tmp_path: Path):
     assert "attachments/foo.png" in rewritten
     assert "https://example.com/img.png" in rewritten
     assert len(artifacts) == 1
+
+
+def test_resolve_local_image_paths_symlink_rejected(tmp_path: Path):
+    """Symlinks are rejected to prevent unintended file reads."""
+    real_img = tmp_path / "secret.png"
+    real_img.write_bytes(b"\x89PNG\r\n\x1a\n secret")
+    link = tmp_path / "link.png"
+    link.symlink_to(real_img)
+
+    anima_dir = tmp_path / "anima"
+    anima_dir.mkdir()
+
+    text = f"![link]({link})"
+    rewritten, artifacts = resolve_local_image_paths(text, anima_dir)
+
+    assert rewritten == text
+    assert artifacts == []
+
+
+def test_resolve_local_image_paths_respects_max_limit(tmp_path: Path):
+    """At most _MAX_ARTIFACTS_PER_RESPONSE images are resolved."""
+    anima_dir = tmp_path / "anima"
+    anima_dir.mkdir()
+
+    parts = []
+    for i in range(8):
+        img = tmp_path / f"img{i}.jpg"
+        img.write_bytes(b"\xff\xd8\xff data")
+        parts.append(f"![{i}]({img})")
+    text = " ".join(parts)
+
+    rewritten, artifacts = resolve_local_image_paths(text, anima_dir)
+
+    assert len(artifacts) == 5
+    assert rewritten.count("attachments/") == 5

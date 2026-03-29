@@ -289,7 +289,8 @@ class MessagingMixin:
 
                     # Activity log: response sent (with thinking text if present)
                     response_artifacts = extract_image_artifacts_from_tool_records(result.tool_call_records)
-                    response_artifacts.extend(local_artifacts)
+                    remaining = max(0, 5 - len(response_artifacts))
+                    response_artifacts.extend(local_artifacts[:remaining])
                     resp_meta: dict[str, Any] = {"thread_id": thread_id}
                     if result.thinking_text:
                         resp_meta["thinking_text"] = result.thinking_text
@@ -545,7 +546,8 @@ class MessagingMixin:
                             response_artifacts = extract_image_artifacts_from_tool_records(
                                 cycle_result.get("tool_call_records", [])
                             )
-                            response_artifacts.extend(local_artifacts)
+                            remaining = max(0, 5 - len(response_artifacts))
+                            response_artifacts.extend(local_artifacts[:remaining])
                             if response_artifacts:
                                 cycle_result["images"] = response_artifacts
                             tool_records = [ToolRecord.from_dict(r) for r in cycle_result.get("tool_call_records", [])]

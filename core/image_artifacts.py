@@ -123,7 +123,10 @@ def extract_image_artifacts_from_tool_records(
 
 
 def _extract_local_path(raw: str) -> Path | None:
-    """Convert a raw image src (``file:///...`` or ``/abs/path``) to a Path."""
+    """Convert a raw image src (``file:///...`` or ``/abs/path``) to a Path.
+
+    Rejects symlinks to prevent unintended reads of arbitrary files.
+    """
     s = raw.strip()
     if s.startswith("file://"):
         s = unquote(s[len("file://") :])
@@ -131,6 +134,8 @@ def _extract_local_path(raw: str) -> Path | None:
     if not p.is_absolute():
         return None
     if p.suffix.lower() not in _LOCAL_IMAGE_EXTS:
+        return None
+    if p.is_symlink():
         return None
     return p
 
@@ -168,6 +173,8 @@ def resolve_local_image_paths(
     copied: dict[str, str] = {}
 
     def _replace(m: re.Match) -> str:
+        if len(artifacts) >= _MAX_ARTIFACTS_PER_RESPONSE:
+            return m.group(0)
         alt = m.group(1)
         raw_src = m.group(2)
         local_path = _extract_local_path(raw_src)
