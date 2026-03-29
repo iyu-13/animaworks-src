@@ -194,7 +194,7 @@ class AnthropicFallbackExecutor(BaseExecutor):
             include_submit_tasks=True,
             include_background_task_tools=getattr(self._tool_handler, "_background_manager", None) is not None,
             include_vault_tools=True,
-            include_skill_tools=True,
+            include_create_skill=True,
             trigger=trigger,
         )
         return to_anthropic_format(canonical)

@@ -91,7 +91,7 @@ TOOL_MANAGEMENT_TOOLS: list[dict[str, Any]] = [
 ]
 
 
-def _skill_tools() -> list[dict[str, Any]]:
+def _create_skill_schemas() -> list[dict[str, Any]]:
     return [
         {
             "name": "create_skill",

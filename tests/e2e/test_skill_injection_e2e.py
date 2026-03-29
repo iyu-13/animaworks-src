@@ -95,8 +95,8 @@ class TestSkillCatalogE2E:
         assert "common_skills/animaworks-guide/SKILL.md" in prompt
 
     def test_create_skill_in_build_tool_list(self, tmp_path: Path) -> None:
-        """build_tool_list with include_skill_tools=True adds create_skill only."""
-        tools = build_tool_list(include_skill_tools=True)
+        """build_tool_list with include_create_skill=True adds create_skill only."""
+        tools = build_tool_list(include_create_skill=True)
         names = {x["name"] for x in tools}
         assert "create_skill" in names
         assert "skill" not in names
