@@ -29,6 +29,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from core.i18n import t
 from core.time_utils import ensure_aware, now_iso, now_local
 
 logger = logging.getLogger("animaworks.consolidation")
@@ -300,10 +301,10 @@ class ConsolidationEngine:
             )
         except Exception:
             logger.debug("Failed to collect error entries", exc_info=True)
-            return "（エラーなし / No errors）"
+            return t("consolidation.no_errors")
 
         if not entries:
-            return "（エラーなし / No errors）"
+            return t("consolidation.no_errors")
 
         cutoff = now_local() - timedelta(hours=hours)
         lines: list[str] = []
@@ -331,7 +332,7 @@ class ConsolidationEngine:
                 break
 
         if not lines:
-            return "（エラーなし / No errors）"
+            return t("consolidation.no_errors")
 
         return "\n".join(lines)
 

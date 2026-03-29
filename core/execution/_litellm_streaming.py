@@ -566,7 +566,7 @@ class StreamingMixin:
                         messages.append({
                             "role": "user",
                             "content": SystemReminderQueue.format_reminder(
-                                t("completion_gate.stop_hook_block_reason"),
+                                t("completion_gate.tool_call_reminder"),
                             ),
                         })
                         logger.info("A stream completion_gate not called; injecting retry at iteration=%d", iteration)
@@ -918,7 +918,7 @@ class StreamingMixin:
                         messages.append({
                             "role": "user",
                             "content": SystemReminderQueue.format_reminder(
-                                t("completion_gate.stop_hook_block_reason"),
+                                t("completion_gate.tool_call_reminder"),
                             ),
                         })
                         logger.info("A ollama stream completion_gate not called; injecting retry at iteration=%d", iteration)

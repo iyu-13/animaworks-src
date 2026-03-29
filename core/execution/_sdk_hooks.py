@@ -906,7 +906,7 @@ def _build_stop_hook(
 
         return SyncHookJSONOutput(
             decision="block",
-            reason=t("completion_gate.stop_hook_checklist_injection"),
+            reason=t("completion_gate.checklist"),
         )
 
     return _stop_hook

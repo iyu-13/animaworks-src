@@ -178,4 +178,8 @@ STRINGS: dict[str, dict[str, str]] = {
             "If false, replace the entire list. Default false."
         ),
     },
+    "completion_gate.schema_description": {
+        "ja": "最終回答を出す前に呼び出す完了前検証チェックリスト。",
+        "en": "Pre-completion verification checklist. Call before providing your final answer.",
+    },
 }

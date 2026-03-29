@@ -266,6 +266,49 @@ STRINGS: dict[str, dict[str, str]] = {
             "자신의 기억 디렉터리 내 파일에 쓰기 또는 추가한다.\n다음 상황에서 기록할 것:\n- 문제를 해결했을 때 → knowledge/에 원인과 해결책 기록\n- 올바른 파라미터·설정값을 발견했을 때 → knowledge/에 기록\n- 작업 절차를 확립·개선했을 때 → procedures/에 절차서 작성\n- 새로운 스킬·기법을 습득했을 때 → skills/에 기록\n- heartbeat.md 또는 cron.md 업데이트\nmode='overwrite'로 전체 교체, mode='append'로 끝에 추가.\n자동 통합(일일 consolidation)을 기다리지 말고 중요한 발견은 즉시 기록할 것."
         ),
     },
+    # ── completion_gate: pre-completion verification ─────────
+    "completion_gate.checklist": {
+        "ja": (
+            "## 完了前検証\n\n"
+            "以下を内部的に検証してください。検証プロセスの説明は不要です。\n\n"
+            "- [ ] 元の指示を読み返し、各要件への対応を確認した\n"
+            "- [ ] 「できたはず」ではなく、実際に確認した証拠がある\n"
+            "- [ ] 依頼されたものを簡略化・省略していない\n"
+            "- [ ] 第三者がこの成果を完了と認める品質である\n\n"
+            "→ 問題なし: 追加出力せず停止\n"
+            "→ 問題あり: 修正した回答のみを出力"
+        ),
+        "en": (
+            "## Pre-Completion Verification\n\n"
+            "Verify the following internally. Do not narrate the verification process.\n\n"
+            "- [ ] Re-read the original instructions and confirmed each requirement is addressed\n"
+            "- [ ] Evidence exists from THIS session — not just assumption\n"
+            "- [ ] Nothing was simplified or omitted from what was requested\n"
+            "- [ ] An independent reviewer would accept this as complete\n\n"
+            "→ No issues: stop without additional output\n"
+            "→ Issues found: output only the corrected answer"
+        ),
+        "ko": (
+            "## 완료 전 검증\n\n"
+            "다음을 내부적으로 검증하세요. 검증 과정 설명은 불필요합니다.\n\n"
+            "- [ ] 원래 지시를 다시 읽고, 각 요건 대응을 확인했다\n"
+            "- [ ] '했을 것이다'가 아니라 실제로 확인한 증거가 있다\n"
+            "- [ ] 요청된 내용을 간소화하거나 생략하지 않았다\n"
+            "- [ ] 제3자가 이 결과를 완료로 인정할 품질이다\n\n"
+            "→ 문제 없음: 추가 출력 없이 중지\n"
+            "→ 문제 발견: 수정된 답변만 출력"
+        ),
+    },
+    "completion_gate.tool_call_reminder": {
+        "ja": "最終回答を出す前に completion_gate ツールを呼んでください。宣言や説明は不要です。",
+        "en": "Call the completion_gate tool before your final answer. No announcement needed.",
+        "ko": "최종 답변 전에 completion_gate 도구를 호출하세요. 선언이나 설명은 불필요합니다.",
+    },
+    "completion_gate.activity_log_summary": {
+        "ja": "完了前検証を実施",
+        "en": "Pre-completion verification performed",
+        "ko": "완료 전 검증 실시",
+    },
     "tooling.gated_action_denied": {
         "ja": (
             "アクション '{action}' (ツール '{tool}') は明示的な許可が必要です。permissions.md に '{tool}_{action}: yes' を追加してください。"

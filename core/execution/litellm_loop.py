@@ -299,7 +299,7 @@ class LiteLLMExecutor(
                     messages.append({
                         "role": "user",
                         "content": SystemReminderQueue.format_reminder(
-                            t("completion_gate.stop_hook_block_reason"),
+                            t("completion_gate.tool_call_reminder"),
                         ),
                     })
                     logger.info("A completion_gate not called; injecting retry at iteration=%d", iteration)

@@ -225,11 +225,11 @@ class TestStopHookCompletionGate:
 # ── MCP tool list (Mode S) ──────────────────────────────────
 
 
-class TestMCPToolListExclusion:
-    def test_completion_gate_not_in_exposed_names(self):
+class TestMCPToolListInclusion:
+    def test_completion_gate_in_exposed_names(self):
         from core.mcp.server import _EXPOSED_TOOL_NAMES
 
-        assert "completion_gate" not in _EXPOSED_TOOL_NAMES
+        assert "completion_gate" in _EXPOSED_TOOL_NAMES
 
 
 # ── TOOL_TRUST_LEVELS ─────────────────────────────────────────

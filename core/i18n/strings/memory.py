@@ -225,4 +225,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "ja": "## これまでの作業内容",
         "en": "## Work so far",
     },
+    "consolidation.no_errors": {
+        "ja": "（エラーなし / No errors）",
+        "en": "(No errors)",
+    },
 }
