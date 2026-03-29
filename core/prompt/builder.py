@@ -334,6 +334,7 @@ def _build_group4(
     scale: float,
     execution_mode: str,
     skill_metas: list[Any],
+    common_skill_metas: list[Any],
     prompt_store: Any,
     is_heartbeat: bool,
     is_task: bool,
@@ -464,7 +465,6 @@ def _build_group4(
     # ── Skill catalog (Agent Skills standard) ───
     if not is_task and not is_heartbeat:
         from core.memory.skill_metadata import SkillMetadataService
-        from core.paths import get_common_skills_dir
 
         _DESC_LIMIT = 250
         catalog_lines: list[str] = [
@@ -478,8 +478,7 @@ def _build_group4(
             catalog_lines.append(f"- {meta.name}: {desc}")
 
         common_label = t("skill.label_common")
-        svc = SkillMetadataService(pd / "skills", get_common_skills_dir())
-        for meta in svc.list_common_skill_metas():
+        for meta in common_skill_metas:
             desc = (meta.description[:_DESC_LIMIT] + "…") if len(meta.description) > _DESC_LIMIT else meta.description
             catalog_lines.append(f"- {meta.name} ({common_label}): {desc}")
 
@@ -496,7 +495,7 @@ def _build_group4(
                     )
                     catalog_lines.append(f"- {pmeta.name} ({procedure_label}): {desc}")
                 except Exception:
-                    pass
+                    logger.debug("Failed to extract procedure meta from %s", f, exc_info=True)
 
         catalog_lines.append("</available_skills>")
         catalog_text = "\n".join(catalog_lines)
@@ -622,6 +621,7 @@ def build_system_prompt(
     prompt_store = get_prompt_store()
     other_animas = _discover_other_animas(pd)
     skill_metas = memory.list_skill_metas()
+    common_skill_metas = memory.list_common_skill_metas()
     permissions = memory.read_permissions()
 
     # Assemble sections from all 6 groups
@@ -648,6 +648,7 @@ def build_system_prompt(
         scale,
         execution_mode,
         skill_metas,
+        common_skill_metas,
         prompt_store,
         is_heartbeat,
         is_task,
