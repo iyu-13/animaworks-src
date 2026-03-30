@@ -40,11 +40,14 @@ _SENTINEL_EXPIRED = "(expired)"
 
 
 def _classify_task_result(result: str) -> tuple[str, str]:
-    """Map _run_llm_task return value to (queue_status, summary)."""
+    """Map _run_llm_task return value to (queue_status, summary).
+
+    Uses only statuses defined in ``task_queue._VALID_STATUSES``.
+    """
     if result == _SENTINEL_CANCELLED:
         return "cancelled", "cancelled before execution"
     if result == _SENTINEL_EXPIRED:
-        return "skipped", "expired (TTL exceeded)"
+        return "cancelled", "expired (TTL exceeded)"
     return "done", (result or "")[:200]
 
 

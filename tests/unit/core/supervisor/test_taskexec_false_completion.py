@@ -88,7 +88,7 @@ class TestClassifyTaskResult:
 
     def test_expired(self):
         status, summary = _classify_task_result(_SENTINEL_EXPIRED)
-        assert status == "skipped"
+        assert status == "cancelled"
         assert "expired" in summary.lower()
 
     def test_normal_result(self):
@@ -215,7 +215,7 @@ class TestExecuteLlmTaskStatusMapping:
             )
 
     @pytest.mark.asyncio
-    async def test_expired_maps_to_skipped_status(self, tmp_path):
+    async def test_expired_maps_to_cancelled_status(self, tmp_path):
         executor = _make_executor(tmp_path)
         task = _make_task_desc()
 
@@ -223,7 +223,7 @@ class TestExecuteLlmTaskStatusMapping:
              patch.object(executor, "_sync_task_queue") as mock_sync:
             await executor._execute_llm_task(task)
             mock_sync.assert_called_once_with(
-                "test-task-1", "skipped", summary="expired (TTL exceeded)"
+                "test-task-1", "cancelled", summary="expired (TTL exceeded)"
             )
 
     @pytest.mark.asyncio
