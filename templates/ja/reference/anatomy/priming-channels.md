@@ -3,6 +3,8 @@
 PrimingEngine が実行する全チャネルの詳細仕様。
 バジェット、検索ソース、フィルタリング、動的調整を含む。
 
+並列取得は **5 チャネル**（A / B / C / E / F）である。C0（important_knowledge）は Channel C と同一パイプライン内の補助ブロック。旧 Distilled Knowledge に相当した Channel D や「6 チャネル」表記は廃止済み。
+
 ---
 
 ## チャネル一覧

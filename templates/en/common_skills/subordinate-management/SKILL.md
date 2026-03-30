@@ -32,6 +32,8 @@ Supervisor tools automatically enabled for Anima that have subordinates. Most to
 |------|---------|
 | `task_tracker` | Track progress of tasks delegated via `delegate_task` from the subordinate's queue (`status`: all / active / completed; default: active) |
 
+**Auto-sync (`sync_delegated`)**: After each heartbeat completes, the framework may scan subordinates' task queues and automatically update the supervisor's tracking entries to done/failed when delegated work completes or fails (archived tasks are included in the search). You do not have to call `task_tracker` for every sync; status tends to align around the next heartbeat cycle.
+
 ## Important: disable_subordinate vs send_message
 
 - **disable_subordinate**: Sets status.json to `enabled: false`. Reconciliation does not auto-resume. **Use this one**

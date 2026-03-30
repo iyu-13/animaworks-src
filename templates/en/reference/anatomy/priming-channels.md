@@ -3,6 +3,8 @@
 Detailed specification of all channels executed by PrimingEngine.
 Includes budget, search sources, filtering, and dynamic adjustment.
 
+Parallel retrieval uses **five channels** (A / B / C / E / F). Channel C0 (important_knowledge) is an auxiliary block inside the same pipeline as Channel C. The former Channel D (Distilled Knowledge) and any “six channel” wording are obsolete.
+
 ---
 
 ## Channel Overview

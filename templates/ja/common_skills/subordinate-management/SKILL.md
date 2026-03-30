@@ -32,6 +32,8 @@ description: >-
 |--------|------|
 | `task_tracker` | `delegate_task` で委譲したタスクの進捗を部下側キューから追跡（`status`: all / active / completed。デフォルト: active） |
 
+**自動同期（`sync_delegated`）**: ハートビート完了後、フレームワークが部下のタスクキューを検査し、完了・失敗した委譲タスクを検出すると、上司側の追跡エントリを自動更新（done / failed）する。アーカイブ済みタスクも検索対象。手動で `task_tracker` を呼ばなくても、次回ハートビート周辺で状態が揃いやすい。
+
 ## 重要: disable_subordinate と send_message の違い
 
 - **disable_subordinate**: status.json を `enabled: false` に変更。Reconciliation が自動復帰させない。**こちらを使うこと**

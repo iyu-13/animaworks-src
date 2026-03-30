@@ -154,10 +154,10 @@ Each time a conversation starts, the Priming engine runs **five channels (A, B, 
 | B: Recent activity | Unified activity log (timeline) | 1300 |
 | C0: Important knowledge | **Summary pointers only** for `[IMPORTANT]`-tagged knowledge | 500 |
 | C: Related knowledge | RAG (dense): personal `knowledge` + shared `common_knowledge` | 1000 |
-| E: Pending tasks | Task queue summary + in-flight parallel tasks + (if any) overflow inbox file names | 500 |
+| E: Pending tasks | Task queue summary + in-flight parallel tasks + delegated task status + (if any) overflow inbox file names | 500 |
 | F: Episodes | RAG search over `episodes/` | 800 |
 
-Skill and procedure bodies are listed in the system prompt skill catalog and loaded with `read_memory_file` (former Priming Channel D removed).
+Skill and procedure bodies are listed in the system prompt skill catalog (`<available_skills>`, injected into Group 4) and loaded with `read_memory_file`. Semantic skill discovery is also available via `search_memory(scope="skills")`.
 
 \* You can change greeting / question / request / heartbeat caps and `heartbeat_context_pct` under `priming` in `config.json`. When `dynamic_budget` is enabled, overall token limits for message types and heartbeat use expressions such as `max(budget_heartbeat, context_window × heartbeat_context_pct)`, and each channel scales by ratio.
 
@@ -224,6 +224,7 @@ If memories accumulate without bound, search quality drops; forgetting is applie
 | `episodes` | Past action logs | “Have I done this before?” |
 | `procedures` | Procedure docs | “What are the steps for this task?” |
 | `common_knowledge` | Shared reference | “What does the framework spec say?” |
+| `skills` | Skills and common skills (vector search) | “Is there a skill for this task?” |
 | `activity_log` | Recent action logs (tool results, messages, etc.) | “What was in the email I just read?” “The search results from earlier” |
 | `all` | All of the above (vector search + activity_log BM25 fused via RRF) | Broad search across all memory types |
 

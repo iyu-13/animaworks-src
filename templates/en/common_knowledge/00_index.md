@@ -36,6 +36,7 @@ then read it with `read_memory_file(path="common_knowledge/...")`.
 | Problem | Reference |
 |---------|-----------|
 | Don't know how to manage tasks | `operations/task-management.md` |
+| Want to know how completion_gate verification works | `operations/completion-gate-guide.md` |
 | Want to use the task board (human-facing dashboard) | `operations/task-board-guide.md` |
 | Don't know how to configure Heartbeat or cron | `operations/heartbeat-cron-guide.md` |
 | Don't know how to run long-running tools | `operations/background-tasks.md` |
@@ -126,6 +127,7 @@ then read it with `read_memory_file(path="common_knowledge/...")`.
 | `task-board-guide.md` | Task board (human-facing dashboard) — structure and operational guidelines |
 | `heartbeat-cron-guide.md` | Scheduling and running Heartbeat and cron (how Heartbeat works, cron definitions, self-updates) |
 | `tool-usage-overview.md` | Tool usage overview (S/C/D/G/A/B mode tool sets, internal/external tools, how to call them) |
+| `completion-gate-guide.md` | Pre-completion verification guide (completion_gate concepts, per-mode behavior, trigger rules) |
 | `background-tasks.md` | Background task guide (using submit, when to use it, how to get results) |
 | `workspace-guide.md` | Workspace guide (concept, registration, tool usage, troubleshooting) |
 | `model-guide.md` | → Moved to `reference/operations/model-guide.md`. Model selection and configuration |
@@ -197,9 +199,11 @@ Per-role templates under `team-design/development/{pdm,engineer,reviewer,tester}
 | role, responsibility, speciality, specialty | `organization/roles.md` |
 | hierarchy, communication path, org_dashboard, ping_subordinate | `organization/hierarchy-rules.md` |
 | delegate_task, task delegation, task_tracker | `organization/hierarchy-rules.md`, `operations/task-management.md` |
+| sync_delegated, delegation sync, auto-sync | `operations/task-management.md`, `operations/task-delegation-guide.md` |
 | task, current_state, pending, progress, priority | `operations/task-management.md` |
 | task queue, submit_tasks, update_task, TaskExec, animaworks-tool task list | `operations/task-management.md` |
 | task board, dashboard, human-facing | `operations/task-board-guide.md` |
+| completion_gate, pre-completion verification, Stop hook | `operations/completion-gate-guide.md` |
 | config, status.json, SSoT, reload, settings | `reference/operations/project-setup.md` |
 | Heartbeat, heartbeat, periodic check | `operations/heartbeat-cron-guide.md` |
 | cron, schedule, scheduled task | `operations/heartbeat-cron-guide.md` |
@@ -223,7 +227,10 @@ Per-role templates under `team-design/development/{pdm,engineer,reviewer,tester}
 | permissions.json, bootstrap, heartbeat.md, cron.md | `reference/anatomy/anima-anatomy.md` |
 | memory, episodes, knowledge, procedures, skills | `anatomy/memory-system.md` |
 | Priming, RAG, Consolidation, Forgetting | `anatomy/memory-system.md` |
+| consolidation, 2-phase, multipass, error trace | `anatomy/memory-system.md` |
 | search_memory, write_memory_file, memory search | `anatomy/memory-system.md` |
+| skills, skill search, common_skills, search_memory scope="skills" | `anatomy/memory-system.md`, `operations/tool-usage-overview.md` |
+| activity_log, BM25, RRF, recent log search | `anatomy/memory-system.md`, `troubleshooting/common-issues.md` |
 | prompt injection, trust, untrusted, boundary tag | `security/prompt-injection-awareness.md` |
 | error, problem, not working, permission, blocked command | `troubleshooting/common-issues.md` |
 | flowchart, decision, unsure, urgent, security | `troubleshooting/escalation-flowchart.md` |

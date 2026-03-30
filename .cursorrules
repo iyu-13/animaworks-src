@@ -334,6 +334,7 @@ Chat とバックグラウンド処理のセッションファイルは分離:
 | 通信 | `send_message`, `post_channel`, `read_channel`, `read_dm_history` | 全モード |
 | スキル | `read_memory_file`（システムプロンプトのスキルカタログに示されたパスで全文を読む）, `create_skill` | 全モード |
 | タスク | `backlog_task`, `update_task`, `list_tasks`, `submit_tasks` | A/S |
+| 完了検証 | `completion_gate` | 全モード（heartbeat/inbox除く） |
 | 通知 | `call_human` | 全モード（トップレベル＆通知設定時） |
 | 管理 | `create_anima` | A（newstaffスキル保持時） |
 | 外部 | `slack`, `chatwork`, `gmail`, `github`, `web_search` 等 | permissions.md許可時 |
@@ -399,6 +400,11 @@ submit_tasks(batch_id="build", tasks=[
 2. 部下にDM自動送信（intent="delegation"）
 3. 自分のキューに追跡エントリ作成（status="delegated"）
 4. `task_tracker(status="active")` で進捗追跡
+
+### 委譲タスクの可視化と自動同期
+
+- **Priming表示**: Channel Eに委譲タスクセクションを追加。部下のタスクキューからライブステータス（⏳進行中/✅完了/❌失敗等）を取得して表示（最大5件）
+- **自動同期（`sync_delegated`）**: Heartbeat完了後に自動実行。部下のキューで完了/失敗したタスクを検出し、上司側の追跡エントリを自動更新（done/failed）。アーカイブ済みタスクも検索対象
 
 ## 組織構造
 
@@ -565,14 +571,22 @@ submit_tasks(batch_id="build", tasks=[
 | `episodes` | 過去の行動ログ | 「いつ何をしたか」 |
 | `procedures` | 手順書 | 「どうやるか」 |
 | `common_knowledge` | 全Anima共有知識 | 組織ルール、システムガイド |
+| `skills` | スキル・共通スキル（ベクトル検索、shared_common_skillsコレクション含む） | スキル発見 |
 | `activity_log` | 直近3日間の行動ログ（BM25キーワード検索） | 「さっき読んだメール」「先ほどの検索結果」 |
 | `all` | 上記すべて（ベクトル検索 + activity_log BM25をRRFで統合） | 広範な検索 |
 
 ### Consolidation（記憶統合）
 
-- **日次**: episode → knowledge（パターン・教訓抽出）
+日次は2フェーズマルチパス方式:
+
+| フェーズ | 処理内容 |
+|---------|---------|
+| **Phase A**: エピソード抽出 | activity_logを時間チャンクに分割 → 各チャンクをLLM one-shotでエピソード抽出（tool_result全文を含む） → マージ・重複除去 → `episodes/{date}.md` に書き出し |
+| **Phase B**: 知識抽出 | 直近エピソード + エラートレース分析（error + failed tool_result を収集・要約）を元に、Animaのツールループで知識抽出・procedure自動生成 |
+
+- **日次**: Phase A + Phase B → Synaptic downscaling → RAGインデックス再構築
 - **日次**: `issue_resolved` → procedure（修正フィードバックから手順書自動生成、confidence 0.4）
-- **週次**: knowledge merge + episode compression
+- **週次**: knowledge merge + episode compression（単一フェーズ、Phase Aなし）
 
 ### Forgetting（能動的忘却）
 
@@ -617,7 +631,7 @@ Group 3: 現在の状況
   state/, Task Queue, Resolution Registry, Recent Outbound, Priming, Recent Tool Results
 
 Group 4: 記憶と能力
-  memory_guide, Distilled Knowledge(廃止予定), common_knowledge hint, ツールガイド
+  memory_guide, Distilled Knowledge(廃止予定), common_knowledge hint, ツールガイド, スキルカタログ（`<available_skills>`）
 
 Group 5: 組織とコミュニケーション
   hiring context(条件付き), org context, messaging instructions, human notification
@@ -812,6 +826,21 @@ animaworks anima create --from-md PATH [--role ROLE] [--supervisor NAME] [--name
 ### PreCompactフック
 
 `ClaudeAgentOptions(hooks={"PreCompact": [...]})` で SDK auto-compact を検知。未登録だと compaction は無音実行。
+
+### completion_gate（完了前検証）
+
+最終回答前に自己検証チェックリストを実行させる仕組み。全実行モード対応:
+
+| モード | 実装方式 |
+|--------|---------|
+| **S** | Agent SDK **Stop hook** — 初回停止をブロックし、チェックリスト（`t("completion_gate.checklist")`）を `reason` に注入。2回目の停止で通過。ツール呼び出し不要 |
+| **A** | `completion_gate` ツール + マーカーファイル（`run/completion_gate_called`）。未呼び出し時に1回だけリトライを強制 |
+| **B/C/D/G** | ツール提供（MCP/テキストスキーマ経由）。強制リトライなし |
+
+トリガー適用ルール（`completion_gate_applies_to_trigger()`）:
+- **適用**: `chat`, `task:*`, `cron:*`, `None`
+- **スキップ**: `heartbeat`, `inbox:*`
+- **除外**: `consolidation:*` トリガーではツールリスト自体から除外
 
 ## ドキュメント鮮度管理
 

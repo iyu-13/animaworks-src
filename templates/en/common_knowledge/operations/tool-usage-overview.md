@@ -25,7 +25,7 @@ Tools are organized in three layers:
 
 Only names listed in `_EXPOSED_TOOL_NAMES` in `core/mcp/server.py` are passed through MCP. The canonical source is the set definition in that file.
 
-`search_memory`, `read_memory_file`, `write_memory_file`, `archive_memory_file`, `send_message`, `post_channel`, `call_human`, `delegate_task`, `submit_tasks`, `update_task`
+`search_memory`, `read_memory_file`, `write_memory_file`, `archive_memory_file`, `send_message`, `post_channel`, `call_human`, `delegate_task`, `submit_tasks`, `update_task`, `completion_gate`
 
 Schemas on MCP are **only** the above (`_build_mcp_tools` filters with `_EXPOSED_TOOL_NAMES`). Other supervisor-style tools such as `org_dashboard` are **not** MCP-exposed (in Mode S they use other routes such as Claude Code tools or Bash).
 
@@ -73,7 +73,7 @@ The following summarizes tools handled directly by `ToolHandler` (some are condi
 
 | Tool | Description |
 |------|-------------|
-| **search_memory** | Search long-term memory by **semantic similarity (RAG)**. `scope`: knowledge / episodes / procedures / common_knowledge / activity_log / all |
+| **search_memory** | Search long-term memory by **semantic similarity (RAG)**. `scope`: knowledge / episodes / procedures / common_knowledge / skills / activity_log / all |
 | **read_memory_file** | Read a file under memory directories by relative path |
 | **write_memory_file** | Overwrite or append under memory directories |
 | **archive_memory_file** | Move unneeded files to `archive/` (not deletion). `path` and `reason` are required |
@@ -106,6 +106,12 @@ The following summarizes tools handled directly by `ToolHandler` (some are condi
 | **todo_write** | Short in-session to-do list (planning aid in Mode A) |
 | **create_skill** | Create a skill |
 | **refresh_tools** / **share_tool** | Reload/share personal or common tools |
+
+### Pre-completion verification
+
+| Tool | Description |
+|------|-------------|
+| **completion_gate** | Self-verification checklist before the final answer. In Mode S the Stop hook auto-injects it; in Mode A a retry is forced if not called. Disabled for `heartbeat` and `inbox:*` triggers |
 
 Load full skill and procedure text with **`read_memory_file`** using the relative paths shown in the system prompt skill catalog (e.g. `skills/foo/SKILL.md`, `common_skills/bar/SKILL.md`, `procedures/baz.md`).
 
