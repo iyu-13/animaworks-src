@@ -468,6 +468,19 @@
 
 /* ── Usage Panel ─────────────────────────────── */
 
+.usage-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.usage-refresh-btn {
+  font-size: 0.78rem;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
 .usage-panel {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -570,8 +583,30 @@
   white-space: nowrap;
 }
 
+.usage-forecast {
+  display: flex;
+  gap: 12px;
+  font-size: 0.82rem;
+  color: var(--aw-color-text-secondary);
+  margin-top: 1px;
+}
+
+.usage-forecast-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+}
+
+.usage-forecast-label {
+  font-weight: 600;
+  color: var(--aw-color-text-faint);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
 .usage-reset {
-  font-size: 0.7rem;
+  font-size: 0.8rem;
   color: var(--aw-color-text-faint);
   text-align: right;
 }

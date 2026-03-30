@@ -17,6 +17,10 @@ export function render(container) {
       <h2>${t("home.dashboard")}</h2>
     </div>
 
+    <div class="usage-panel-header">
+      <span></span>
+      <button class="btn-secondary usage-refresh-btn" id="usageRefreshBtn">&#x21BB; Refresh</button>
+    </div>
     <div class="usage-panel" id="homeUsagePanel">
       <div class="usage-card" id="usageCardClaude">
         <div class="usage-card-header">
@@ -104,6 +108,11 @@ export function render(container) {
   _initExternalTasksWidget();
   _refreshInterval = setInterval(_loadAll, 30000);
   _usageInterval = setInterval(_loadUsage, 60000);
+
+  const refreshBtn = document.getElementById("usageRefreshBtn");
+  if (refreshBtn) {
+    refreshBtn.addEventListener("click", () => _loadUsage(true));
+  }
 }
 
 export function destroy() {
@@ -141,13 +150,15 @@ function _resetToJst(value) {
     const d = new Date(ms);
     if (isNaN(d.getTime())) return String(value);
     const jst = new Date(d.getTime() + 9 * 3600000);
-    const days = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+    const days = ["日","月","火","水","木","金","土"];
     const day = days[jst.getUTCDay()];
+    const yyyy = jst.getUTCFullYear();
     const mm = String(jst.getUTCMonth() + 1).padStart(2, "0");
     const dd = String(jst.getUTCDate()).padStart(2, "0");
     const hh = String(jst.getUTCHours()).padStart(2, "0");
     const mi = String(jst.getUTCMinutes()).padStart(2, "0");
-    return `${mm}/${dd}(${day}) ${hh}:${mi}`;
+    const ss = String(jst.getUTCSeconds()).padStart(2, "0");
+    return `${yyyy}/${mm}/${dd}(${day}) ${hh}:${mi}:${ss}`;
   } catch { return String(value); }
 }
 
@@ -170,6 +181,66 @@ function _calcTimePct(resetAt, windowSeconds) {
   return Math.min(pct, 100);
 }
 
+function _usageForecast(utilization, resetAt, windowSeconds) {
+  if (!resetAt || !windowSeconds) return null;
+  const resetMs = (typeof resetAt === "number")
+    ? (resetAt < 1e12 ? resetAt * 1000 : resetAt)
+    : new Date(resetAt).getTime();
+  if (isNaN(resetMs)) return null;
+
+  const now = Date.now();
+  const windowMs = windowSeconds * 1000;
+  const windowStartMs = resetMs - windowMs;
+  const elapsedMs = now - windowStartMs;
+  if (elapsedMs <= 0) return null;
+
+  const msToReset = resetMs - now;
+  if (msToReset <= 0) return { runway: "-", landing: "-", label: "" };
+
+  const used = utilization;
+  const remain = Math.max(0, 100 - used);
+  const elapsedDays = elapsedMs / 86400000;
+  const daysToReset = msToReset / 86400000;
+  const burnPerDay = used / elapsedDays;
+
+  if (burnPerDay <= 0.01) {
+    return { runway: "\u221E", daysToReset, landing: `${remain.toFixed(1)}%`, label: "" };
+  }
+
+  const runwayDays = remain / burnPerDay;
+  const projectedRemain = remain - (burnPerDay * daysToReset);
+
+  // Format runway
+  let runwayStr, daysToResetStr;
+  if (windowSeconds <= 86400) {
+    // sub-day windows: show in hours
+    runwayStr = `${(runwayDays * 24).toFixed(1)}h`;
+    daysToResetStr = `${(daysToReset * 24).toFixed(1)}h`;
+  } else {
+    runwayStr = `${runwayDays.toFixed(1)}d`;
+    daysToResetStr = `${daysToReset.toFixed(1)}d`;
+  }
+
+  const delta = runwayDays - daysToReset;
+  let deltaLabel = "";
+  if (delta >= 0) {
+    const deltaStr = windowSeconds <= 86400 ? `${(delta * 24).toFixed(1)}h` : `${delta.toFixed(1)}d`;
+    deltaLabel = `<span style="color:var(--aw-color-success,#16a34a);">+${deltaStr}</span>`;
+  } else {
+    const deltaStr = windowSeconds <= 86400 ? `${(Math.abs(delta) * 24).toFixed(1)}h` : `${Math.abs(delta).toFixed(1)}d`;
+    deltaLabel = `<span style="color:var(--aw-color-error,#dc2626);">\u25B2${deltaStr}</span>`;
+  }
+
+  const landingStr = `${projectedRemain.toFixed(1)}%`;
+  const landingColor = projectedRemain < 0
+    ? "var(--aw-color-error,#dc2626)"
+    : projectedRemain < 10
+      ? "var(--aw-color-warning,#d97706)"
+      : "var(--aw-color-text-secondary,#666)";
+
+  return { runway: runwayStr, daysToReset: daysToResetStr, deltaLabel, landing: landingStr, landingColor };
+}
+
 function _renderUsageBar(label, utilization, resetAt, windowSeconds) {
   const remaining = Math.max(0, 100 - utilization);
   const resetStr = resetAt ? _resetToJst(resetAt) : "";
@@ -190,6 +261,19 @@ function _renderUsageBar(label, utilization, resetAt, windowSeconds) {
     deficitHtml = `<span class="usage-deficit" style="color:var(--aw-color-error,#dc2626);font-size:0.7rem;margin-left:0.5rem;">-${gap}pt</span>`;
   }
 
+  // Forecast: Runway + 着地予測
+  let forecastHtml = "";
+  const fc = _usageForecast(utilization, resetAt, windowSeconds);
+  if (fc) {
+    forecastHtml = `<div class="usage-forecast">`;
+    forecastHtml += `<span class="usage-forecast-item"><span class="usage-forecast-label">Runway</span> ${fc.runway}`;
+    if (fc.daysToReset) forecastHtml += ` / ${fc.daysToReset}`;
+    if (fc.deltaLabel) forecastHtml += ` ${fc.deltaLabel}`;
+    forecastHtml += `</span>`;
+    forecastHtml += `<span class="usage-forecast-item"><span class="usage-forecast-label">着地</span> <span style="color:${fc.landingColor || "inherit"}">${fc.landing}</span></span>`;
+    forecastHtml += `</div>`;
+  }
+
   return `
     <div class="usage-row">
       <div class="usage-row-header">
@@ -200,6 +284,7 @@ function _renderUsageBar(label, utilization, resetAt, windowSeconds) {
         <div class="usage-bar-fill" style="width:${remaining}%;background:${color}"></div>
         ${markerHtml}
       </div>
+      ${forecastHtml}
       ${resetStr ? `<div class="usage-reset">${t("home.usage_reset")}: ${escapeHtml(resetStr)}</div>` : ""}
     </div>
   `;
@@ -256,6 +341,14 @@ function _renderClaudeUsage(data) {
   if (!el) return;
 
   if (data.error) {
+    if (data.error === "rate_limited" && data._show_relogin) {
+      // Auto token refresh succeeded but still rate-limited → show relogin button
+      const msg = data._relogin_message || "Token refreshed but still rate-limited — try re-login";
+      el.innerHTML = _renderUsageError("claude", data, msg);
+      const btn = el.querySelector("[data-provider='claude']");
+      btn?.addEventListener("click", () => _runUsageRelogin("claude"));
+      return;
+    }
     const msg = data.error === "no_credentials"
       ? t("home.usage_no_credentials")
       : data.message || data.error;
@@ -327,9 +420,41 @@ function _renderGovernor(gov) {
   `;
 }
 
-async function _loadUsage() {
+async function _loadUsage(forceRefresh = false) {
   try {
-    const data = await api("/api/usage");
+    const url = forceRefresh ? "/api/usage?skip_cache=true" : "/api/usage";
+    const data = await api(url);
+
+    // Auto-refresh: if Claude returns rate_limited, try relogin (token refresh)
+    // then retry once before showing the error
+    if (data.claude?.error === "rate_limited") {
+      try {
+        const reloginRes = await fetch("/api/usage/claude/relogin", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+        });
+        const reloginData = await reloginRes.json().catch(() => ({}));
+        if (reloginData.success) {
+          // Token refreshed — retry usage fetch (skip_cache)
+          const retry = await api("/api/usage?skip_cache=true");
+          if (retry.claude && !retry.claude.error) {
+            data.claude = retry.claude;
+          } else if (retry.claude?.error === "rate_limited") {
+            // Still rate-limited after refresh — show relogin button
+            data.claude = {
+              ...retry.claude,
+              _show_relogin: true,
+              _relogin_message: reloginData.message,
+            };
+          }
+        } else {
+          // Refresh failed — show relogin button
+          data.claude._show_relogin = true;
+        }
+      } catch { /* ignore — will render original error */ }
+    }
+
     if (data.claude) _renderClaudeUsage(data.claude);
     if (data.openai) _renderOpenaiUsage(data.openai);
     _renderGovernor(data.governor);

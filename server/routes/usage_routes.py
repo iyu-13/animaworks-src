@@ -296,11 +296,12 @@ def _relogin_claude() -> tuple[dict[str, Any], int]:
     """Try token refresh first; fall back to Claude Code CLI login guidance."""
     _clear_usage_cache("claude")
     executable = get_claude_executable()
+    login_cmd = f"{executable} /login" if executable else "claude login"
     if not executable:
         return ({
             "success": False,
-            "message": "Claude Code CLI not found. Install it, then run 'claude login' in CMD.",
-            "manual_command": "claude login",
+            "message": f"Claude Code CLI not found. Install it, then run '{login_cmd}' in CMD.",
+            "manual_command": login_cmd,
         }, 400)
 
     best_path, best_token, best_refresh, best_expires = _select_best_claude_credential()
@@ -308,8 +309,8 @@ def _relogin_claude() -> tuple[dict[str, Any], int]:
         launched = _launch_claude_login_terminal(executable)
         return ({
             "success": launched,
-            "message": "Opened a CMD window for 'claude login'." if launched else "No Claude credentials found. Run 'claude login' in CMD.",
-            "manual_command": "claude login",
+            "message": f"Opened a CMD window for '{login_cmd}'." if launched else f"No Claude credentials found. Run '{login_cmd}' in CMD.",
+            "manual_command": login_cmd,
             "executable": executable,
             "terminal_launched": launched,
         }, 200 if launched else 400)
@@ -322,22 +323,22 @@ def _relogin_claude() -> tuple[dict[str, Any], int]:
             "success": True,
             "message": (
                 f"Claude token is already fresh (expires in ~{mins} min). "
-                "Opened a CMD window for 'claude login' anyway so you can force re-auth manually."
+                f"Opened a CMD window for '{login_cmd}' anyway so you can force re-auth manually."
                 if launched else
                 f"Claude token is already fresh (expires in ~{mins} min). If usage still fails, it is likely a provider-side rate limit rather than expired auth."
             ),
             "file": str(best_path),
             "executable": executable,
             "terminal_launched": launched,
-            "manual_command": "claude login",
+            "manual_command": login_cmd,
         }, 200)
 
     if not best_refresh:
         launched = _launch_claude_login_terminal(executable)
         return ({
             "success": launched,
-            "message": "Opened a CMD window for 'claude login'." if launched else "Claude token is expired and no refresh token is available. Run 'claude login' in CMD.",
-            "manual_command": "claude login",
+            "message": f"Opened a CMD window for '{login_cmd}'." if launched else f"Claude token is expired and no refresh token is available. Run '{login_cmd}' in CMD.",
+            "manual_command": login_cmd,
             "file": str(best_path),
             "executable": executable,
             "terminal_launched": launched,
@@ -356,8 +357,8 @@ def _relogin_claude() -> tuple[dict[str, Any], int]:
     launched = _launch_claude_login_terminal(executable)
     return ({
         "success": launched,
-        "message": "Claude token refresh failed, so a CMD window for 'claude login' was opened." if launched else "Claude token refresh failed. Run 'claude login' in CMD.",
-        "manual_command": "claude login",
+        "message": f"Claude token refresh failed, so a CMD window for '{login_cmd}' was opened." if launched else f"Claude token refresh failed. Run '{login_cmd}' in CMD.",
+        "manual_command": login_cmd,
         "executable": executable,
         "terminal_launched": launched,
     }, 200 if launched else 400)
@@ -444,6 +445,14 @@ def _fetch_claude_usage(skip_cache: bool = False) -> dict[str, Any]:
         if e.code == 401:
             result = {"error": "unauthorized", "message": "Token expired — re-login to Claude Code"}
         elif e.code == 429:
+            # Token might be stale — try refresh once before giving up
+            if not skip_cache:
+                best_path, _bt, best_refresh, _be = _select_best_claude_credential()
+                if best_path and best_refresh:
+                    refreshed = _refresh_claude_token(best_path, best_refresh)
+                    if refreshed:
+                        logger.info("Token refreshed after 429, retrying usage fetch")
+                        return _fetch_claude_usage(skip_cache=True)
             # Don't cache rate-limit errors — retry sooner
             return {"error": "rate_limited", "message": "Rate limited — retry shortly"}
         else:
