@@ -408,16 +408,29 @@ function _renderGovernor(gov) {
     return;
   }
   const suspended = (gov.suspended_animas || []).join(", ") || "none";
+  const reason = gov.reason || "throttling";
+  const needsRelogin = /rate_limited|unauthorized|no_credentials/.test(reason);
   el.style.display = "block";
   el.innerHTML = `
     <div class="governor-bar governor-bar--active">
       <span class="governor-icon">&#x26A0;</span>
       <span class="governor-text">
-        <strong>Usage Governor</strong>: ${escapeHtml(gov.reason || "throttling")}
+        <strong>Usage Governor</strong>: ${escapeHtml(reason)}
       </span>
       <span class="governor-suspended">${escapeHtml(suspended)}</span>
+      ${needsRelogin ? `<button class="btn-secondary governor-relogin-btn" id="govReloginBtn" style="margin-left:0.75rem;font-size:0.78rem;padding:3px 10px;">Claude 再認証</button>` : ""}
     </div>
   `;
+  if (needsRelogin) {
+    const btn = document.getElementById("govReloginBtn");
+    btn?.addEventListener("click", async () => {
+      btn.disabled = true;
+      btn.textContent = "...";
+      await _runUsageRelogin("claude");
+      btn.disabled = false;
+      btn.textContent = "Claude 再認証";
+    });
+  }
 }
 
 async function _loadUsage(forceRefresh = false) {
