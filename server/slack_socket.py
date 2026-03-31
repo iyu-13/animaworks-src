@@ -59,7 +59,6 @@ def _cache_user_name(uid: str, name: str) -> None:
     """Thread-safe bounded insert into the user-name cache."""
     with _cache_lock:
         if len(_user_name_cache) >= _USER_NAME_CACHE_MAX and uid not in _user_name_cache:
-            # Evict oldest entry (first inserted)
             try:
                 _user_name_cache.pop(next(iter(_user_name_cache)))
             except StopIteration:
@@ -295,7 +294,7 @@ class SlackSocketModeManager:
         to_add = desired_animas - current_animas
         for name in sorted(to_add):
             try:
-                ok = await self._add_per_anima_handler(name, connect=True)
+                ok = await self._add_per_anima_handler(name)
                 if ok:
                     added.append(name)
             except Exception as exc:
@@ -322,16 +321,8 @@ class SlackSocketModeManager:
             result["errors"] = errors
         return result
 
-    async def _add_per_anima_handler(self, anima_name: str, *, connect: bool = False) -> bool:
-        """Create a per-Anima Socket Mode handler.
-
-        Args:
-            anima_name: Name of the anima.
-            connect: If True, call ``connect_async()`` immediately.
-                During initial ``start()`` this is False because all
-                handlers are connected in one ``asyncio.gather`` batch.
-                During ``reconcile_handlers()`` this is True because the
-                handler is added to an already-running set.
+    async def _add_per_anima_handler(self, anima_name: str) -> bool:
+        """Create and connect a per-Anima Socket Mode handler.
 
         Returns True on success, False if credentials are missing.
         """
@@ -350,8 +341,7 @@ class SlackSocketModeManager:
             handler = AsyncSocketModeHandler(app, app_token)
             self._app_map[anima_name] = app
             self._handler_map[anima_name] = handler
-            if connect:
-                await handler.connect_async()
+            await handler.connect_async()
             logger.info(
                 "Per-Anima Slack bot registered: %s (bot_uid=%s)",
                 anima_name,
@@ -436,26 +426,28 @@ class SlackSocketModeManager:
         return os.environ.get(key) or None
 
     def _register_per_anima_handler(self, app: AsyncApp, anima_name: str, bot_user_id: str = "") -> None:
-        """Register event handler that routes all messages to a specific Anima."""
+        """Register event handler that routes messages to a specific Anima.
 
-        @app.middleware
-        async def _diag_log_all_events(body, next):  # noqa: ANN001
-            """Diagnostic: log every incoming Socket Mode payload."""
-            event_type = (body or {}).get("event", {}).get("type", "?")
-            event_subtype = (body or {}).get("event", {}).get("subtype", "")
-            channel = (body or {}).get("event", {}).get("channel", "")
-            logger.info(
-                "Slack event received for %s: type=%s subtype=%s channel=%s",
-                anima_name,
-                event_type,
-                event_subtype,
-                channel,
-            )
-            await next()
+        Routing rules:
+        - **Self-posted messages** (from any registered bot): Ignored to
+          prevent infinite response loops.
+        - **DM** (channel starts with ``D``): Always deliver to inbox.
+        - **Channel message with @mention**: Deliver to inbox.
+        - **Channel message without @mention**: Board routing only — the
+          Anima does NOT respond unless explicitly mentioned.
+        """
+
+        # Reference to all known bot UIDs (shared dict, updated at runtime)
+        all_bot_uids = self._bot_user_ids
 
         @app.event("message")
         async def handle_message(event: dict, say) -> None:  # noqa: ARG001
             if "subtype" in event:
+                return
+
+            # ── Ignore messages from any of our own bots (prevent loops) ──
+            sender = event.get("user", "")
+            if sender and sender in all_bot_uids.values():
                 return
 
             ts = event.get("ts", "")
@@ -475,6 +467,7 @@ class SlackSocketModeManager:
             text = event.get("text", "")
             channel_id = event.get("channel", "")
             thread_ts = event.get("thread_ts", "")
+            is_dm = channel_id.startswith("D")
 
             alias_ids = _load_alias_user_ids()
             mention_intent = _detect_mention_intent(text, bot_user_id, alias_ids)
@@ -485,36 +478,52 @@ class SlackSocketModeManager:
                     text = ctx + text
 
             text = await asyncio.to_thread(_resolve_slack_mentions, text, token)
-            # Per-anima bot: every message is directed at this anima
-            annotation = _build_slack_annotation(channel_id, True)
-            text = annotation + text
-            intent = "question"
 
-            shared_dir = get_data_dir() / "shared"
-            messenger = Messenger(shared_dir, anima_name)
-            messenger.receive_external(
-                content=text,
-                source="slack",
-                source_message_id=ts,
-                external_user_id=event.get("user", ""),
-                external_channel_id=channel_id,
-                external_thread_ts=thread_ts,
-                intent=intent,
-            )
+            # ── Board routing: always forward channel messages to board ──
+            if not is_dm:
+                user_name = _get_cached_user_name(sender) or sender
+                _route_to_board(channel_id, text, user_name)
 
-            # Route to AnimaWorks board if channel is mapped
-            user_name = _get_cached_user_name(event.get("user", "")) or event.get("user", "")
-            _route_to_board(channel_id, text, user_name)
+            # ── Inbox delivery: only for DMs or @mentions ──
+            if is_dm or mention_intent:
+                has_mention = bool(mention_intent)
+                annotation = _build_slack_annotation(channel_id, has_mention)
+                annotated = annotation + text
+                intent = mention_intent if mention_intent else "question"
 
-            logger.info(
-                "Per-Anima Socket Mode message routed: channel=%s -> anima=%s (intent=%s)",
-                channel_id,
-                anima_name,
-                intent,
-            )
+                shared_dir = get_data_dir() / "shared"
+                messenger = Messenger(shared_dir, anima_name)
+                messenger.receive_external(
+                    content=annotated,
+                    source="slack",
+                    source_message_id=ts,
+                    external_user_id=sender,
+                    external_channel_id=channel_id,
+                    external_thread_ts=thread_ts,
+                    intent=intent,
+                )
+
+                logger.info(
+                    "Per-Anima Socket Mode message routed: channel=%s -> anima=%s (intent=%s, dm=%s)",
+                    channel_id,
+                    anima_name,
+                    intent,
+                    is_dm,
+                )
+            else:
+                logger.debug(
+                    "Per-Anima %s: channel msg without mention, board-only: channel=%s",
+                    anima_name,
+                    channel_id,
+                )
 
         @app.event("app_mention")
         async def handle_app_mention(event: dict, say) -> None:  # noqa: ARG001
+            # Ignore self-posted mentions (prevent loops)
+            sender = event.get("user", "")
+            if sender and sender in all_bot_uids.values():
+                return
+
             ts = event.get("ts", "")
             if _is_duplicate_ts(ts):
                 return
@@ -563,9 +572,17 @@ class SlackSocketModeManager:
         reconnecting the Socket Mode handler.
         """
 
+        # Reference to all known bot UIDs for self-message filtering
+        all_bot_uids = self._bot_user_ids
+
         @app.event("message")
         async def handle_message(event: dict, say) -> None:  # noqa: ARG001
             if "subtype" in event:
+                return
+
+            # Ignore messages from any of our own bots (prevent loops)
+            sender = event.get("user", "")
+            if sender and sender in all_bot_uids.values():
                 return
 
             ts = event.get("ts", "")
@@ -585,38 +602,8 @@ class SlackSocketModeManager:
             channel_id = event.get("channel", "")
             cfg = load_config()
             slack_cfg = cfg.external_messaging.slack
-
-            # ── Board routing: post to AnimaWorks board if mapped ──
-            board_name = slack_cfg.board_mapping.get(channel_id)
-            if board_name:
-                raw_text = event.get("text", "")
-                raw_text = await asyncio.to_thread(_resolve_slack_mentions, raw_text, _shared_token)
-                shared_dir = get_data_dir() / "shared"
-                user_id = event.get("user", "")
-                from_display = _get_cached_user_name(user_id) or user_id
-                try:
-                    messenger = Messenger(shared_dir, slack_cfg.default_anima or "system")
-                    messenger.post_channel(
-                        channel_name=board_name,
-                        content=raw_text,
-                        from_person=from_display,
-                        source="slack",
-                        source_message_id=ts,
-                    )
-                    logger.info(
-                        "Shared Socket Mode board routed: channel=%s -> board=%s",
-                        channel_id,
-                        board_name,
-                    )
-                except Exception:
-                    logger.exception("Failed to post Slack message to board '%s'", board_name)
-                # Also deliver to default_anima inbox for processing
-                # (fall through to standard routing below)
-
             anima_name = slack_cfg.anima_mapping.get(channel_id) or slack_cfg.default_anima
             if not anima_name:
-                if board_name:
-                    return  # Board-only channel, no anima routing needed
                 logger.debug(
                     "No anima mapping for channel %s and no default_anima; ignoring",
                     channel_id,
