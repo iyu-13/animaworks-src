@@ -481,10 +481,12 @@ def _build_group4(
             desc = (meta.description[:_DESC_LIMIT] + "…") if len(meta.description) > _DESC_LIMIT else meta.description
             catalog_lines.append(f"- skills/{meta.name}/SKILL.md: {desc}")
 
-        common_label = t("skill.label_common")
-        for meta in common_skill_metas:
-            desc = (meta.description[:_DESC_LIMIT] + "…") if len(meta.description) > _DESC_LIMIT else meta.description
-            catalog_lines.append(f"- common_skills/{meta.name}/SKILL.md ({common_label}): {desc}")
+        # Common skills: 名前のみリスト表示（description省略で ~3,500トークン削減）
+        if common_skill_metas:
+            common_label = t("skill.label_common")
+            common_names = ", ".join(m.name for m in common_skill_metas)
+            catalog_lines.append(f"- ({common_label}) {common_names}")
+            catalog_lines.append('  → read_memory_file(path="common_skills/{name}/SKILL.md") で詳細を読む')
 
         procedure_label = t("skill.label_procedure")
         proc_dir = pd / "procedures"

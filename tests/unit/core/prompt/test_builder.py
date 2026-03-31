@@ -352,7 +352,7 @@ class TestBuildSystemPrompt:
             prompt = result.system_prompt
             assert "スキルと手順書" not in prompt
             assert "skills/coding/SKILL.md: Write code" in prompt
-            assert "common_skills/deploy/SKILL.md" in prompt
+            assert "deploy" in prompt  # common skill name appears in compact list
             assert "<available_skills>" in prompt
 
     def test_memory_guide_uses_counts(self, tmp_path, data_dir):
