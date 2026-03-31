@@ -93,6 +93,15 @@ class SlackAutoResponder:
 
         slack_text = md_to_slack_mrkdwn(response_text)[:_MAX_SLACK_TEXT]
 
+        # Resolve icon for this Anima's Slack messages
+        icon_url = ""
+        try:
+            from core.tools._anima_icon_url import resolve_anima_icon_url
+
+            icon_url = resolve_anima_icon_url(anima_name) or ""
+        except Exception:
+            logger.debug("resolve_anima_icon_url failed for '%s'", anima_name, exc_info=True)
+
         posted_ts: list[str] = []
         async with httpx.AsyncClient(timeout=_SLACK_TIMEOUT) as client:
             for target in slack_targets:
@@ -103,6 +112,8 @@ class SlackAutoResponder:
                     thread_ts=target["thread_ts"],
                     text=slack_text,
                     mention_prefix=target.get("mention_prefix", ""),
+                    username=anima_name,
+                    icon_url=icon_url,
                 )
                 if ts:
                     posted_ts.append(ts)
@@ -157,6 +168,8 @@ class SlackAutoResponder:
         thread_ts: str,
         text: str,
         mention_prefix: str = "",
+        username: str = "",
+        icon_url: str = "",
     ) -> str:
         """Post a single message. Return the ts or empty string on failure."""
         payload: dict[str, Any] = {
@@ -165,6 +178,10 @@ class SlackAutoResponder:
         }
         if thread_ts:
             payload["thread_ts"] = thread_ts
+        if username:
+            payload["username"] = username
+        if icon_url:
+            payload["icon_url"] = icon_url
         try:
             resp = await client.post(
                 _SLACK_POST_URL,
