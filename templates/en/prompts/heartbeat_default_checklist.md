@@ -1,7 +1,7 @@
 - **MUST**: Check current_state.md for in-progress tasks and state findings as evidence. Always check before deciding "idle" or "waiting"
 - **MUST**: Check task queue for STALE tasks (⚠️ STALE). Cite `list_tasks()` results as evidence. Never return HEARTBEAT_OK while STALE tasks exist
 - **MUST**: Check for waiting tasks stalled 24+ hours. If stalled, send status check or reminder
-- Board check: Run `read_channel(channel="general", limit=5)` and state specifically whether any mentions target you. Do **not** post praise/acknowledgment replies
+- Board check: Run `read_channel(...)` for your restricted team channel first and state specifically whether any mentions target you. If you do not belong to one, check `general`. Do **not** post praise/acknowledgment replies
 - Whether you can access required external tools (if not, report to supervisor)
 - Whether in-progress tasks have blockers
 - Whether state/pending/ has unexecuted tasks

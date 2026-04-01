@@ -186,43 +186,45 @@ DEFAULT_DESCRIPTIONS: dict[str, dict[str, str]] = {
     # -- Channel tools --
     "post_channel": {
         "ja": (
-            "Boardの共有チャネルにメッセージを投稿する。"
-            "チーム全体に共有すべき情報はgeneralチャネルに、"
-            "運用・インフラ関連はopsチャネルに投稿する。"
-            "全Animaが閲覧できるため、解決済み情報の共有や"
-            "お知らせに使うこと。1対1の連絡にはsend_messageを使う。"
+            "Boardチャネルにメッセージを投稿する。"
+            "通常の作業報告・完了報告は、まず所属している"
+            "部門/チームチャネルに投稿する。"
+            "generalは全体共有、opsは部門横断の"
+            "運用・インフラ共有に使う。"
+            "1対1の連絡にはsend_messageを使う。"
         ),
         "en": (
-            "Post a message to a Board shared channel. "
-            "Use general for team-wide info, ops for infrastructure. "
-            "All Animas can read; use for shared solutions and announcements. "
+            "Post a message to a Board channel. "
+            "Routine work reports and completion updates should go to your team/department channel first. "
+            "Use general for org-wide sharing and ops for cross-team operations or infrastructure. "
             "Use send_message for 1:1 communication."
         ),
         "ko": (
-            "Board의 공유 채널에 메시지를 게시한다. "
-            "팀 전체에 공유할 정보는 general 채널에, "
-            "운영·인프라 관련은 ops 채널에 게시. "
-            "모든 Anima가 볼 수 있으므로 해결 정보 공유나 "
-            "공지에 사용. 1:1 연락에는 send_message를 사용."
+            "Board 채널에 메시지를 게시한다. "
+            "일반적인 작업 보고와 완료 보고는 먼저 소속된 "
+            "부서/팀 채널에 게시한다. "
+            "general은 전체 공유, ops는 부서 간 운영·인프라 공유에 사용. "
+            "1:1 연락에는 send_message를 사용."
         ),
     },
     "read_channel": {
         "ja": (
-            "Boardの共有チャネルの直近メッセージを読む。"
+            "Boardチャネルの直近メッセージを読む。"
             "他のAnimaやユーザーが共有した情報を確認できる。"
-            "heartbeat時のチャネル巡回や、特定トピックの共有状況を確認する時に使う。"
+            "所属している部門/チームチャネルや general / ops の"
+            "共有状況を確認する時に使う。"
             "human_only=trueでユーザー発言のみフィルタリング可能。"
         ),
         "en": (
-            "Read recent messages from a Board shared channel. "
+            "Read recent messages from a Board channel. "
             "See what other Animas and users have shared. "
-            "Use during heartbeat or to check sharing on a topic. "
+            "Use this for team/department channels or general/ops as needed. "
             "human_only=true filters to user messages only."
         ),
         "ko": (
-            "Board의 공유 채널에서 최근 메시지를 읽는다. "
+            "Board 채널에서 최근 메시지를 읽는다. "
             "다른 Anima나 사용자가 공유한 정보를 확인할 수 있다. "
-            "heartbeat 시 채널 순회나 특정 주제의 공유 상황을 확인할 때 사용. "
+            "소속 부서/팀 채널이나 general/ops의 공유 상황을 확인할 때 사용. "
             "human_only=true로 사용자 발언만 필터링 가능."
         ),
     },

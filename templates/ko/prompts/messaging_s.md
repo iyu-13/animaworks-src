@@ -18,7 +18,9 @@
 
 ## Board (공유 채널)
 
-조직 전체 게시판입니다. 채널: `general` (전체), `ops` (운영)
+조직 전체 게시판입니다. restricted 부서/팀 채널에 참여 중이면 일반적인 작업 보고와 완료 보고는 먼저 그 채널에 게시하세요. `general`은 전체 공유, `ops`는 부서 간 운영 공유입니다.
+
+{board_channel_guidance}
 
 ### 조작
 - **read_channel**: `channel`, `limit`(default:20), `human_only`

@@ -31,6 +31,7 @@ class TestMessagingTemplates:
         """S mode template must have the required format placeholders."""
         content = (_JA_PROMPTS / "messaging_s.md").read_text(encoding="utf-8")
         assert "{animas_line}" in content
+        assert "{board_channel_guidance}" in content
 
     def test_messaging_a_template_exists(self):
         """Standard messaging template (for A mode) must still exist."""

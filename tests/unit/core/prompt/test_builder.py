@@ -190,6 +190,59 @@ class TestBuildMessagingSection:
             template_names = [c[0][0] for c in mock_lp.call_args_list]
             assert "messaging_s" in template_names
 
+    def test_prefers_restricted_team_channel_for_reports(self, tmp_path):
+        anima_dir = tmp_path / "animas" / "alice"
+        anima_dir.mkdir(parents=True)
+        shared_dir = tmp_path / "shared" / "channels"
+        shared_dir.mkdir(parents=True)
+        (shared_dir / "property.jsonl").write_text("", encoding="utf-8")
+        (shared_dir / "general.jsonl").write_text("", encoding="utf-8")
+        (shared_dir / "ops.jsonl").write_text("", encoding="utf-8")
+        (shared_dir / "property.meta.json").write_text(
+            '{"members":["alice","bob"]}',
+            encoding="utf-8",
+        )
+
+        def _mock_lp(name: str, **kwargs) -> str:
+            if name == "builder/fallbacks":
+                return _MOCK_FALLBACKS
+            return kwargs["board_channel_guidance"]
+
+        with (
+            patch("core.tooling.prompt_db.get_prompt_store", return_value=None),
+            patch("core.prompt.sections.load_prompt", side_effect=_mock_lp),
+            patch("core.prompt.messaging.load_prompt", side_effect=_mock_lp),
+        ):
+            result = _build_messaging_section(anima_dir, ["bob"])
+
+        assert "#property" in result
+        assert "#general" in result
+        assert "限定チャネル" in result
+
+    def test_open_channels_only_when_no_restricted_team_channel(self, tmp_path):
+        anima_dir = tmp_path / "animas" / "alice"
+        anima_dir.mkdir(parents=True)
+        shared_dir = tmp_path / "shared" / "channels"
+        shared_dir.mkdir(parents=True)
+        (shared_dir / "general.jsonl").write_text("", encoding="utf-8")
+        (shared_dir / "ops.jsonl").write_text("", encoding="utf-8")
+
+        def _mock_lp(name: str, **kwargs) -> str:
+            if name == "builder/fallbacks":
+                return _MOCK_FALLBACKS
+            return kwargs["board_channel_guidance"]
+
+        with (
+            patch("core.tooling.prompt_db.get_prompt_store", return_value=None),
+            patch("core.prompt.sections.load_prompt", side_effect=_mock_lp),
+            patch("core.prompt.messaging.load_prompt", side_effect=_mock_lp),
+        ):
+            result = _build_messaging_section(anima_dir, ["bob"])
+
+        assert "#general" in result
+        assert "#ops" in result
+        assert "限定チャネルが見当たらない" in result
+
 
 # ── build_system_prompt ───────────────────────────────────
 
