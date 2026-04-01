@@ -247,15 +247,13 @@ def _resolve_outbound_icon(anima_name: str) -> str:
 
 def _send_via_slack(user_id: str, content: str, sender_name: str, anima_name: str = "") -> str:
     """Send a DM via Slack API."""
-    from core.tools._base import _lookup_shared_credentials, _lookup_vault_credential
+    from core.tools._base import resolve_env_style_credential
     from core.tools.slack import SlackClient, md_to_slack_mrkdwn
 
     token = None
     if anima_name:
         per_anima_key = f"SLACK_BOT_TOKEN__{anima_name}"
-        token = _lookup_vault_credential(per_anima_key)
-        if not token:
-            token = _lookup_shared_credentials(per_anima_key)
+        token = resolve_env_style_credential(per_anima_key)
 
     prefix = f"[{sender_name}] " if sender_name and not token else ""
     text = f"{prefix}{content}"

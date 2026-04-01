@@ -54,6 +54,31 @@ _cached_cli_path: str | None = None
 _cli_path_resolved: bool = False
 
 
+def _build_sdk_path_env(anima_dir: Path, project_dir: Path) -> str:
+    """Build PATH for Claude Code subprocesses.
+
+    Ensure repo-local CLI entry points such as ``animaworks-tool`` are
+    resolvable even when the parent server process was started without the
+    venv's Scripts/bin directory on PATH.
+    """
+    sep = os.pathsep
+    existing = os.environ.get("PATH", "/usr/bin:/bin")
+    candidates: list[str] = [str(anima_dir)]
+
+    launcher_dir = str(Path(sys.executable).resolve().parent)
+    candidates.append(launcher_dir)
+
+    venv_bin = project_dir / ".venv" / ("Scripts" if sys.platform == "win32" else "bin")
+    candidates.append(str(venv_bin))
+
+    merged: list[str] = []
+    for part in [*candidates, *existing.split(sep)]:
+        part = part.strip()
+        if part and part not in merged:
+            merged.append(part)
+    return sep.join(merged)
+
+
 def _resolve_sdk_cli_path() -> str | None:
     """Return a verified Claude Code CLI path, cached after first call."""
     global _cached_cli_path, _cli_path_resolved
@@ -120,11 +145,7 @@ class SDKOptionsMixin:
         env: dict[str, str] = {
             "ANIMAWORKS_ANIMA_DIR": str(self._anima_dir),
             "ANIMAWORKS_PROJECT_DIR": str(PROJECT_DIR),
-            "PATH": (
-                f"{self._anima_dir};{os.environ.get('PATH', '')}"
-                if sys.platform == "win32"
-                else f"{self._anima_dir}:{os.environ.get('PATH', '/usr/bin:/bin')}"
-            ),
+            "PATH": _build_sdk_path_env(self._anima_dir, PROJECT_DIR),
             "CLAUDE_CODE_DISABLE_SKILL_IMPROVEMENT": "true",
             "ENABLE_TOOL_SEARCH": "false",
             "CLAUDECODE": "",

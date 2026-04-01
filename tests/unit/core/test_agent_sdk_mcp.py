@@ -75,6 +75,29 @@ class TestBuildMcpEnv:
         assert env["PATH"] == "/usr/bin:/bin"
 
 
+class TestBuildSdkEnv:
+    """Tests for AgentSDKExecutor._build_env()."""
+
+    def test_path_includes_launcher_python_dir(self, tmp_path: Path) -> None:
+        """PATH prepends the launcher Python directory for repo-local console scripts."""
+        executor = _make_executor(tmp_path / "animas" / "test-anima")
+        with (
+            patch("core.execution._sdk_options.sys.executable", r"E:\OneDriveBiz\Tools\General\animaworks\.venv\Scripts\python.exe"),
+            patch.dict(os.environ, {"PATH": r"C:\Windows\System32"}, clear=True),
+        ):
+            env = executor._build_env()
+        parts = env["PATH"].split(os.pathsep)
+        assert r"E:\OneDriveBiz\Tools\General\animaworks\.venv\Scripts" in parts
+
+    def test_path_preserves_existing_entries(self, tmp_path: Path) -> None:
+        """Existing PATH entries remain available after prepending repo-local dirs."""
+        executor = _make_executor(tmp_path / "animas" / "test-anima")
+        with patch.dict(os.environ, {"PATH": r"C:\Windows\System32;C:\Tools"}, clear=True):
+            env = executor._build_env()
+        assert r"C:\Windows\System32" in env["PATH"]
+        assert r"C:\Tools" in env["PATH"]
+
+
 # ── TestMcpServerConfig ─────────────────────────────────────
 
 

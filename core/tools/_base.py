@@ -182,6 +182,29 @@ def _lookup_abconfig_credential(key: str) -> str | None:
     return val if isinstance(val, str) and val else None
 
 
+def resolve_env_style_credential(key: str) -> str | None:
+    """Resolve a raw env-style credential key via the standard cascade.
+
+    This is intended for ad-hoc env-style keys such as per-Anima Slack
+    tokens (for example ``SLACK_BOT_TOKEN__kanna``) that do not map to a
+    ``config.json credentials.<name>`` entry.
+    """
+    val = _lookup_vault_credential(key)
+    if val:
+        return val
+
+    val = _lookup_shared_credentials(key)
+    if val:
+        return val
+
+    val = _lookup_abconfig_credential(key)
+    if val:
+        return val
+
+    val = os.environ.get(key)
+    return val if val else None
+
+
 @lru_cache(maxsize=1)
 def _load_abconfig_secrets() -> Any | None:
     """Load ``secrets_local.py`` next to the fixed abconfig ``Cnct_Env.py``."""

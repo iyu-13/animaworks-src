@@ -16,6 +16,7 @@ from core.tools._base import (
     auto_cli_guide,
     get_env_or_fail,
     get_credential,
+    resolve_env_style_credential,
 )
 
 
@@ -206,3 +207,21 @@ class TestAbconfigSlackCredentialFallback:
              patch.dict(os.environ, {"SLACK_BOT_TOKEN": "xoxb-env-test"}, clear=True):
             result = get_credential("slack", "slack", env_var="SLACK_BOT_TOKEN")
         assert result == "xoxb-env-test"
+
+
+class TestResolveEnvStyleCredential:
+    def test_returns_vault_first(self):
+        with patch("core.tools._base._lookup_vault_credential", return_value="vault-token"), \
+             patch("core.tools._base._lookup_shared_credentials", return_value="shared-token"), \
+             patch("core.tools._base._lookup_abconfig_credential", return_value="abconfig-token"), \
+             patch.dict(os.environ, {"SLACK_BOT_TOKEN__kanna": "env-token"}, clear=True):
+            result = resolve_env_style_credential("SLACK_BOT_TOKEN__kanna")
+        assert result == "vault-token"
+
+    def test_returns_environment_when_other_sources_missing(self):
+        with patch("core.tools._base._lookup_vault_credential", return_value=None), \
+             patch("core.tools._base._lookup_shared_credentials", return_value=None), \
+             patch("core.tools._base._lookup_abconfig_credential", return_value=None), \
+             patch.dict(os.environ, {"SLACK_BOT_TOKEN__kanna": "env-token"}, clear=True):
+            result = resolve_env_style_credential("SLACK_BOT_TOKEN__kanna")
+        assert result == "env-token"

@@ -35,6 +35,21 @@ def test_resolve_without_server_url_returns_empty(tmp_path, monkeypatch: pytest.
     assert resolve_anima_icon_url("alice") == ""
 
 
+def test_resolve_without_server_url_falls_back_to_uploaded_public_avatar(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("ANIMAWORKS_SERVER_URL", raising=False)
+    monkeypatch.setenv("ANIMAWORKS_DATA_DIR", str(tmp_path))
+    alice = _animas_root(tmp_path) / "alice" / "assets"
+    alice.mkdir(parents=True)
+    (alice / "icon.png").write_bytes(b"x")
+    with patch(
+        "core.tools._anima_icon_url._resolve_uploaded_avatar_url",
+        return_value="https://cdn.example.com/alice.png",
+    ):
+        assert resolve_anima_icon_url("alice") == "https://cdn.example.com/alice.png"
+
+
 def test_resolve_with_server_url_and_icon_file(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -46,6 +61,20 @@ def test_resolve_with_server_url_and_icon_file(
     assert (
         resolve_anima_icon_url("rabbit")
         == "https://anima.example.jp/api/animas/rabbit/assets/icon.png"
+    )
+
+
+def test_resolve_with_server_url_and_bustup_file_when_icon_missing(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ANIMAWORKS_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("ANIMAWORKS_SERVER_URL", "https://anima.example.jp")
+    rabbit = _animas_root(tmp_path) / "rabbit" / "assets"
+    rabbit.mkdir(parents=True)
+    (rabbit / "avatar_bustup_realistic.png").write_bytes(b"x")
+    assert (
+        resolve_anima_icon_url("rabbit")
+        == "https://anima.example.jp/api/animas/rabbit/assets/avatar_bustup_realistic.png"
     )
 
 

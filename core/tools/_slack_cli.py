@@ -47,19 +47,17 @@ def _resolve_cli_token() -> str | None:
 def _resolve_per_anima_token(anima_dir: str | Path | None) -> str | None:
     """Resolve per-Anima Slack bot token from anima_dir path.
 
-    Uses ``SLACK_BOT_TOKEN__<anima_name>`` from vault.json / shared/credentials.json.
+    Uses ``SLACK_BOT_TOKEN__<anima_name>`` from the standard env-style
+    credential cascade (vault/shared/.env/env).
     Returns None to fall back to the shared token.
     """
     if not anima_dir:
         return None
-    from core.tools._base import _lookup_shared_credentials, _lookup_vault_credential
+    from core.tools._base import resolve_env_style_credential
 
     anima_name = Path(anima_dir).name
     per_anima_key = f"SLACK_BOT_TOKEN__{anima_name}"
-    token = _lookup_vault_credential(per_anima_key)
-    if token:
-        return token
-    token = _lookup_shared_credentials(per_anima_key)
+    token = resolve_env_style_credential(per_anima_key)
     if token:
         return token
     return None

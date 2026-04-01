@@ -27,11 +27,13 @@ Resolution order:
      sending), ``icon_path_template`` / legacy ``icon_url_template`` on **that** dict are used first.
   2. Otherwise ``icon_path_template`` from the **first enabled** Slack channel under
      ``human_notification.channels`` (via :func:`load_config`).
-  3. If no template: same-origin style URL from ``ANIMAWORKS_SERVER_URL`` + ``/api/animas/.../icon.png``
-     or ``.../icon_realistic.png`` (per :attr:`~core.config.schemas.ImageGenConfig.image_style`) when the file exists.
-  4. External templates: ``{name}`` is the Anima directory name (unquoted in the URL string for
+  3. If no template: same-origin style URL from ``ANIMAWORKS_SERVER_URL`` + ``/api/animas/.../icon.png``,
+     ``.../icon_realistic.png``, or as a fallback ``avatar_bustup*.png`` when the file exists.
+  4. If no internal URL can be built, fall back to the uploaded public Slack avatar URL
+     (``server.slack_avatar_upload.get_avatar_public_url``) when available locally.
+  5. External templates: ``{name}`` is the Anima directory name (unquoted in the URL string for
      typical CDN patterns).
-  5. Internal path templates: ``{name}`` is passed through :func:`urllib.parse.quote` for path segments.
+  6. Internal path templates: ``{name}`` is passed through :func:`urllib.parse.quote` for path segments.
 
 When icons are generated, :func:`persist_anima_icon_path_template` stores the default internal
 path (``icon.png`` or ``icon_realistic.png`` under ``assets/``, matching image style) as ``icon_path_template``.
@@ -65,6 +67,8 @@ __all__ = [
 
 ANIMA_ICON_ASSET_FILENAME = "icon.png"
 ANIMA_ICON_ASSET_FILENAME_REALISTIC = "icon_realistic.png"
+ANIMA_BUSTUP_ASSET_FILENAME = "avatar_bustup.png"
+ANIMA_BUSTUP_ASSET_FILENAME_REALISTIC = "avatar_bustup_realistic.png"
 
 ICON_URL_TEMPLATE_CONFIG_KEY = "icon_url_template"
 ICON_PATH_TEMPLATE_CONFIG_KEY = "icon_path_template"
@@ -86,7 +90,12 @@ def _icon_path_template_from_mapping(channel_config: dict[str, Any]) -> str:
 
 
 def _icon_asset_for_url(anima_name: str) -> tuple[Path, str] | None:
-    """Return ``(path, filename)`` for an existing icon asset (anime and/or realistic)."""
+    """Return ``(path, filename)`` for an existing icon-ish asset.
+
+    Prefer dedicated icon assets, but fall back to bust-up avatars so
+    Slack posts still carry a custom face image when icon generation has
+    not been run yet.
+    """
     from core.paths import get_animas_dir
 
     assets = get_animas_dir() / anima_name / "assets"
@@ -101,6 +110,8 @@ def _icon_asset_for_url(anima_name: str) -> tuple[Path, str] | None:
         for path, filename in (
             (assets / ANIMA_ICON_ASSET_FILENAME_REALISTIC, ANIMA_ICON_ASSET_FILENAME_REALISTIC),
             (assets / ANIMA_ICON_ASSET_FILENAME, ANIMA_ICON_ASSET_FILENAME),
+            (assets / ANIMA_BUSTUP_ASSET_FILENAME_REALISTIC, ANIMA_BUSTUP_ASSET_FILENAME_REALISTIC),
+            (assets / ANIMA_BUSTUP_ASSET_FILENAME, ANIMA_BUSTUP_ASSET_FILENAME),
         ):
             if path.is_file():
                 return (path, filename)
@@ -108,6 +119,8 @@ def _icon_asset_for_url(anima_name: str) -> tuple[Path, str] | None:
         for path, filename in (
             (assets / ANIMA_ICON_ASSET_FILENAME, ANIMA_ICON_ASSET_FILENAME),
             (assets / ANIMA_ICON_ASSET_FILENAME_REALISTIC, ANIMA_ICON_ASSET_FILENAME_REALISTIC),
+            (assets / ANIMA_BUSTUP_ASSET_FILENAME, ANIMA_BUSTUP_ASSET_FILENAME),
+            (assets / ANIMA_BUSTUP_ASSET_FILENAME_REALISTIC, ANIMA_BUSTUP_ASSET_FILENAME_REALISTIC),
         ):
             if path.is_file():
                 return (path, filename)
@@ -158,19 +171,17 @@ def resolve_anima_icon_url(
         if template_is_external_icon_url(template):
             return template.format(name=anima_name)
         if not base:
-            return ""
+            return _resolve_uploaded_avatar_url(anima_name)
         path_resolved = template.format(name=quote(anima_name, safe=""))
         if not path_resolved.startswith("/"):
             path_resolved = "/" + path_resolved
         return base.rstrip("/") + path_resolved
 
-    if not base:
-        return ""
     asset = _icon_asset_for_url(anima_name)
-    if asset is None:
-        return ""
-    _, filename = asset
-    return f"{base.rstrip('/')}/api/animas/{quote(anima_name, safe='')}/assets/{filename}"
+    if asset is not None and base:
+        _, filename = asset
+        return f"{base.rstrip('/')}/api/animas/{quote(anima_name, safe='')}/assets/{filename}"
+    return _resolve_uploaded_avatar_url(anima_name)
 
 
 def resolve_anima_icon_identity(
@@ -181,6 +192,19 @@ def resolve_anima_icon_identity(
     if not anima_name:
         return ("", "")
     return (anima_name, resolve_anima_icon_url(anima_name, channel_config))
+
+
+def _resolve_uploaded_avatar_url(anima_name: str) -> str:
+    """Return the uploaded public Slack avatar URL when a local source exists."""
+    try:
+        from server.slack_avatar_upload import get_avatar_public_url
+
+        avatar_png = Path(__file__).resolve().parents[2] / "assets" / "slack-avatars" / f"{anima_name}.png"
+        if avatar_png.is_file():
+            return get_avatar_public_url(anima_name)
+    except Exception:
+        logger.debug("Failed to resolve uploaded avatar URL", exc_info=True)
+    return ""
 
 
 def persist_anima_icon_path_template() -> None:
