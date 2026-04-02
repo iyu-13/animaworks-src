@@ -342,6 +342,25 @@ function _wrapRow(role, bubbleHtml, avatarHtml) {
   return `<div class="chat-msg-row assistant">${avatarHtml}${bubbleHtml}</div>`;
 }
 
+function _sourceLabel(sourceKey) {
+  if (!sourceKey) return "";
+  const key = `chat.source_${sourceKey}`;
+  const localized = t(key);
+  return localized === key ? sourceKey : localized;
+}
+
+function _renderMessageMeta(msg, escapeHtml) {
+  const parts = [];
+  if (msg.to_person) {
+    parts.push(`${escapeHtml(t("chat.meta_to"))}: ${escapeHtml(msg.to_person)}`);
+  }
+  if (msg.source_key) {
+    parts.push(`${escapeHtml(t("chat.meta_source"))}: ${escapeHtml(_sourceLabel(msg.source_key))}`);
+  }
+  if (!parts.length) return "";
+  return `<div class="chat-message-meta">${parts.join(" · ")}</div>`;
+}
+
 /**
  * Render a history message (from conversation API) to HTML.
  * @param {object} msg - Message object with role, content, tool_calls, images, ts, from_person
@@ -379,12 +398,10 @@ export function renderHistoryMessage(msg, opts) {
     if (msg.thinking_text) {
       thinkingHtml = `<details class="thinking-block"><summary class="thinking-summary">\u{1F4AD} Thinking</summary><pre class="thinking-content">${escapeHtml(msg.thinking_text)}</pre></details>`;
     }
-    const toLabel = msg.to_person
-      ? `<div style="font-size:0.72rem; opacity:0.7; margin-bottom:2px;">→ ${escapeHtml(msg.to_person)}</div>`
-      : "";
+    const metaHtml = _renderMessageMeta(msg, escapeHtml);
     const actionsHtml = _bubbleActionsHtml(rawText);
     const dataAttr = rawText ? ` data-raw-text="${_escapeAttr(rawText)}"` : "";
-    const bubble = `<div class="chat-bubble assistant"${dataAttr}>${actionsHtml}${speakerLabel}${toLabel}${thinkingHtml}${content}${imagesHtml}${toolHtml}${tsHtml}</div>`;
+    const bubble = `<div class="chat-bubble assistant"${dataAttr}>${actionsHtml}${speakerLabel}${metaHtml}${thinkingHtml}${content}${imagesHtml}${toolHtml}${tsHtml}</div>`;
     return _wrapRow("assistant", bubble, _renderAvatar(speakerName, avatarMap));
   }
 
@@ -697,11 +714,12 @@ export function renderLiveBubble(msg, opts) {
     toolHtml = `<div class="tool-indicator"><span class="tool-spinner"></span>${typeof toolLabel === "function" ? toolLabel(msg.activeTool) : toolLabel}</div>`;
   }
   const imagesHtml = renderImages(msg.images, { animaName: opts.animaName });
+  const metaHtml = _renderMessageMeta(msg, escapeHtml);
 
   const rawText = _normalizeDisplayText(msg.text || "");
   const actionsHtml = msg.streaming ? "" : _bubbleActionsHtml(rawText);
   const dataRawAttr = rawText && !msg.streaming ? ` data-raw-text="${_escapeAttr(rawText)}"` : "";
-  const bubble = `<div class="chat-bubble assistant${streamClass}"${streamIdAttr}${dataRawAttr}>${actionsHtml}${speakerLabel}${content}${imagesHtml}${compressionHtml}${toolHtml}${thinkingHtml}${tsHtml}</div>`;
+  const bubble = `<div class="chat-bubble assistant${streamClass}"${streamIdAttr}${dataRawAttr}>${actionsHtml}${speakerLabel}${metaHtml}${content}${imagesHtml}${compressionHtml}${toolHtml}${thinkingHtml}${tsHtml}</div>`;
   return _wrapRow("assistant", bubble, _renderAvatar(speakerName, avatarMap));
 }
 
@@ -715,7 +733,9 @@ export function renderStreamingBubbleInner(msg, opts) {
   const speakerLabel = msg.speaker
     ? `<div class="chat-speaker-label">${escapeHtml(msg.speaker)}${msg.speakerRole === "chair" ? " 👑" : ""}</div>`
     : "";
+  const metaHtml = _renderMessageMeta(msg, escapeHtml);
   return speakerLabel
+    + metaHtml
     + `<div class="streaming-zone-text">${_renderTextZoneContent(msg, opts)}</div>`
     + `<div class="streaming-zone-tools">${_renderToolZoneContent(msg, opts)}</div>`
     + `<div class="streaming-zone-subordinate">${_renderSubordinateZoneContent(msg, opts)}</div>`

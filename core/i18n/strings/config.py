@@ -42,6 +42,14 @@ STRINGS: dict[str, dict[str, str]] = {
         "ja": "あなたの bootstrap.md ファイルを読み、指示に従ってください。",
         "en": "Read your bootstrap.md file and follow its instructions.",
     },
+    "anima.chat_reply_delivery_failed": {
+        "ja": "{to} への{via}送信に失敗しました。内容はチャットには表示しません。",
+        "en": "Failed to send this reply to {to} via {via}. The content is not shown in chat.",
+    },
+    "anima.chat_reply_sent_via_external": {
+        "ja": "この返答は {to} へ{via}で送信しました。",
+        "en": "This reply was sent to {to} via {via}.",
+    },
     "anima.consolidation_end": {
         "ja": "{type}記憶統合完了",
         "en": "{type} consolidation completed",
@@ -69,6 +77,18 @@ STRINGS: dict[str, dict[str, str]] = {
     "anima.cron_task_summary": {
         "ja": "タスク: {task}",
         "en": "Task: {task}",
+    },
+    "anima.delivery_via_chatwork": {
+        "ja": "Chatwork",
+        "en": "Chatwork",
+    },
+    "anima.delivery_via_external": {
+        "ja": "外部DM",
+        "en": "external DM",
+    },
+    "anima.delivery_via_slack": {
+        "ja": "Slack DM",
+        "en": "Slack DM",
     },
     "scheduler.cron_health_title": {
         "ja": "⚠️ Cronヘルスチェック警告",

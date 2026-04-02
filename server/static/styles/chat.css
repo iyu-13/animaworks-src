@@ -3244,6 +3244,13 @@
   margin-bottom: 2px;
 }
 
+.chat-message-meta {
+  font-size: 0.72rem;
+  opacity: 0.72;
+  margin-bottom: 4px;
+  line-height: 1.35;
+}
+
 /* Meeting setup panel */
 .meeting-setup {
   padding: 12px;

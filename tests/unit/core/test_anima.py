@@ -214,6 +214,53 @@ class TestProcessMessage:
             assert result == "Hello!"
             assert dp._status_slots.get("conversation:default", "idle") == "idle"
 
+    async def test_process_message_routes_external_user_reply_to_slack_dm(self, data_dir, make_anima):
+        anima_dir = make_anima("alice")
+        shared_dir = data_dir / "shared"
+
+        with (
+            patch("core.anima.AgentCore"),
+            patch("core.anima.MemoryManager") as MockMM,
+            patch("core.anima.Messenger"),
+            patch("core._anima_messaging.ConversationMemory") as MockConv,
+            patch("core.config.models.load_config") as mock_load_config,
+            patch("core.paths.get_animas_dir", return_value=data_dir / "animas"),
+            patch("core.outbound.resolve_recipient") as mock_resolve_recipient,
+            patch("core.outbound.send_external") as mock_send_external,
+        ):
+            from core.outbound import ResolvedRecipient
+
+            MockMM.return_value.read_model_config.return_value = MagicMock()
+            MockConv.return_value.compress_if_needed = AsyncMock()
+            MockConv.return_value.finalize_session = AsyncMock(return_value=False)
+            MockConv.return_value.build_chat_prompt.return_value = "prompt"
+            MockConv.return_value.append_turn = MagicMock()
+            MockConv.return_value.save = MagicMock()
+            MockConv.return_value.write_transcript = MagicMock()
+            mock_load_config.return_value = MagicMock(external_messaging=MagicMock())
+            mock_resolve_recipient.return_value = ResolvedRecipient(
+                is_internal=False,
+                name="cmnt",
+                channel="slack",
+                slack_user_id="U12345678",
+            )
+            mock_send_external.return_value = '{"status":"sent","channel":"slack"}'
+
+            from core.anima import DigitalAnima
+
+            dp = DigitalAnima(anima_dir, shared_dir)
+            _wire_session_type(dp)
+            dp._session_compactor.schedule = MagicMock()
+            dp.agent.run_cycle = AsyncMock(return_value=_make_cycle_result(summary="Hello!"))
+
+            result = await dp.process_message("Hi", from_person="cmnt")
+
+            assert "Slack DM" in result
+            mock_send_external.assert_called_once()
+            append_calls = MockConv.return_value.append_turn.call_args_list
+            assert append_calls[1].args[0] == "assistant"
+            assert "Slack DM" in append_calls[1].args[1]
+
     async def test_status_transitions(self, data_dir, make_anima):
         anima_dir = make_anima("alice")
         shared_dir = data_dir / "shared"
@@ -899,6 +946,67 @@ class TestProcessMessageStreamConversationSave:
 
             # save() called twice: pre-save + cycle_done save
             assert MockConv.return_value.save.call_count == 2
+
+    async def test_stream_routes_external_user_reply_to_slack_dm_without_text_delta(
+        self,
+        data_dir,
+        make_anima,
+    ):
+        anima_dir = make_anima("alice")
+        shared_dir = data_dir / "shared"
+
+        with (
+            patch("core.anima.AgentCore"),
+            patch("core.anima.MemoryManager") as MockMM,
+            patch("core.anima.Messenger"),
+            patch("core._anima_messaging.ConversationMemory") as MockConv,
+            patch("core.config.models.load_config") as mock_load_config,
+            patch("core.paths.get_animas_dir", return_value=data_dir / "animas"),
+            patch("core.outbound.resolve_recipient") as mock_resolve_recipient,
+            patch("core.outbound.send_external") as mock_send_external,
+        ):
+            from core.outbound import ResolvedRecipient
+
+            MockMM.return_value.read_model_config.return_value = MagicMock()
+            MockConv.return_value.needs_compression.return_value = False
+            MockConv.return_value.append_turn = MagicMock()
+            MockConv.return_value.save = MagicMock()
+            MockConv.return_value.write_transcript = MagicMock()
+            MockConv.return_value.build_chat_prompt.return_value = "prompt"
+            mock_load_config.return_value = MagicMock(external_messaging=MagicMock())
+            mock_resolve_recipient.return_value = ResolvedRecipient(
+                is_internal=False,
+                name="cmnt",
+                channel="slack",
+                slack_user_id="U12345678",
+            )
+            mock_send_external.return_value = '{"status":"sent","channel":"slack"}'
+
+            from core.anima import DigitalAnima
+
+            dp = DigitalAnima(anima_dir, shared_dir)
+            _wire_session_type(dp)
+            dp._session_compactor.schedule = MagicMock()
+
+            async def mock_stream(prompt, trigger="manual", **kwargs):
+                yield {"type": "text_delta", "text": "secret"}
+                yield {
+                    "type": "cycle_done",
+                    "cycle_result": {"summary": "secret"},
+                }
+
+            dp.agent.run_cycle_streaming = mock_stream
+
+            chunks = []
+            async for chunk in dp.process_message_stream("Hi", from_person="cmnt"):
+                chunks.append(chunk)
+
+            assert all(chunk.get("type") != "text_delta" for chunk in chunks)
+            done_chunk = next(chunk for chunk in chunks if chunk.get("type") == "cycle_done")
+            assert "Slack DM" in done_chunk["cycle_result"]["summary"]
+            append_calls = MockConv.return_value.append_turn.call_args_list
+            assert append_calls[1].args[0] == "assistant"
+            assert "Slack DM" in append_calls[1].args[1]
 
 
 class TestProcessGreetConversationSave:

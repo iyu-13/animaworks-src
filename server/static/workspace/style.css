@@ -704,6 +704,13 @@ html, body {
   height: 14px;
 }
 
+.chat-message-meta {
+  font-size: 0.72rem;
+  opacity: 0.72;
+  margin-bottom: 4px;
+  line-height: 1.35;
+}
+
 /* Markdown inside assistant bubbles */
 .chat-bubble.assistant h1,
 .chat-bubble.assistant h2,
@@ -1182,6 +1189,12 @@ html, body {
   font-size: 0.72rem;
   color: #aaa;
   margin-bottom: 2px;
+}
+
+.session-turn-submeta {
+  font-size: 0.72rem;
+  opacity: 0.72;
+  margin-bottom: 4px;
 }
 
 .session-turn-bubble {

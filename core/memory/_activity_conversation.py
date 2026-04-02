@@ -32,6 +32,23 @@ _TOOL_RESULT_TRUNCATE = 1500
 _TOOL_INPUT_TRUNCATE = 500
 
 
+def _source_key_for_entry(entry: ActivityEntry) -> str:
+    """Return a compact source key for chat rendering."""
+    if entry.type.startswith("heartbeat_"):
+        return "heartbeat"
+    if entry.type == "cron_executed":
+        return "cron"
+    if entry.type.startswith("task_exec_"):
+        return "task"
+    if entry.channel == "inbox":
+        return "inbox"
+    if entry.channel == "chat":
+        return "chat"
+    if entry.type == "message_sent":
+        return "dm"
+    return entry.channel or "chat"
+
+
 def _truncate_tool_field(value: Any, limit: int) -> Any:
     """Truncate tool input/result for the conversation view API."""
     if isinstance(value, str):
@@ -239,6 +256,8 @@ class ConversationMixin:
                         "role": "human",
                         "content": e.content,
                         "from_person": e.from_person,
+                        "to_person": e.to_person,
+                        "source_key": _source_key_for_entry(e),
                         "tool_calls": [],
                     }
                 )
@@ -252,6 +271,7 @@ class ConversationMixin:
                         "content": e.content,
                         "from_person": "",
                         "to_person": e.to_person,
+                        "source_key": _source_key_for_entry(e),
                         "tool_calls": [],
                     }
                 )
@@ -262,6 +282,8 @@ class ConversationMixin:
                     "role": "assistant",
                     "content": e.content,
                     "from_person": "",
+                    "to_person": e.to_person,
+                    "source_key": _source_key_for_entry(e),
                     "tool_calls": [],
                 }
                 if e.meta.get("thinking_text"):
@@ -304,6 +326,7 @@ class ConversationMixin:
                         "role": "system",
                         "content": e.summary or t("activity.heartbeat_start"),
                         "from_person": "",
+                        "source_key": _source_key_for_entry(e),
                         "tool_calls": [],
                         "_trigger": "heartbeat",
                     }
@@ -317,6 +340,7 @@ class ConversationMixin:
                         "role": "system",
                         "content": e.summary or e.content or t("activity.heartbeat_end"),
                         "from_person": "",
+                        "source_key": _source_key_for_entry(e),
                         "tool_calls": [],
                         "_trigger": "heartbeat",
                     }
@@ -332,6 +356,7 @@ class ConversationMixin:
                         "role": "system",
                         "content": content,
                         "from_person": "",
+                        "source_key": _source_key_for_entry(e),
                         "tool_calls": [],
                         "_trigger": "cron",
                     }
@@ -345,6 +370,7 @@ class ConversationMixin:
                         "role": "system",
                         "content": e.summary or t("activity.task_exec_start_label"),
                         "from_person": "",
+                        "source_key": _source_key_for_entry(e),
                         "tool_calls": [],
                         "_trigger": "task",
                     }
@@ -358,6 +384,7 @@ class ConversationMixin:
                         "role": "system",
                         "content": e.summary or e.content or t("activity.task_exec_end_label"),
                         "from_person": "",
+                        "source_key": _source_key_for_entry(e),
                         "tool_calls": [],
                         "_trigger": "task",
                     }
@@ -371,6 +398,7 @@ class ConversationMixin:
                         "role": "system",
                         "content": t("activity.error_prefix") + (e.content or e.summary or ""),
                         "from_person": "",
+                        "source_key": _source_key_for_entry(e),
                         "tool_calls": [],
                     }
                 )

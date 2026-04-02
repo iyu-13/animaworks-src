@@ -74,6 +74,94 @@ class MessagingMixin:
                 exc_info=True,
             )
 
+    def _resolve_chat_external_recipient(
+        self,
+        from_person: str,
+        source: str = "",
+    ):
+        """Resolve a human chat recipient to an external DM target when configured."""
+        if not from_person or from_person in {"human", "user", "system", self.name}:
+            return None
+        if source and source in EXTERNAL_PLATFORM_SOURCES:
+            return None
+        try:
+            from core.config.models import load_config
+            from core.outbound import resolve_recipient
+            from core.paths import get_animas_dir
+
+            config = load_config()
+            animas_dir = get_animas_dir()
+            known_animas = {d.name for d in animas_dir.iterdir() if d.is_dir()} if animas_dir.exists() else set()
+            resolved = resolve_recipient(from_person, known_animas, config.external_messaging)
+        except Exception:
+            logger.debug(
+                "[%s] chat external recipient resolution skipped for %s",
+                self.name,
+                from_person,
+                exc_info=True,
+            )
+            return None
+        if resolved is None or resolved.is_internal:
+            return None
+        return resolved
+
+    @staticmethod
+    def _delivery_via_label(via: str) -> str:
+        if via == "slack":
+            return t("anima.delivery_via_slack")
+        if via == "chatwork":
+            return t("anima.delivery_via_chatwork")
+        return t("anima.delivery_via_external")
+
+    def _send_chat_reply_via_resolved(
+        self,
+        resolved: Any,
+        *,
+        to_person: str,
+        content: str,
+    ) -> tuple[str, dict[str, Any]]:
+        """Deliver a chat reply via external DM and return a chat-safe notice."""
+        from core.outbound import send_external
+
+        raw = send_external(
+            resolved,
+            content,
+            sender_name=self.name,
+            anima_name=self.name,
+        )
+        try:
+            parsed = json.loads(raw)
+        except Exception:
+            parsed = {}
+        via = str(parsed.get("channel") or getattr(resolved, "channel", "") or "external").lower()
+        via_label = self._delivery_via_label(via)
+        if parsed.get("status") == "sent":
+            return (
+                t("anima.chat_reply_sent_via_external", to=to_person, via=via_label),
+                {
+                    "delivery_via": via,
+                    "delivery_target": to_person,
+                    "delivery_status": "sent",
+                    "display_only": True,
+                },
+            )
+        logger.warning(
+            "[%s] External chat reply delivery failed to=%s via=%s raw=%r",
+            self.name,
+            to_person,
+            via,
+            raw[:300],
+        )
+        return (
+            t("anima.chat_reply_delivery_failed", to=to_person, via=via_label),
+            {
+                "delivery_via": via,
+                "delivery_target": to_person,
+                "delivery_status": "failed",
+                "display_only": True,
+            },
+        )
+
     async def run_bootstrap(self) -> CycleResult:
         """Run the first-time bootstrap process in the background.
 
@@ -255,6 +343,7 @@ class MessagingMixin:
                     prompt = f"{_ctx}\n\n{prompt}"
 
                 try:
+                    external_chat_recipient = self._resolve_chat_external_recipient(from_person, source)
                     result = await self.agent.run_cycle(
                         prompt,
                         trigger=f"message:{from_person}",
@@ -266,11 +355,35 @@ class MessagingMixin:
                     self._last_activity = now_local()
                     result.summary = normalize_user_facing_response_text(result.summary)
 
+                    # Resolve local absolute/file:// image paths → attachments/
+                    result.summary, local_artifacts = resolve_local_image_paths(
+                        result.summary,
+                        self.anima_dir,
+                    )
+                    display_summary = result.summary
+
+                    # Activity log: response sent (with thinking text if present)
+                    response_artifacts = extract_image_artifacts_from_tool_records(result.tool_call_records)
+                    remaining = max(0, 5 - len(response_artifacts))
+                    response_artifacts.extend(local_artifacts[:remaining])
+                    resp_meta: dict[str, Any] = {"thread_id": thread_id}
+                    if external_chat_recipient is not None:
+                        display_summary, delivery_meta = self._send_chat_reply_via_resolved(
+                            external_chat_recipient,
+                            to_person=from_person,
+                            content=result.summary,
+                        )
+                        resp_meta.update(delivery_meta)
+                    if result.thinking_text:
+                        resp_meta["thinking_text"] = result.thinking_text
+                    if response_artifacts:
+                        resp_meta["images"] = response_artifacts
+
                     # Record assistant response with tool records
                     tool_records = [ToolRecord.from_dict(r) for r in result.tool_call_records]
                     conv_memory.append_turn(
                         "assistant",
-                        result.summary,
+                        display_summary,
                         tool_records=tool_records,
                     )
                     conv_memory.save()
@@ -278,32 +391,18 @@ class MessagingMixin:
                     # Transcript: record assistant response
                     conv_memory.write_transcript(
                         "assistant",
-                        result.summary,
+                        display_summary,
                         thread_id=thread_id,
                         tool_names=[r.tool_name for r in tool_records if r.tool_name] or None,
                     )
 
-                    # Resolve local absolute/file:// image paths → attachments/
-                    result.summary, local_artifacts = resolve_local_image_paths(
-                        result.summary,
-                        self.anima_dir,
-                    )
-
-                    # Activity log: response sent (with thinking text if present)
-                    response_artifacts = extract_image_artifacts_from_tool_records(result.tool_call_records)
-                    remaining = max(0, 5 - len(response_artifacts))
-                    response_artifacts.extend(local_artifacts[:remaining])
-                    resp_meta: dict[str, Any] = {"thread_id": thread_id}
-                    if result.thinking_text:
-                        resp_meta["thinking_text"] = result.thinking_text
-                    if response_artifacts:
-                        resp_meta["images"] = response_artifacts
+                    result.summary = display_summary
                     self._activity.log(
                         "response_sent",
-                        content=result.summary,
+                        content=display_summary,
                         to_person=from_person,
                         channel="chat",
-                        summary=result.summary[:200] if result.summary else "",
+                        summary=display_summary[:200] if display_summary else "",
                         meta=resp_meta,
                     )
 
@@ -315,7 +414,7 @@ class MessagingMixin:
                     result.images = response_artifacts
                     if include_cycle_result:
                         return result.model_dump(mode="json")
-                    return result.summary
+                    return display_summary
                 except Exception as exc:
                     logger.exception("[%s] process_message FAILED", self.name)
                     # Activity log: error (safe=True to prevent double-fault)
@@ -494,6 +593,7 @@ class MessagingMixin:
                 if source and source in EXTERNAL_PLATFORM_SOURCES:
                     _ctx = t("anima.platform_context", source=source)
                     prompt = f"{_ctx}\n\n{prompt}"
+                external_chat_recipient = self._resolve_chat_external_recipient(from_person, source)
 
                 # Streaming journal: write-ahead log for crash recovery
                 journal = StreamingJournal(self.anima_dir, thread_id=thread_id)
@@ -551,10 +651,20 @@ class MessagingMixin:
                             response_artifacts.extend(local_artifacts[:remaining])
                             if response_artifacts:
                                 cycle_result["images"] = response_artifacts
+                            display_summary = summary
+                            resp_meta: dict[str, Any] = {"thread_id": thread_id}
+                            if external_chat_recipient is not None:
+                                display_summary, delivery_meta = self._send_chat_reply_via_resolved(
+                                    external_chat_recipient,
+                                    to_person=from_person,
+                                    content=summary,
+                                )
+                                resp_meta.update(delivery_meta)
+                            cycle_result["summary"] = display_summary
                             tool_records = [ToolRecord.from_dict(r) for r in cycle_result.get("tool_call_records", [])]
                             conv_memory.append_turn(
                                 "assistant",
-                                summary,
+                                display_summary,
                                 tool_records=tool_records,
                             )
                             conv_memory.save()
@@ -562,29 +672,28 @@ class MessagingMixin:
                             # Transcript: record assistant response
                             conv_memory.write_transcript(
                                 "assistant",
-                                summary,
+                                display_summary,
                                 thread_id=thread_id,
                                 tool_names=[r.tool_name for r in tool_records if r.tool_name] or None,
                             )
 
                             # Activity log: response sent (with thinking text if present)
                             thinking_text = cycle_result.get("thinking_text", "")
-                            resp_meta: dict[str, Any] = {"thread_id": thread_id}
                             if thinking_text:
                                 resp_meta["thinking_text"] = thinking_text
                             if response_artifacts:
                                 resp_meta["images"] = response_artifacts
                             self._activity.log(
                                 "response_sent",
-                                content=summary,
+                                content=display_summary,
                                 to_person=from_person,
                                 channel="chat",
-                                summary=summary[:200] if summary else "",
+                                summary=display_summary[:200] if display_summary else "",
                                 meta=resp_meta,
                             )
 
                             # Finalize streaming journal (deletes the file)
-                            journal.finalize(summary=summary[:500])
+                            journal.finalize(summary=display_summary[:500])
 
                             # Yield pending notification events before cycle_done
                             for notif in self.agent.drain_notifications():
@@ -612,6 +721,11 @@ class MessagingMixin:
                                 _sched_thread,
                                 _fire_compaction,
                             )
+                        if (
+                            external_chat_recipient is not None
+                            and chunk.get("type") == "text_delta"
+                        ):
+                            continue
                         yield chunk
                 except Exception as exc:
                     logger.exception("[%s] process_message_stream FAILED", self.name)
@@ -648,7 +762,9 @@ class MessagingMixin:
                         )
                     # Save partial response if cycle_done was never received
                     if not cycle_done:
-                        if partial_response:
+                        if external_chat_recipient is not None:
+                            saved_text = t("anima.response_interrupted")
+                        elif partial_response:
                             saved_text = partial_response + t("anima.response_interrupted_prefix")
                         else:
                             saved_text = t("anima.response_interrupted")

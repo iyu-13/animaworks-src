@@ -260,12 +260,15 @@ export class ChatSessionManager extends EventTarget {
     }
     const streamId = session.nextStreamId();
     const sendTs = new Date().toISOString();
+    const user = this.#config.getUser();
 
     session.messages.push({ role: "user", text, images: displayImages, timestamp: sendTs });
 
     const streamingMsg = {
       role: "assistant", text: "", streaming: true, activeTool: null,
       timestamp: sendTs, thinkingText: "", thinking: false, streamId,
+      to_person: user,
+      source_key: "chat",
     };
     session.messages.push(streamingMsg);
     session._streamingMsg = streamingMsg;
@@ -279,7 +282,6 @@ export class ChatSessionManager extends EventTarget {
     this.#dispatch("stream-state-changed", { anima, thread, isStreaming: true });
 
     try {
-      const user = this.#config.getUser();
       const bodyObj = { message: text || "", from_person: user, thread_id: thread };
       if (images.length > 0) bodyObj.images = images;
 
@@ -334,6 +336,8 @@ export class ChatSessionManager extends EventTarget {
         toolHistory: progress.tool_history || [],
         timestamp: new Date().toISOString(),
         thinkingText: "", thinking: false, streamId,
+        to_person: this.#config.getUser(),
+        source_key: "chat",
       };
       session.messages.push(streamingMsg);
       session._streamingMsg = streamingMsg;

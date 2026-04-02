@@ -190,10 +190,12 @@ STRINGS: dict[str, dict[str, str]] = {
     },
     "handler.send_msg_chat_hint": {
         "ja": (
-            "宛先 '{to}' には send_message で送信できません。チャット中は直接テキストで返答すれば人間ユーザーに届きます。send_message は他のAnima宛てにのみ使用してください。"
+            "宛先 '{to}' には send_message で送信できません。人間宛ての返答はチャット本文ではなく外部DMで送る運用です。"
+            " external_messaging.user_aliases の設定を確認し、必要なら call_human を使用してください。"
         ),
         "en": (
-            "Cannot send to '{to}' via send_message. During chat, reply directly in text to reach the human user. Use send_message only for other Animas."
+            "Cannot send to '{to}' via send_message. Human-directed replies should go via external DM rather than chat text. "
+            "Check external_messaging.user_aliases and use call_human if needed."
         ),
     },
     "handler.send_msg_non_chat_hint": {

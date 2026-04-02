@@ -80,6 +80,8 @@ def test_basic_conversation_view(anima_dir: Path) -> None:
     msg1 = session["messages"][1]
     assert msg1["role"] == "assistant"
     assert "元気ですか" in msg1["content"]
+    assert msg1["to_person"] == "admin"
+    assert msg1["source_key"] == "chat"
     assert msg1["tool_calls"] == []
 
 
@@ -144,6 +146,8 @@ def test_assistant_images_restored_from_response_meta(anima_dir: Path) -> None:
     result = al.get_conversation_view(limit=50)
     assistant = result["sessions"][0]["messages"][1]
     assert assistant["role"] == "assistant"
+    assert assistant["to_person"] == "user"
+    assert assistant["source_key"] == "chat"
     assert assistant["images"][0]["path"] == "assets/avatar_fullbody.png"
 
 

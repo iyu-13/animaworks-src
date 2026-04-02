@@ -48,6 +48,21 @@ function getDetailBody() {
   return _container.querySelector(".session-detail-body");
 }
 
+function _sourceLabel(sourceKey) {
+  if (!sourceKey) return "";
+  const key = `chat.source_${sourceKey}`;
+  const localized = t(key);
+  return localized === key ? sourceKey : localized;
+}
+
+function _messageMeta(turn) {
+  const parts = [];
+  if (turn.to_person) parts.push(`${t("chat.meta_to")} ${escapeHtml(turn.to_person)}`);
+  if (turn.source_key) parts.push(`${t("chat.meta_source")} ${escapeHtml(_sourceLabel(turn.source_key))}`);
+  if (!parts.length) return "";
+  return `<div class="session-turn-submeta">${parts.join(" · ")}</div>`;
+}
+
 // ── Render ──────────────────────
 
 /** Build the session panel DOM inside the given container. */
@@ -212,10 +227,11 @@ function renderTurns(data) {
       const roleLabel = turn.role === "human" ? t("chat.role_human") : turn.role;
       const content =
         turn.role === "assistant" ? renderSimpleMarkdown(turn.content || "") : escapeHtml(turn.content || "");
+      const metaHtml = _messageMeta(turn);
       html += `
         <div class="session-turn">
           <div class="session-turn-meta">${ts} - ${escapeHtml(roleLabel)}</div>
-          <div class="session-turn-bubble ${roleClass}">${content}</div>
+          <div class="session-turn-bubble ${roleClass}">${metaHtml}${content}</div>
         </div>`;
     }
   }
@@ -332,10 +348,11 @@ function renderConversationSessions(data) {
         const roleLabel = msg.role === "human" ? t("chat.role_human") : msg.role === "system" ? t("chat.role_system") : msg.role;
         const content = msg.role === "assistant" ? renderSimpleMarkdown(msg.content || "") : escapeHtml(msg.content || "");
         const toolHtml = msg.role === "assistant" ? _renderToolCalls(msg.tool_calls) : "";
+        const metaHtml = _messageMeta(msg);
         html += `
           <div class="session-turn">
             <div class="session-turn-meta">${ts} - ${escapeHtml(roleLabel)}</div>
-            <div class="session-turn-bubble ${roleClass}">${content}${toolHtml}</div>
+            <div class="session-turn-bubble ${roleClass}">${metaHtml}${content}${toolHtml}</div>
           </div>`;
       }
     }
