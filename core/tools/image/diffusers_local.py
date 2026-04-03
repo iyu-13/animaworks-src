@@ -657,16 +657,15 @@ class LocalDiffusersClient:
         """
         del sampler, vibe_info_extracted
 
-        # In CPU-offload mode, cap size to 512×512 to limit VRAM peak during
-        # decode. Keep at least 25 steps — SDXL needs ~20+ to produce a
-        # recognisable human face; 10 was too low and caused non-human output.
+        # In CPU-offload mode, cap output size to 512×512 to limit peak VRAM
+        # during VAE decode.  Step count is NOT capped — the caller controls
+        # quality vs. speed via the steps slider.
         cpu_offload = self._should_use_cpu_offload()
         if cpu_offload:
-            steps = min(steps, 25)             # floor raised from 10 → 25
-            width = min(width, 512)            # max 512×512
+            width = min(width, 512)
             height = min(height, 512)
             logger.info(
-                "Low-VRAM CPU-offload mode: reduced to %d steps at %dx%d",
+                "Low-VRAM CPU-offload mode: %d steps at %dx%d",
                 steps, width, height,
             )
 

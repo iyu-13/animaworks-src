@@ -314,6 +314,7 @@ class ImageGenPipeline:
         progress_callback: Callable[[str, str, int], None] | None = None,
         face_reference_image: bytes | None = None,
         fullbody_step_callback: Callable[[int, int], None] | None = None,
+        num_inference_steps: int | None = None,
     ) -> PipelineResult:
         """Run the 7-step pipeline synchronously.
 
@@ -450,6 +451,8 @@ class ImageGenPipeline:
                     }
                     if self._use_diffusers:
                         _fb_kwargs["step_callback"] = fullbody_step_callback
+                    if num_inference_steps is not None:
+                        _fb_kwargs["steps"] = num_inference_steps
                     fullbody_bytes = client.generate_fullbody(**_fb_kwargs)
                     fullbody_path.write_bytes(fullbody_bytes)
                     result.fullbody_path = fullbody_path

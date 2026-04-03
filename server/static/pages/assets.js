@@ -569,6 +569,13 @@ function _openRemakeModal() {
           </div>
 
           <div class="assets-modal-control-row">
+            <label class="assets-modal-label" for="assetsSteps">
+              Steps: <span id="assetsStepsVal">25</span>
+            </label>
+            <input type="range" id="assetsSteps" min="10" max="60" step="1" value="25" class="assets-modal-range">
+          </div>
+
+          <div class="assets-modal-control-row">
             <label class="assets-modal-label" for="assetsFaceRefUrl">
               Face Reference (URL):
             </label>
@@ -626,6 +633,12 @@ function _openRemakeModal() {
   const infoVal = document.getElementById("assetsInfoExtractVal");
   if (infoSlider && infoVal) {
     infoSlider.addEventListener("input", () => { infoVal.textContent = infoSlider.value; });
+  }
+
+  const stepsSlider = document.getElementById("assetsSteps");
+  const stepsVal = document.getElementById("assetsStepsVal");
+  if (stepsSlider && stepsVal) {
+    stepsSlider.addEventListener("input", () => { stepsVal.textContent = stepsSlider.value; });
   }
 
   const styleSelect = document.getElementById("assetsStyleFrom");
@@ -736,6 +749,7 @@ async function _generatePreview() {
   const styleFrom = document.getElementById("assetsStyleFrom")?.value || null;
   const vibeStrength = parseFloat(document.getElementById("assetsVibeStrength")?.value || "0.6");
   const infoExtracted = parseFloat(document.getElementById("assetsInfoExtract")?.value || "0.8");
+  const numSteps = parseInt(document.getElementById("assetsSteps")?.value || "25", 10);
 
   const generateBtn = document.getElementById("assetsGeneratePreviewBtn");
   const retryBtn = document.getElementById("assetsRetryBtn");
@@ -761,6 +775,7 @@ async function _generatePreview() {
     vibe_strength: vibeStrength,
     vibe_info_extracted: infoExtracted,
     image_style: imageStyle,
+    num_inference_steps: numSteps,
   };
   if (styleFrom) requestBody.style_from = styleFrom;
   if (_previewBackupId) requestBody.backup_id = _previewBackupId;

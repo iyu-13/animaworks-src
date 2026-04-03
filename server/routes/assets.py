@@ -114,6 +114,12 @@ class RemakePreviewRequest(BaseModel):
     backup_id: str | None = None
     face_reference_url: str | None = None  # URL of a face photo for IP-Adapter
     import_as_is: bool = False  # Import face reference directly as avatar
+    num_inference_steps: int = 25  # Diffusers inference step count (quality vs speed)
+
+    @field_validator("num_inference_steps")
+    @classmethod
+    def validate_steps(cls, v: int) -> int:
+        return max(5, min(100, v))
 
     @field_validator("vibe_strength", "vibe_info_extracted")
     @classmethod
@@ -826,6 +832,7 @@ def create_assets_router() -> APIRouter:
         if vibe_image is not None or face_reference_bytes is not None:
             gen_kwargs["vibe_strength"] = body.vibe_strength
             gen_kwargs["vibe_info_extracted"] = body.vibe_info_extracted
+        gen_kwargs["num_inference_steps"] = body.num_inference_steps
 
         ws_manager = getattr(request.app.state, "ws_manager", None)
 
