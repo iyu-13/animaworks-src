@@ -24,6 +24,9 @@ _ASPECT_SIZES: dict[str, tuple[int, int]] = {
 }
 _PIPELINE_CACHE: dict[tuple[str, str, str, str], Any] = {}
 _IP_ADAPTER_LOADED: set[tuple[str, str, str, str]] = set()
+# Saved UNet encoder_hid_dim_type before IP-Adapter was loaded, keyed by pipeline cache key.
+# unload_ip_adapter() does not reliably restore this config value, so we restore it manually.
+_IP_ADAPTER_ORIGINAL_HID_DIM: dict[tuple[str, str, str, str], Any] = {}
 
 # ── SCRFD face detection via onnxruntime (cv2-free) ──────────
 
@@ -533,6 +536,14 @@ class LocalDiffusersClient:
                     pipe.unet.set_default_attn_processor()
                 except Exception:
                     pass
+                # Save original encoder_hid_dim_type so we can restore it after
+                # unload_ip_adapter() (which does not reliably reset this config value).
+                try:
+                    _IP_ADAPTER_ORIGINAL_HID_DIM[cache_key] = getattr(
+                        pipe.unet.config, "encoder_hid_dim_type", None
+                    )
+                except Exception:
+                    _IP_ADAPTER_ORIGINAL_HID_DIM[cache_key] = None
                 pipe.load_ip_adapter(
                     ip_model,
                     subfolder=subfolder,
@@ -569,9 +580,19 @@ class LocalDiffusersClient:
             return
         try:
             pipe.unload_ip_adapter()
+            # unload_ip_adapter() does not reliably restore encoder_hid_dim_type in
+            # the UNet config.  Restore the saved original value so that any pipeline
+            # derived from this one (e.g. via from_pipe) does not inherit the stale
+            # 'ip_image_proj' setting and crash when image_embeds is absent.
+            original_hid_dim = _IP_ADAPTER_ORIGINAL_HID_DIM.pop(text2img_key, None)
+            try:
+                pipe.unet.config.encoder_hid_dim_type = original_hid_dim
+            except Exception:
+                pass
             logger.info("IP-Adapter retired (switching away from face reference mode)")
         except Exception:
             logger.warning("Failed to unload IP-Adapter", exc_info=True)
+            _IP_ADAPTER_ORIGINAL_HID_DIM.pop(text2img_key, None)
         _IP_ADAPTER_LOADED.discard(text2img_key)
         # Invalidate derived img2img cache so it is rebuilt cleanly.
         img2img_key = ("img2img", self._img2img_source, self._device, self._dtype_name)
