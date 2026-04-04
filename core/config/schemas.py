@@ -731,6 +731,7 @@ class AnimaWorksConfig(BaseModel):
         default_factory=list,
         description="Time-based activity level schedule. Empty = use fixed activity_level.",
     )
+    icon_url_template: str = ""
     ui: UIConfig = UIConfig()
 
 

@@ -30,11 +30,18 @@ _BUSTUP_CANDIDATES = [
 ]
 
 
-def _update_slack_avatar(anima_name: str, assets_dir: Path) -> bool:
+def _update_slack_avatar(anima_name: str, assets_dir: Path, *, force: bool = False) -> bool:
     """Crop bustup image to square and save to slack-avatars/ directory.
 
-    Returns True if the avatar was updated, False if no source image found.
+    Skips if a hand-crafted avatar already exists (git-tracked) unless
+    *force* is True.  Returns True if the avatar was updated.
     """
+    _SLACK_AVATAR_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = _SLACK_AVATAR_DIR / f"{anima_name}.png"
+    if out_path.is_file() and not force:
+        logger.debug("Slack avatar already exists for '%s'; skipping auto-generation", anima_name)
+        return False
+
     src: Path | None = None
     for candidate in _BUSTUP_CANDIDATES:
         p = assets_dir / candidate
@@ -58,8 +65,6 @@ def _update_slack_avatar(anima_name: str, assets_dir: Path) -> bool:
             cropped = img
         resized = cropped.resize((_SLACK_ICON_SIZE, _SLACK_ICON_SIZE), Image.LANCZOS)
 
-    _SLACK_AVATAR_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = _SLACK_AVATAR_DIR / f"{anima_name}.png"
     resized.save(out_path, format="PNG", optimize=True)
     logger.info("Slack avatar updated: %s (%s -> %s)", anima_name, src.name, out_path)
     return True
@@ -1253,14 +1258,10 @@ def create_assets_router() -> APIRouter:
                     _sh2.rmtree(backup_dir, ignore_errors=True)
                     logger.info("Removed backup after successful rebuild: %s", backup_dir.name)
 
-                # Regenerate Slack avatar (cropped square icon) and upload to XSERVER
                 try:
-                    if _update_slack_avatar(name, assets_dir):
-                        from server.slack_avatar_upload import upload_avatar
-
-                        upload_avatar(name)
+                    _update_slack_avatar(name, assets_dir)
                 except Exception:
-                    logger.debug("Slack avatar update/upload failed for %s", name, exc_info=True)
+                    logger.debug("Slack avatar update failed for %s", name, exc_info=True)
 
                 await _emit_ws(
                     "anima.remake_complete",

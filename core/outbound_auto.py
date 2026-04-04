@@ -31,25 +31,13 @@ _MAX_SLACK_TEXT = 40000
 def _resolve_avatar_url(anima_name: str) -> str:
     """Resolve avatar URL for Slack icon_url.
 
-    Priority:
-      1. AVATAR_URL__{name} from vault / shared credentials / env (manual override)
-      2. XSERVER public URL (auto-uploaded avatars)
+    Delegates to the canonical resolver which checks file existence
+    before returning XSERVER URLs.
     """
-    key = f"AVATAR_URL__{anima_name}"
-    url = _lookup_vault_credential(key)
-    if url:
-        return url
-    url = _lookup_shared_credentials(key)
-    if url:
-        return url
-    url = os.environ.get(key) or ""
-    if url:
-        return url
-    # Fall back to XSERVER hosted avatar
     try:
-        from server.slack_avatar_upload import get_avatar_public_url
+        from core.tools._anima_icon_url import resolve_anima_icon_url
 
-        return get_avatar_public_url(anima_name)
+        return resolve_anima_icon_url(anima_name, channel_config=None)
     except Exception:
         return ""
 
