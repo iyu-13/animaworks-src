@@ -31,8 +31,8 @@ _MAX_SLACK_TEXT = 40000
 def _resolve_avatar_url(anima_name: str) -> str:
     """Resolve avatar URL for Slack icon_url.
 
-    Delegates to the canonical resolver which checks file existence
-    before returning XSERVER URLs.
+    Delegates to :func:`core.tools._anima_icon_url.resolve_anima_icon_url`
+    which applies the 3-tier resolution (per-Anima / env / config / channel / asset).
     """
     try:
         from core.tools._anima_icon_url import resolve_anima_icon_url

@@ -73,6 +73,18 @@ class TestPerAnimaIconUrl:
         monkeypatch.delenv(_ICON_URL_TEMPLATE_ENV_KEY, raising=False)
         assert resolve_anima_icon_url("nobody") == ""
 
+    def test_non_http_icon_url_rejected(self, tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ANIMAWORKS_DATA_DIR", str(tmp_path))
+        monkeypatch.delenv("ANIMAWORKS_SERVER_URL", raising=False)
+        monkeypatch.delenv(_ICON_URL_TEMPLATE_ENV_KEY, raising=False)
+        anima_dir = _animas_root(tmp_path) / "evil"
+        anima_dir.mkdir(parents=True)
+        (anima_dir / "status.json").write_text(
+            json.dumps({"name": "evil", "icon_url": "javascript:alert(1)"}),
+            encoding="utf-8",
+        )
+        assert resolve_anima_icon_url("evil") == ""
+
 
 # ── Layer 2: ICON_URL_TEMPLATE env var ──────────────────────────────────────
 
@@ -83,6 +95,12 @@ class TestEnvVarTemplate:
         monkeypatch.setenv(_ICON_URL_TEMPLATE_ENV_KEY, "https://github.example/{name}.png")
         monkeypatch.delenv("ANIMAWORKS_SERVER_URL", raising=False)
         assert resolve_anima_icon_url("alice") == "https://github.example/alice.png"
+
+    def test_malformed_template_returns_empty(self, tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ANIMAWORKS_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv(_ICON_URL_TEMPLATE_ENV_KEY, "https://cdn/{name}/{foo}.png")
+        monkeypatch.delenv("ANIMAWORKS_SERVER_URL", raising=False)
+        assert resolve_anima_icon_url("alice") == ""
 
     def test_env_var_takes_priority_over_config(self, tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("ANIMAWORKS_DATA_DIR", str(tmp_path))

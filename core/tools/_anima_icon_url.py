@@ -76,7 +76,10 @@ def template_is_external_icon_url(template: str) -> bool:
 
 
 def _get_per_anima_icon_url(anima_name: str) -> str:
-    """Read ``icon_url`` from the Anima's ``status.json`` (lightweight, no config load)."""
+    """Read ``icon_url`` from the Anima's ``status.json`` (lightweight, no config load).
+
+    Only ``http`` / ``https`` URLs are accepted; other schemes are ignored.
+    """
     try:
         from core.paths import get_animas_dir
 
@@ -84,7 +87,11 @@ def _get_per_anima_icon_url(anima_name: str) -> str:
         if not status_path.is_file():
             return ""
         data = json.loads(status_path.read_text(encoding="utf-8"))
-        return str(data.get("icon_url") or "").strip()
+        url = str(data.get("icon_url") or "").strip()
+        if url and not _EXTERNAL_ICON_URL_PREFIX_RE.match(url):
+            logger.warning("Ignoring non-http icon_url in status.json for '%s': %s", anima_name, url)
+            return ""
+        return url
     except Exception:
         return ""
 
@@ -103,16 +110,26 @@ def _get_global_icon_url_template() -> str:
 
 
 def _format_template(template: str, anima_name: str) -> str:
-    """Expand ``{name}`` in a template, handling both external and internal URLs."""
-    if template_is_external_icon_url(template):
-        return template.format(name=anima_name)
-    base = os.environ.get("ANIMAWORKS_SERVER_URL", "").strip().rstrip("/")
-    if not base:
+    """Expand ``{name}`` in a template, handling both external and internal URLs.
+
+    Uses :meth:`str.format_map` with a fallback dict so that stray
+    placeholders (e.g. ``{foo}``) do not raise :class:`KeyError`.
+    """
+    safe_map: dict[str, str] = {"name": anima_name}
+    try:
+        if template_is_external_icon_url(template):
+            return template.format_map(safe_map)
+        base = os.environ.get("ANIMAWORKS_SERVER_URL", "").strip().rstrip("/")
+        if not base:
+            return ""
+        safe_map["name"] = quote(anima_name, safe="")
+        path_resolved = template.format_map(safe_map)
+        if not path_resolved.startswith("/"):
+            path_resolved = "/" + path_resolved
+        return base + path_resolved
+    except (KeyError, ValueError, IndexError):
+        logger.warning("Invalid icon URL template: %r", template)
         return ""
-    path_resolved = template.format(name=quote(anima_name, safe=""))
-    if not path_resolved.startswith("/"):
-        path_resolved = "/" + path_resolved
-    return base + path_resolved
 
 
 # ── Layer 4: Per-channel icon_path_template (legacy backward compat) ────────
