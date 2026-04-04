@@ -50,4 +50,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "ja": "Governor: {anima} がクォータ超過で停止されました。理由: {reason}",
         "en": "Governor: {anima} suspended due to quota. Reason: {reason}",
     },
+    "governor.human_notify_subject": {
+        "ja": "Governor アラート",
+        "en": "Governor Alert",
+    },
 }

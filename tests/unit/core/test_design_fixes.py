@@ -75,10 +75,11 @@ class TestGovernorNotifySupervisor:
 
         with patch("core.messenger.Messenger") as MockMessenger:
             mock_instance = MagicMock()
-            mock_instance.send = AsyncMock()
+            mock_instance.send = MagicMock()
             MockMessenger.return_value = mock_instance
 
-            await governor._notify_supervisor("worker", "quota exceeded")
+            with patch("core.paths.get_shared_dir", return_value=tmp_path / "shared"):
+                await governor._notify_supervisor("worker", "quota exceeded")
 
             mock_instance.send.assert_called_once()
             call_kwargs = mock_instance.send.call_args

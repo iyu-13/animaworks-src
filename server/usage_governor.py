@@ -675,10 +675,10 @@ class UsageGovernor:
 
                 if sup_enabled:
                     from core.messenger import Messenger
+                    from core.paths import get_shared_dir
 
-                    messenger = Messenger(self._animas_dir)
-                    await messenger.send(
-                        from_person="system",
+                    messenger = Messenger(get_shared_dir(), "system")
+                    messenger.send(
                         to=supervisor_name,
                         content=t(
                             "governor.supervisor_notify",
@@ -697,7 +697,11 @@ class UsageGovernor:
             notifier = HumanNotifier.from_config(cfg.human_notification)
             if notifier.channel_count > 0:
                 msg = t("governor.human_notify", anima=anima_name, reason=reason)
-                await notifier.notify(subject="Governor Alert", body=msg, anima_name=anima_name)
+                await notifier.notify(
+                    subject=t("governor.human_notify_subject"),
+                    body=msg,
+                    anima_name=anima_name,
+                )
             logger.info("Governor: notified human about %s suspension (no active supervisor)", anima_name)
         except Exception:
             logger.warning("Failed to notify supervisor for %s", anima_name, exc_info=True)
