@@ -57,6 +57,8 @@ def _cmd_get(args: argparse.Namespace, vm, namespace: str) -> None:
 
     value = vm.get(namespace, key)
     if value is None:
+        value = vm.get("shared", key)  # fallback to shared namespace
+    if value is None:
         print(f"Error: key not found: {key}", file=sys.stderr)
         sys.exit(1)
 
@@ -78,7 +80,9 @@ def _cmd_store(args: argparse.Namespace, vm, namespace: str) -> None:
 
 def _cmd_list(vm, namespace: str) -> None:
     data = vm.load_vault()
-    keys = sorted(data.get(namespace, {}).keys())
+    anima_keys = set(data.get(namespace, {}).keys())
+    shared_keys = set(data.get("shared", {}).keys())
+    keys = sorted(anima_keys | shared_keys)
     print(json.dumps(keys, ensure_ascii=False, indent=2))
 
 

@@ -40,7 +40,7 @@ class XSearchClient:
     BASE_URL = "https://api.twitter.com/2"
 
     def __init__(self, bearer_token: str | None = None) -> None:
-        self.bearer_token = bearer_token or get_credential("x_twitter", "x_search", env_var="TWITTER_BEARER_TOKEN")
+        self.bearer_token = bearer_token or get_credential("x_twitter", "x_search", env_var="X_BEARER_TOKEN")
 
     # -- internal helpers ---------------------------------------------------
 

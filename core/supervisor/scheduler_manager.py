@@ -30,6 +30,37 @@ from core.time_utils import get_app_timezone, now_local
 
 _INDENTED_SCHEDULE_RE = re.compile(r"^\s+schedule:", re.MULTILINE)
 _HEALTH_CHECK_HOURS = 3
+_CRON_SINGLE_VALUE_RE = re.compile(r"^\d+$")
+
+
+def _estimate_cron_interval_hours(schedule: str) -> float:
+    """Estimate health-check lookback threshold (hours) from a 5-field cron expression.
+
+    Rules (first match wins):
+    - Monthly (e.g. ``"0 9 1 * *"``): dom is a single integer, dow=``*`` → 32 days
+    - Weekly  (e.g. ``"0 17 * * 4"``): dow is a single integer, dom=``*`` → 8 days
+    - Daily   (e.g. ``"0 9 * * *"``): hour is a specific value (not ``*``/step) → 25 h
+    - Otherwise (sub-daily / hourly) → ``_HEALTH_CHECK_HOURS`` (3 h)
+    """
+    parts = schedule.strip().split()
+    if len(parts) != 5:
+        return float(_HEALTH_CHECK_HOURS)
+
+    _minute, _hour, dom, month, dow = parts
+
+    # Monthly: specific day-of-month, no month constraint, any weekday
+    if _CRON_SINGLE_VALUE_RE.match(dom) and month == "*" and dow == "*":
+        return 32 * 24.0
+
+    # Weekly: specific day-of-week, any day-of-month
+    if _CRON_SINGLE_VALUE_RE.match(dow) and dom == "*":
+        return 8 * 24.0
+
+    # Daily: hour is a specific value (not wildcard or step expression)
+    if _hour not in ("*", "?") and not _hour.startswith("*/"):
+        return 25.0
+
+    return float(_HEALTH_CHECK_HOURS)
 
 if TYPE_CHECKING:
     from core.anima import DigitalAnima
@@ -403,7 +434,12 @@ class SchedulerManager:
         )
 
     async def _cron_health_tick(self) -> None:
-        """Compare registered cron jobs against actual execution count."""
+        """Compare registered cron jobs against actual execution count.
+
+        The lookback window is derived from the *minimum* expected execution
+        interval across all registered cron jobs so that weekly/monthly jobs
+        do not generate false-positive health alerts.
+        """
         if not self._anima or not self.scheduler:
             return
 
@@ -417,8 +453,23 @@ class SchedulerManager:
             if not cron_jobs:
                 return
 
+            # Determine the minimum expected interval across all registered jobs.
+            # Jobs stored with real CronTask args provide schedule-based estimates;
+            # others fall back to the global default.
+            min_threshold = float("inf")
+            for job in cron_jobs:
+                args = getattr(job, "args", None)
+                task = args[0] if isinstance(args, (list, tuple)) and args else None
+                if isinstance(task, CronTask):
+                    threshold = _estimate_cron_interval_hours(task.schedule)
+                else:
+                    threshold = float(_HEALTH_CHECK_HOURS)
+                min_threshold = min(min_threshold, threshold)
+
+            check_hours = _HEALTH_CHECK_HOURS if min_threshold == float("inf") else min_threshold
+
             entries = self._anima._activity._load_entries(
-                hours=_HEALTH_CHECK_HOURS,
+                hours=check_hours,
                 types=["cron_executed"],
             )
 
@@ -427,7 +478,7 @@ class SchedulerManager:
                     t(
                         "scheduler.cron_health_no_execution",
                         job_count=len(cron_jobs),
-                        hours=_HEALTH_CHECK_HOURS,
+                        hours=int(check_hours),
                     )
                 )
         except Exception:

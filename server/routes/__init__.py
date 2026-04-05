@@ -17,6 +17,7 @@ from server.routes.chat_ui_state import create_chat_ui_state_router
 from server.routes.config_routes import create_config_router
 from server.routes.external_tasks import create_external_tasks_router
 from server.routes.internal import create_internal_router
+from server.routes.libera_routes import create_libera_router
 from server.routes.logs_routes import create_logs_router
 from server.routes.memory_routes import create_memory_router
 from server.routes.room import create_room_router
@@ -45,6 +46,7 @@ def create_router() -> APIRouter:
     api.include_router(create_sessions_router())
     api.include_router(create_system_router())
     api.include_router(create_config_router())
+    api.include_router(create_libera_router())
     api.include_router(create_logs_router())
     api.include_router(create_assets_router())
     api.include_router(create_internal_router())

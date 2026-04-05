@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
 from core.schemas import CronTask
-from core.supervisor.scheduler_manager import SchedulerManager
+from core.supervisor.scheduler_manager import (
+    SchedulerManager,
+    _estimate_cron_interval_hours,
+)
 
 
 @pytest.fixture
@@ -287,6 +290,173 @@ class TestWriteCronHealthNotification:
     ) -> None:
         scheduler_mgr._anima_dir = Path("/nonexistent/path/should/fail")
         scheduler_mgr._write_cron_health_notification("msg")
+
+
+# ── _estimate_cron_interval_hours ─────────────────────────────
+
+
+class TestEstimateCronIntervalHours:
+    """Unit tests for the schedule-interval estimation helper."""
+
+    def test_weekly_job_returns_8_days(self) -> None:
+        # dow = specific integer, dom = *
+        assert _estimate_cron_interval_hours("0 17 * * 4") == 8 * 24.0
+
+    def test_weekly_job_sunday(self) -> None:
+        assert _estimate_cron_interval_hours("30 9 * * 0") == 8 * 24.0
+
+    def test_monthly_job_returns_32_days(self) -> None:
+        # dom = specific integer, dow = *
+        assert _estimate_cron_interval_hours("0 9 1 * *") == 32 * 24.0
+
+    def test_monthly_job_15th(self) -> None:
+        assert _estimate_cron_interval_hours("0 0 15 * *") == 32 * 24.0
+
+    def test_daily_job_returns_25h(self) -> None:
+        # specific hour, dom/dow = *
+        assert _estimate_cron_interval_hours("0 9 * * *") == 25.0
+
+    def test_daily_job_multiple_hours(self) -> None:
+        # comma-separated hours are "not *" and not step → treated as daily
+        assert _estimate_cron_interval_hours("0 9,17 * * *") == 25.0
+
+    def test_hourly_step_returns_default(self) -> None:
+        # "*/2" starts with "*/" → sub-daily
+        from core.supervisor.scheduler_manager import _HEALTH_CHECK_HOURS
+        assert _estimate_cron_interval_hours("0 */2 * * *") == float(_HEALTH_CHECK_HOURS)
+
+    def test_every_minute_returns_default(self) -> None:
+        from core.supervisor.scheduler_manager import _HEALTH_CHECK_HOURS
+        assert _estimate_cron_interval_hours("* * * * *") == float(_HEALTH_CHECK_HOURS)
+
+    def test_invalid_expression_returns_default(self) -> None:
+        from core.supervisor.scheduler_manager import _HEALTH_CHECK_HOURS
+        assert _estimate_cron_interval_hours("bad schedule") == float(_HEALTH_CHECK_HOURS)
+        assert _estimate_cron_interval_hours("") == float(_HEALTH_CHECK_HOURS)
+
+
+# ── Layer 2 (interval-aware): _cron_health_tick ───────────────
+
+
+class TestCronHealthTickIntervalThreshold:
+    """Verify that weekly/monthly jobs use appropriate lookback windows."""
+
+    def _make_job(self, job_id: str, task: CronTask) -> MagicMock:
+        job = MagicMock()
+        job.id = job_id
+        job.args = [task]
+        return job
+
+    @pytest.mark.asyncio
+    async def test_weekly_job_no_false_positive_within_8_days(
+        self, scheduler_mgr: SchedulerManager, tmp_path: Path
+    ) -> None:
+        """Weekly job executed 4 days ago should NOT trigger an alert."""
+        task = CronTask(name="weekly", schedule="0 17 * * 4", type="llm", description="")
+        job = self._make_job("test_anima_cron_0", task)
+        mock_scheduler = MagicMock()
+        mock_scheduler.get_jobs.return_value = [job]
+        scheduler_mgr.scheduler = mock_scheduler
+
+        # 3-hour window → empty (old logic would alert here)
+        # 8-day window  → has an entry (correct: was executed recently enough)
+        def load_entries(hours: float, types: list[str]) -> list:
+            return [MagicMock()] if hours >= 8 * 24 else []
+
+        scheduler_mgr._anima._activity._load_entries = MagicMock(side_effect=load_entries)
+
+        await scheduler_mgr._cron_health_tick()
+
+        assert _notif_files(tmp_path) == [], "Weekly job should not trigger false positive"
+
+    @pytest.mark.asyncio
+    async def test_weekly_job_triggers_alert_if_missed_full_week(
+        self, scheduler_mgr: SchedulerManager, tmp_path: Path
+    ) -> None:
+        """Weekly job not executed in 8+ days SHOULD trigger an alert."""
+        task = CronTask(name="weekly", schedule="0 17 * * 4", type="llm", description="")
+        job = self._make_job("test_anima_cron_0", task)
+        mock_scheduler = MagicMock()
+        mock_scheduler.get_jobs.return_value = [job]
+        scheduler_mgr.scheduler = mock_scheduler
+
+        # No executions even in the 8-day window
+        scheduler_mgr._anima._activity._load_entries = MagicMock(return_value=[])
+
+        await scheduler_mgr._cron_health_tick()
+
+        files = _notif_files(tmp_path)
+        assert len(files) == 1, "Weekly job missed for 8+ days should alert"
+
+    @pytest.mark.asyncio
+    async def test_monthly_job_no_false_positive_within_32_days(
+        self, scheduler_mgr: SchedulerManager, tmp_path: Path
+    ) -> None:
+        """Monthly job executed 20 days ago should NOT trigger an alert."""
+        task = CronTask(name="monthly", schedule="0 9 1 * *", type="llm", description="")
+        job = self._make_job("test_anima_cron_0", task)
+        mock_scheduler = MagicMock()
+        mock_scheduler.get_jobs.return_value = [job]
+        scheduler_mgr.scheduler = mock_scheduler
+
+        def load_entries(hours: float, types: list[str]) -> list:
+            return [MagicMock()] if hours >= 32 * 24 else []
+
+        scheduler_mgr._anima._activity._load_entries = MagicMock(side_effect=load_entries)
+
+        await scheduler_mgr._cron_health_tick()
+
+        assert _notif_files(tmp_path) == [], "Monthly job should not trigger false positive"
+
+    @pytest.mark.asyncio
+    async def test_mixed_jobs_uses_minimum_threshold(
+        self, scheduler_mgr: SchedulerManager, tmp_path: Path
+    ) -> None:
+        """With daily + weekly jobs, the daily (minimum) threshold should be used."""
+        task_daily = CronTask(name="daily", schedule="0 9 * * *", type="llm", description="")
+        task_weekly = CronTask(name="weekly", schedule="0 17 * * 4", type="llm", description="")
+        job1 = self._make_job("test_anima_cron_0", task_daily)
+        job2 = self._make_job("test_anima_cron_1", task_weekly)
+        mock_scheduler = MagicMock()
+        mock_scheduler.get_jobs.return_value = [job1, job2]
+        scheduler_mgr.scheduler = mock_scheduler
+
+        calls_hours: list[float] = []
+
+        def load_entries(hours: float, types: list[str]) -> list:
+            calls_hours.append(hours)
+            return []
+
+        scheduler_mgr._anima._activity._load_entries = MagicMock(side_effect=load_entries)
+
+        await scheduler_mgr._cron_health_tick()
+
+        assert len(calls_hours) == 1
+        assert calls_hours[0] == 25.0, f"Expected daily threshold 25.0, got {calls_hours[0]}"
+
+    @pytest.mark.asyncio
+    async def test_daily_job_uses_25h_threshold(
+        self, scheduler_mgr: SchedulerManager, tmp_path: Path
+    ) -> None:
+        """Daily job uses 25-hour lookback window."""
+        task = CronTask(name="daily", schedule="0 9 * * *", type="llm", description="")
+        job = self._make_job("test_anima_cron_0", task)
+        mock_scheduler = MagicMock()
+        mock_scheduler.get_jobs.return_value = [job]
+        scheduler_mgr.scheduler = mock_scheduler
+
+        calls_hours: list[float] = []
+
+        def load_entries(hours: float, types: list[str]) -> list:
+            calls_hours.append(hours)
+            return [MagicMock()]  # has execution
+
+        scheduler_mgr._anima._activity._load_entries = MagicMock(side_effect=load_entries)
+
+        await scheduler_mgr._cron_health_tick()
+
+        assert calls_hours[0] == 25.0
+        assert _notif_files(tmp_path) == []
 
 
 # ── reload_schedule includes health check ─────────────────────

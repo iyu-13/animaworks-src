@@ -12,6 +12,7 @@ all data types that lack their own rotation mechanisms.
 
 import asyncio
 import logging
+import re
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,10 @@ from typing import Any
 from core.time_utils import now_local, today_local
 
 logger = logging.getLogger("animaworks.housekeeping")
+
+# Number of days after which episode files are moved to episodes/archive/.
+# Files are never deleted — only relocated.
+EPISODE_ARCHIVE_DAYS = 30
 
 
 # ── Public API ──────────────────────────────────────────────────
@@ -147,6 +152,18 @@ async def run_housekeeping(
     except Exception:
         logger.exception("Housekeeping: archive_superseded rotation failed")
         results["archive_superseded"] = {"error": True}
+
+    # 9. Episode file archiving
+    try:
+        r = await loop.run_in_executor(
+            None,
+            _rotate_episodes,
+            animas_dir,
+        )
+        results["episode_archive"] = r
+    except Exception:
+        logger.exception("Housekeeping: episode_archive rotation failed")
+        results["episode_archive"] = {"error": True}
 
     return results
 
@@ -384,6 +401,66 @@ def _rotate_archive_superseded(
     if total_deleted:
         logger.info("Archive/superseded cleanup: deleted %d files", total_deleted)
     return {"deleted_files": total_deleted}
+
+
+_EPISODE_FILENAME_PAT = re.compile(r"^(\d{4}-\d{2}-\d{2})(_part\d+)?\.md$")
+
+
+def _rotate_episodes(
+    animas_dir: Path,
+    rag: Any | None = None,
+) -> dict[str, Any]:
+    """Move episode *.md files older than EPISODE_ARCHIVE_DAYS into episodes/archive/.
+
+    Matches filenames of the form ``YYYY-MM-DD.md`` or ``YYYY-MM-DD_partN.md``.
+    Files are moved (never deleted).  If *rag* exposes a ``remove_file``
+    method it is called before moving so that stale index entries are pruned.
+    """
+    if not animas_dir.exists():
+        return {"skipped": True}
+
+    cutoff = (today_local() - timedelta(days=EPISODE_ARCHIVE_DAYS)).isoformat()
+    total_archived = 0
+
+    for anima_dir in sorted(animas_dir.iterdir()):
+        if not anima_dir.is_dir():
+            continue
+        episodes_dir = anima_dir / "episodes"
+        if not episodes_dir.is_dir():
+            continue
+
+        archive_dir = episodes_dir / "archive"
+        archive_dir.mkdir(exist_ok=True)
+
+        for f in sorted(episodes_dir.glob("*.md")):
+            m = _EPISODE_FILENAME_PAT.match(f.name)
+            if not m:
+                continue
+            date_str = m.group(1)
+            if date_str >= cutoff:
+                continue  # not old enough yet
+
+            # Notify RAG index if possible
+            if rag is not None and hasattr(rag, "remove_file"):
+                try:
+                    rag.remove_file(f)
+                except Exception:
+                    logger.warning("rag.remove_file failed for %s", f)
+
+            dst = archive_dir / f.name
+            try:
+                f.rename(dst)
+                total_archived += 1
+            except OSError:
+                logger.warning("Failed to archive episode file: %s → %s", f, dst)
+
+    if total_archived:
+        logger.info(
+            "Archived %d episode files older than %d days",
+            total_archived,
+            EPISODE_ARCHIVE_DAYS,
+        )
+    return {"archived_files": total_archived}
 
 
 def _cleanup_pending_failed(

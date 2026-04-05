@@ -20,6 +20,13 @@ from core.time_utils import now_local
 
 logger = logging.getLogger("animaworks.lifecycle")
 
+# ── Episodes index days limit ──────────────────────────────
+# Only the most recent N days of episodes are indexed during daily RAG
+# indexing.  Older episodes are already indexed; today's file is updated
+# incrementally via append_episode() so a full re-scan is wasteful.
+# Supports YYYY-MM-DD*.md naming (including part files from auto-split).
+EPISODES_INDEX_DAYS = 3
+
 
 class SystemCronsMixin:
     """Mixin providing system-wide cron tasks (consolidation, indexing, forgetting, etc.)."""
@@ -206,7 +213,6 @@ class SystemCronsMixin:
                 indexer = MemoryIndexer(vector_store, anima_name, anima_dir)
                 memory_types = [
                     ("knowledge", anima_dir / "knowledge"),
-                    ("episodes", anima_dir / "episodes"),
                     ("procedures", anima_dir / "procedures"),
                     ("skills", anima_dir / "skills"),
                 ]
@@ -221,6 +227,24 @@ class SystemCronsMixin:
                         memory_type,
                     )
                     total_chunks += chunks
+
+                # Index only recent episodes (last EPISODES_INDEX_DAYS days).
+                # Older episodes are already indexed; today's file changes
+                # frequently (190 KB+) so we limit to avoid full re-hashing.
+                # Pattern YYYY-MM-DD*.md also covers _part2, _part3 files.
+                episodes_dir = anima_dir / "episodes"
+                if episodes_dir.is_dir():
+                    today = now_local().date()
+                    for offset in range(EPISODES_INDEX_DAYS):
+                        ep_date = today - timedelta(days=offset)
+                        for ep_file in sorted(episodes_dir.glob(f"{ep_date.isoformat()}*.md")):
+                            chunks = await loop.run_in_executor(
+                                None,
+                                indexer.index_file,
+                                ep_file,
+                                "episodes",
+                            )
+                            total_chunks += chunks
 
                 meta_path = anima_dir / "index_meta.json"
                 for label, src_dir, glob, meta_key in shared_sources:
