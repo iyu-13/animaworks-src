@@ -46,6 +46,14 @@ _WRITE_COMMANDS = frozenset(
     }
 )
 
+# Regex patterns for bash write-path detection (best-effort heuristics)
+# Matches shell redirects: > /path and >> /path
+_REDIRECT_RE = re.compile(r"(?<![<>!])>>?\s+([^\s;|&<>]+)")
+# Matches tee invocations including in pipelines: tee /path or tee -a /path
+_TEE_RE = re.compile(r"\btee\s+(?:-a\s+)?([^\s;|&<>]+)")
+# Matches Python inline open() with write mode: open('path', 'w') or open("path", "w...")
+_PY_OPEN_W_RE = re.compile(r"""open\s*\(\s*['"]([^'"]+)['"]\s*,\s*["']w""")
+
 
 # ── Mode S output guard ──────────────────────────────────────
 
@@ -147,12 +155,22 @@ def _check_a1_bash_command(
     anima_dir: Path,
     *,
     superuser: bool = False,
+    subordinate_activity_dirs: list[Path] | None = None,
+    subordinate_management_files: list[Path] | None = None,
+    descendant_read_files: list[Path] | None = None,
+    descendant_read_dirs: list[Path] | None = None,
+    peer_activity_dirs: list[Path] | None = None,
 ) -> str | None:
     """Check bash commands against blocklist patterns and file operation violations.
 
     Global deny patterns are matched against the raw command string (before
     shlex parsing) to prevent bypass via pipes/subshells.  Path traversal
     checks use parsed argv for precision.
+
+    Additionally detects write-path violations via shell redirects (> / >>),
+    tee invocations (including in pipelines), and Python inline open() calls
+    inside ``python3 -c`` snippets.  All path checks reuse
+    ``_check_a1_file_access`` so no new permission logic is introduced here.
 
     This is a best-effort heuristic — not a complete sandbox.
     """
@@ -220,20 +238,60 @@ def _check_a1_bash_command(
 
     cmd_base = Path(argv[0]).name
 
-    # Check file-writing commands for path violations
+    # ── Helper: check a candidate write path via _check_a1_file_access ──
+    def _check_write_path(path_str: str, context: str) -> str | None:
+        """Return a violation reason string, or None if the path is allowed."""
+        violation = _check_a1_file_access(
+            path_str,
+            anima_dir,
+            write=True,
+            subordinate_activity_dirs=subordinate_activity_dirs,
+            subordinate_management_files=subordinate_management_files,
+            descendant_read_files=descendant_read_files,
+            descendant_read_dirs=descendant_read_dirs,
+            peer_activity_dirs=peer_activity_dirs,
+        )
+        if violation:
+            logger.warning("Bash %s blocked: path=%s reason=%s", context, path_str, violation)
+            return f"Bash {context} to protected path ({path_str}): {violation}"
+        return None
+
+    # ── Check explicit file-writing commands (cp, mv, tee, dd, etc.) ────
     if cmd_base in _WRITE_COMMANDS:
-        animas_root = str(anima_dir.parent.resolve())
-        anima_resolved = str(anima_dir.resolve())
         for arg in argv[1:]:
             if arg.startswith("-"):
                 continue
-            try:
-                resolved = str(Path(arg).resolve())
-                # Writing to other anima's directory
-                if resolved.startswith(animas_root) and not resolved.startswith(anima_resolved):
-                    return f"Command targets other anima's directory: {arg}"
-            except (ValueError, OSError):
-                pass
+            v = _check_write_path(arg, f"command '{cmd_base}'")
+            if v:
+                return v
+
+    # ── Shell redirect write-path check (> path  and  >> path) ──────────
+    for m in _REDIRECT_RE.finditer(command):
+        target = m.group(1).strip()
+        # Skip fd redirects (&1, &2) and bare file descriptor digits
+        if not target or target.startswith("&") or target.isdigit():
+            continue
+        v = _check_write_path(target, "redirect")
+        if v:
+            return v
+
+    # ── tee write-path check (catches tee in pipelines: cmd | tee /path) ─
+    for m in _TEE_RE.finditer(command):
+        target = m.group(1).strip()
+        if not target or target.startswith("-"):
+            continue
+        v = _check_write_path(target, "tee")
+        if v:
+            return v
+
+    # ── Python inline open() write-path check (best-effort) ─────────────
+    # Detects: python3 -c "... open('path', 'w') ..."
+    if "python3 -c" in command or "python -c" in command:
+        for m in _PY_OPEN_W_RE.finditer(command):
+            target = m.group(1)
+            v = _check_write_path(target, "python inline open()")
+            if v:
+                return v
 
     return None
 

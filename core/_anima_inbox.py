@@ -34,6 +34,14 @@ from core.time_utils import now_local
 
 logger = logging.getLogger("animaworks.anima")
 
+# ── Startup inbox batch limit ──────────────────────────────
+# During startup the first inbox processing cycle handles at most this many
+# messages.  Remaining unread messages are left in the inbox directory and
+# processed by subsequent watcher cycles (every ~30 s).  This prevents
+# the server startup from blocking for tens of seconds when many messages
+# have accumulated while the server was stopped.
+STARTUP_INBOX_BATCH_SIZE = 3
+
 _SOURCE_TO_ORIGIN: dict[str, str] = {
     "slack": ORIGIN_EXTERNAL_PLATFORM,
     "chatwork": ORIGIN_EXTERNAL_PLATFORM,
@@ -385,6 +393,7 @@ class InboxMixin:
     async def process_inbox_message(
         self,
         cascade_suppressed_senders: set[str] | None = None,
+        max_messages: int | None = None,
     ) -> CycleResult:
         """Process Anima-to-Anima messages immediately under _inbox_lock.
 
@@ -411,6 +420,7 @@ class InboxMixin:
                 try:
                     inbox_result = await self._process_inbox_messages(
                         cascade_suppressed_senders,
+                        max_messages=max_messages,
                     )
 
                     if inbox_result.unread_count == 0:
@@ -703,16 +713,37 @@ class InboxMixin:
     async def _process_inbox_messages(
         self,
         cascade_suppressed_senders: set[str] | None = None,
+        max_messages: int | None = None,
     ) -> InboxResult:
         """Read, filter, deduplicate, format, and record inbox messages.
 
         Handles cascade suppression, MessageDeduplicator, retry counter,
         episode recording, and activity logging.
+
+        Args:
+            cascade_suppressed_senders: Senders to suppress due to cascade detection.
+            max_messages: If set, process at most this many messages (newest first).
+                Remaining messages stay in the inbox for the next cycle.
         """
         if not self.messenger.has_unread():
             return InboxResult()
 
         inbox_items = self.messenger.receive_with_paths()
+
+        # ── Startup batch limit ──
+        # When max_messages is set (e.g. during the first post-startup cycle),
+        # process only the most recent N messages.  The rest remain in the
+        # inbox directory and are handled in subsequent watcher cycles.
+        if max_messages is not None and len(inbox_items) > max_messages:
+            logger.info(
+                "[%s] Startup inbox batch: processing %d of %d messages (limit=%d)",
+                self.name,
+                max_messages,
+                len(inbox_items),
+                max_messages,
+            )
+            inbox_items = inbox_items[-max_messages:]
+
         messages = [item.msg for item in inbox_items]
         unread_count = len(messages)
         senders: set[str] = {m.from_person for m in messages}

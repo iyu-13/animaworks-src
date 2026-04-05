@@ -40,6 +40,13 @@ from core.time_utils import today_local
 
 logger = logging.getLogger("animaworks.memory")
 
+# ── Episode file auto-split ────────────────────────────────
+# When a daily episode file grows beyond this limit a new part file is
+# created automatically.  Naming convention:
+#   2026-03-25.md  →  2026-03-25_part2.md  →  2026-03-25_part3.md  …
+# All part files match the glob YYYY-MM-DD*.md used by the RAG indexer.
+EPISODE_SPLIT_SIZE_BYTES = 100 * 1024  # 100 KB
+
 
 class MemoryManager:
     """File-system based library memory — Facade.
@@ -361,12 +368,36 @@ class MemoryManager:
 
     # ── Write helpers ─────────────────────────────────────
 
+    def _resolve_episode_path(self, date_str: str) -> Path:
+        """Return the active episode file path for *date_str* (YYYY-MM-DD).
+
+        If the base file exceeds ``EPISODE_SPLIT_SIZE_BYTES``, a new part
+        file is returned.  Parts are named ``YYYY-MM-DD_part2.md``,
+        ``YYYY-MM-DD_part3.md``, … and are all matched by the glob
+        ``YYYY-MM-DD*.md`` used by the RAG indexer.
+        """
+        base = self.episodes_dir / f"{date_str}.md"
+        if not base.exists():
+            return base
+        # Find the last existing part (base counts as part 1)
+        part = 1
+        candidate = base
+        while candidate.exists():
+            size = candidate.stat().st_size
+            if size < EPISODE_SPLIT_SIZE_BYTES:
+                return candidate  # Still has room
+            part += 1
+            candidate = self.episodes_dir / f"{date_str}_part{part}.md"
+        # candidate does not exist yet — create as new part
+        return candidate
+
     def append_episode(self, entry: str, *, origin: str = "") -> None:
-        path = self.episodes_dir / f"{today_local().isoformat()}.md"
+        date_str = today_local().isoformat()
+        path = self._resolve_episode_path(date_str)
         try:
             if not path.exists():
                 path.write_text(
-                    t("manager.action_log_header", date=today_local().isoformat()),
+                    t("manager.action_log_header", date=date_str),
                     encoding="utf-8",
                 )
             with open(path, "a", encoding="utf-8") as f:

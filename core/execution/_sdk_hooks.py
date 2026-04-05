@@ -771,7 +771,16 @@ def _build_pre_tool_hook(
         # Bash: inspect command
         if tool_name == "Bash":
             command = tool_input.get("command", "")
-            violation = _check_a1_bash_command(command, anima_dir, superuser=superuser)
+            violation = _check_a1_bash_command(
+                command,
+                anima_dir,
+                superuser=superuser,
+                subordinate_activity_dirs=_sub_activity_dirs,
+                subordinate_management_files=_sub_mgmt_files,
+                descendant_read_files=_desc_read_files,
+                descendant_read_dirs=_desc_read_dirs,
+                peer_activity_dirs=_peer_activity_dirs,
+            )
             if violation:
                 _log_tool_use(
                     anima_dir, tool_name, tool_input, tool_use_id=tool_use_id, blocked=True, block_reason=violation

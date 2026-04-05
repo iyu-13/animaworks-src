@@ -36,6 +36,11 @@ logger = logging.getLogger("animaworks.rag.indexer")
 # Index metadata file
 INDEX_META_FILE = "index_meta.json"
 
+# Maximum episode file size to index in full.  Files larger than this
+# will have only the trailing MAX_EPISODE_INDEX_SIZE bytes indexed so
+# that very long episode logs don't dominate memory usage at startup.
+MAX_EPISODE_INDEX_SIZE = 204800  # 200 KB
+
 
 # ── Data structures ─────────────────────────────────────────────────
 
@@ -210,8 +215,22 @@ class MemoryIndexer:
         logger.info("Indexing file: %s (type=%s)", file_path, memory_type)
 
         # Read file content
+        # For large episode files, index only the tail to keep startup fast.
         try:
-            content = file_path.read_text(encoding="utf-8")
+            if memory_type == "episodes":
+                file_size = file_path.stat().st_size
+                if file_size > MAX_EPISODE_INDEX_SIZE:
+                    logger.info(
+                        "Episode file too large (%d bytes), indexing tail only",
+                        file_size,
+                    )
+                    with open(file_path, "rb") as _fh:
+                        _fh.seek(-MAX_EPISODE_INDEX_SIZE, 2)
+                        content = _fh.read().decode("utf-8", errors="replace")
+                else:
+                    content = file_path.read_text(encoding="utf-8")
+            else:
+                content = file_path.read_text(encoding="utf-8")
         except Exception as e:
             logger.error("Failed to read file %s: %s", file_path, e)
             return 0
