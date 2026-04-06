@@ -102,12 +102,12 @@ STRINGS: dict[str, dict[str, str]] = {
         "ja": (
             "BLOCKED: TaskExecセッション内でAgent/Taskサブタスクは起動できません（再帰防止）。"
             "自分で直接Bash/Read/Grep等のツールを使って作業するか、"
-            "重い処理は `animaworks-tool machine run \"指示\" -d ワークスペースパス` で外部エージェントに委託してください。"
+            '重い処理は `animaworks-tool machine run "指示" -d ワークスペースパス` で外部エージェントに委託してください。'
         ),
         "en": (
             "BLOCKED: Cannot spawn Agent/Task subtasks from a TaskExec session (recursion prevention). "
             "Use Bash/Read/Grep and other tools directly, or delegate heavy work via "
-            "`animaworks-tool machine run \"instruction\" -d workspace_path`."
+            '`animaworks-tool machine run "instruction" -d workspace_path`.'
         ),
     },
 }
