@@ -133,3 +133,5 @@ swe/results/
 # Local Codex app metadata
 .codex/
 .claude/worktrees/
+server/routes/libera_routes.py
+animaworks.db
