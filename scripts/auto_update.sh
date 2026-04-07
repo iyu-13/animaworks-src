@@ -50,25 +50,98 @@ if [ -z "$(git config user.email)" ]; then
 fi
 
 # yの独自変更を保持しつつ取り込む
-if ! git rebase origin/main >> "$LOG" 2>&1; then
+REBASE_OUTPUT=$(git rebase origin/main 2>&1)
+REBASE_EXIT=$?
+echo "$REBASE_OUTPUT" >> "$LOG"
+
+if [ $REBASE_EXIT -ne 0 ]; then
   echo "[$TIMESTAMP] rebase conflict! aborting..." >> "$LOG"
   git rebase --abort >> "$LOG" 2>&1
-  /home/deploy/animaworks/.venv/bin/animaworks send mio y "AnimaWorksの自動アップデートでコンフリクトが発生しました。手動対応が必要です。ログ: $LOG" --intent report
-  # Slack #ops-logs にもコンフリクト通知
+
+  # === 原因診断 ===
+  CAUSE=""
+  DETAIL=""
+  RECOMMENDATION=""
+
+  # (A) 未追跡ファイルの衝突を検出
+  UNTRACKED_CONFLICTS=$(echo "$REBASE_OUTPUT" | grep -A1 "untracked working tree files" | grep -v "untracked\|Please\|Aborting\|error" | sed 's/^\t//' | xargs)
+  if [ -n "$UNTRACKED_CONFLICTS" ]; then
+    CAUSE="未追跡（未コミット）ファイルがupstreamと衝突"
+    DETAIL="*衝突ファイル:*"
+    for f in $UNTRACKED_CONFLICTS; do
+      # 本家に同じファイルがあるか確認
+      if git show origin/main:"$f" >/dev/null 2>&1; then
+        LOCAL_LINES=$(wc -l < "$f" 2>/dev/null || echo "?")
+        UPSTREAM_LINES=$(git show origin/main:"$f" 2>/dev/null | wc -l)
+        DETAIL="${DETAIL}
+• \`$f\` — ローカル:${LOCAL_LINES}行 / 本家:${UPSTREAM_LINES}行（本家にも存在）"
+      else
+        DETAIL="${DETAIL}
+• \`$f\` — ローカルのみ（本家には未存在）"
+      fi
+    done
+    RECOMMENDATION="*推奨対応:*
+1. 本家にも存在するファイル → ローカル版を削除（本家版が上位互換の可能性大）
+2. ローカルのみのファイル → \`.gitignore\` に追加するか、コミットする
+3. 対処後 \`git rebase origin/main\` → \`git push iyu13 main --force-with-lease\`"
+  fi
+
+  # (B) コミット同士の衝突を検出
+  if [ -z "$CAUSE" ]; then
+    CONFLICT_FILES=$(echo "$REBASE_OUTPUT" | grep "^CONFLICT" | sed 's/CONFLICT ([^)]*): //' | head -5)
+    if [ -n "$CONFLICT_FILES" ]; then
+      CAUSE="ローカルコミットとupstreamコミットがコード競合"
+      DETAIL="*競合ファイル:*
+$(echo "$CONFLICT_FILES" | sed 's/^/• /')"
+      RECOMMENDATION="*推奨対応:*
+1. 各ファイルの差分を確認し、ローカル変更が不要なら本家に合わせる
+2. 必要な変更なら手動でマージする
+3. 対処後 \`git rebase --continue\` → \`git push iyu13 main --force-with-lease\`"
+    fi
+  fi
+
+  # (C) その他
+  if [ -z "$CAUSE" ]; then
+    CAUSE="不明（ログを確認してください）"
+    DETAIL="*rebase出力:*
+\`\`\`$(echo "$REBASE_OUTPUT" | tail -5)\`\`\`"
+    RECOMMENDATION="*推奨対応:* ログを確認し、手動で対処してください"
+  fi
+
+  # ローカル独自コミット一覧
+  LOCAL_COMMITS=$(git log --oneline origin/main..HEAD 2>/dev/null | head -10)
+  LOCAL_COUNT=$(git log --oneline origin/main..HEAD 2>/dev/null | wc -l)
+
+  # 未追跡ファイル一覧（.gitignore除外後）
+  UNTRACKED_ALL=$(git ls-files --others --exclude-standard 2>/dev/null | head -10)
+
+  /home/deploy/animaworks/.venv/bin/animaworks send mio y "AnimaWorksの自動アップデートでコンフリクトが発生しました。診断結果付きで報告します。ログ: $LOG" --intent report
+
+  # Slack #ops-logs に診断付き通知
   SLACK_TOKEN_CONFLICT=$(python3 -c "import json; d=json.load(open('/home/deploy/.animaworks/shared/credentials.json')); print(d.get('SLACK_BOT_TOKEN',''))" 2>/dev/null)
   if [ -n "$SLACK_TOKEN_CONFLICT" ]; then
-    if /home/deploy/animaworks/.venv/bin/animaworks-tool slack send "#ops-logs" "⚠️ *AnimaWorks* 自動アップデート失敗
+    SLACK_DIAG="⚠️ *AnimaWorks* 自動アップデート失敗
 
-*原因:* rebaseコンフリクト（手動対応が必要）
-*🕐 時刻:* ${TIMESTAMP}
-*📋 ログ:* \`${LOG}\`
+*🔍 原因:* ${CAUSE}
 
-yさん、手動でコンフリクト解消をお願いします 🙏" >> "$LOG" 2>&1; then
-      echo "[$TIMESTAMP] slack conflict notification sent" >> "$LOG"
+${DETAIL}
+
+*📦 ローカル独自コミット（${LOCAL_COUNT}件）:*
+$(echo "$LOCAL_COMMITS" | sed 's/^/• /')
+
+*📄 未追跡ファイル:*
+$(echo "${UNTRACKED_ALL:-（なし）}" | sed 's/^/• /')
+
+${RECOMMENDATION}
+
+*🕐 時刻:* ${TIMESTAMP}"
+
+    if /home/deploy/animaworks/.venv/bin/animaworks-tool slack send "#ops-logs" "$SLACK_DIAG" >> "$LOG" 2>&1; then
+      echo "[$TIMESTAMP] slack conflict notification sent (with diagnostics)" >> "$LOG"
     else
       echo "[$TIMESTAMP] ERROR: slack conflict notification failed (exit $?)" >> "$LOG"
       # (3) Slack通知失敗時のcall_human fallback
-      /home/deploy/animaworks/.venv/bin/animaworks-tool call_human "AutoUpdate: rebaseコンフリクト" "AnimaWorksの自動アップデートでrebaseコンフリクトが発生しました。手動対応が必要です。時刻: ${TIMESTAMP} ログ: ${LOG}" --priority high 2>/dev/null || true
+      /home/deploy/animaworks/.venv/bin/animaworks-tool call_human "AutoUpdate: rebaseコンフリクト" "原因: ${CAUSE} / 時刻: ${TIMESTAMP} / ログ: ${LOG}" --priority high 2>/dev/null || true
     fi
   fi
   exit 1
