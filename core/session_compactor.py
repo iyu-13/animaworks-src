@@ -39,6 +39,7 @@ _CHAT_ENTRY_TYPES = frozenset(
 )
 _TOOL_INPUT_TRUNCATE = 500
 _TOOL_RESULT_TRUNCATE = 500
+_SCAN_DAYS = 2
 
 # LRU limit for _timers (same as conversation_locks).
 _MAX_TIMERS = 20
@@ -131,139 +132,149 @@ class SessionCompactor:
 # ── Activity-log based context extraction ─────────────────────
 
 
-def _extract_recent_chat_context(anima_dir: Path) -> dict[str, Any]:
-    """Extract recent chat context from today's activity_log.
+def _extract_recent_chat_context(
+    anima_dir: Path,
+    thread_id: str = "default",
+) -> dict[str, Any]:
+    """Extract recent chat context from the activity_log.
 
-    Scans the current day's log file in reverse to collect the most
-    recent chat session entries:
+    Scans up to ``_SCAN_DAYS`` of log files (today + yesterday) in
+    reverse to collect the most recent chat session entries matching
+    the given *thread_id*:
 
     - Up to ``_MAX_CONVERSATION_ROUNDS`` user/assistant exchange rounds
     - Up to ``_MAX_TOOL_ENTRIES`` tool_use + tool_result pairs
 
     Returns a dict with keys matching ``SessionState`` fields:
     ``accumulated_response``, ``tool_uses``, ``original_prompt``,
-    ``timestamp``, ``trigger``, ``notes``.
+    ``timestamp``, ``trigger``, ``notes``.  Returns ``{}`` when no
+    relevant entries are found.
     """
+    from datetime import timedelta
+
     from core.time_utils import now_local
 
     log_dir = anima_dir / "activity_log"
-    today_file = log_dir / f"{now_local().date().isoformat()}.jsonl"
+    now = now_local()
 
-    if not today_file.exists():
-        return {}
+    all_lines: list[str] = []
+    for day_offset in range(_SCAN_DAYS):
+        target_date = (now - timedelta(days=day_offset)).date()
+        log_file = log_dir / f"{target_date.isoformat()}.jsonl"
+        if not log_file.exists():
+            continue
+        try:
+            with log_file.open(encoding="utf-8", errors="replace") as fh:
+                day_lines = [ln.strip() for ln in fh if ln.strip()]
+        except OSError:
+            logger.warning("Failed to read %s", log_file, exc_info=True)
+            continue
+        if day_offset == 0:
+            all_lines = day_lines
+        else:
+            all_lines = day_lines + all_lines
 
     raw_entries: list[dict[str, Any]] = []
-    try:
-        with today_file.open(encoding="utf-8", errors="replace") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    entry = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                etype = entry.get("type") or entry.get("event", "")
-                if etype in _CHAT_ENTRY_TYPES:
-                    if etype == "message_received":
-                        from_type = (entry.get("meta") or {}).get("from_type", "")
-                        if from_type != "human":
-                            continue
-                    raw_entries.append(entry)
-    except OSError:
-        logger.warning("Failed to read activity log for context extraction", exc_info=True)
-        return {}
+    for line in all_lines:
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        etype = entry.get("type") or entry.get("event", "")
+        if etype not in _CHAT_ENTRY_TYPES:
+            continue
+        meta = entry.get("meta") or {}
+        entry_thread = meta.get("thread_id", "default")
+        if entry_thread != thread_id:
+            continue
+        if etype == "message_received":
+            if meta.get("from_type", "") != "human":
+                continue
+        raw_entries.append(entry)
 
     if not raw_entries:
         return {}
 
-    user_messages: list[dict[str, str]] = []
-    assistant_messages: list[dict[str, str]] = []
-    tool_entries: list[dict[str, Any]] = []
+    turns: list[dict[str, Any]] = []
+    user_count = 0
+    assistant_count = 0
+    tool_count = 0
 
     for entry in reversed(raw_entries):
         etype = entry.get("type") or entry.get("event", "")
-        ts = entry.get("ts") or entry.get("timestamp", "")
 
-        if etype == "message_received" and len(user_messages) < _MAX_CONVERSATION_ROUNDS:
-            content = entry.get("content", "")
-            user_messages.append({"ts": ts, "content": content})
-
-        elif etype == "response_sent" and len(assistant_messages) < _MAX_CONVERSATION_ROUNDS:
+        if etype == "message_received" and user_count < _MAX_CONVERSATION_ROUNDS:
+            turns.append({"role": "user", "content": entry.get("content", "")})
+            user_count += 1
+        elif etype == "response_sent" and assistant_count < _MAX_CONVERSATION_ROUNDS:
             content = entry.get("content", "") or entry.get("summary", "")
-            assistant_messages.append({"ts": ts, "content": content})
-
-        elif etype == "tool_use" and len(tool_entries) < _MAX_TOOL_ENTRIES:
+            turns.append({"role": "assistant", "content": content})
+            assistant_count += 1
+        elif etype in ("tool_use", "tool_result") and tool_count < _MAX_TOOL_ENTRIES:
             meta = entry.get("meta") or {}
-            tool_name = entry.get("tool", "")
-            args = meta.get("args", {})
-            tool_use_id = meta.get("tool_use_id", "")
-            tool_entries.append(
-                {
-                    "type": "tool_use",
-                    "tool_use_id": tool_use_id,
-                    "name": tool_name or entry.get("content", "")[:100],
-                    "input": str(args)[:_TOOL_INPUT_TRUNCATE]
-                    if args
-                    else entry.get("content", "")[:_TOOL_INPUT_TRUNCATE],
-                }
-            )
+            turns.append({"role": etype, "entry": entry, "meta": meta})
+            tool_count += 1
 
-        elif etype == "tool_result" and len(tool_entries) < _MAX_TOOL_ENTRIES:
-            meta = entry.get("meta") or {}
-            tool_use_id = meta.get("tool_use_id", "")
-            tool_entries.append(
-                {
-                    "type": "tool_result",
-                    "tool_use_id": tool_use_id,
-                    "result": entry.get("content", "")[:_TOOL_RESULT_TRUNCATE],
-                    "is_error": meta.get("is_error", False),
-                }
-            )
+        if (
+            user_count >= _MAX_CONVERSATION_ROUNDS
+            and assistant_count >= _MAX_CONVERSATION_ROUNDS
+            and tool_count >= _MAX_TOOL_ENTRIES
+        ):
+            break
 
-    user_messages.reverse()
-    assistant_messages.reverse()
-    tool_entries.reverse()
+    turns.reverse()
 
     conversation_parts: list[str] = []
-    for u, a in zip(user_messages, assistant_messages, strict=False):
-        conversation_parts.append(f"user: {u['content']}")
-        conversation_parts.append(f"assistant: {a['content']}")
-    if len(user_messages) > len(assistant_messages):
-        for u in user_messages[len(assistant_messages) :]:
-            conversation_parts.append(f"user: {u['content']}")
-    elif len(assistant_messages) > len(user_messages):
-        for a in assistant_messages[len(user_messages) :]:
-            conversation_parts.append(f"assistant: {a['content']}")
+    for t in turns:
+        if t["role"] in ("user", "assistant"):
+            conversation_parts.append(f"{t['role']}: {t['content']}")
 
     tool_uses: list[dict[str, Any]] = []
     pending_use: dict[str, Any] | None = None
-    for te in tool_entries:
-        if te["type"] == "tool_use":
+    for t in turns:
+        if t["role"] == "tool_use":
             if pending_use:
                 tool_uses.append(pending_use)
-            pending_use = {"name": te["name"], "input": te["input"]}
-        elif te["type"] == "tool_result":
-            if pending_use and te.get("tool_use_id") == pending_use.get("_tool_use_id", ""):
-                pending_use["result"] = te["result"]
+            entry = t["entry"]
+            meta = t["meta"]
+            tool_name = entry.get("tool", "") or entry.get("content", "")[:100]
+            args = meta.get("args", {})
+            pending_use = {
+                "name": tool_name,
+                "input": str(args)[:_TOOL_INPUT_TRUNCATE] if args else entry.get("content", "")[:_TOOL_INPUT_TRUNCATE],
+                "tool_use_id": meta.get("tool_use_id", ""),
+            }
+        elif t["role"] == "tool_result":
+            entry = t["entry"]
+            meta = t["meta"]
+            result_id = meta.get("tool_use_id", "")
+            result_text = entry.get("content", "")[:_TOOL_RESULT_TRUNCATE]
+            if pending_use and result_id and result_id == pending_use.get("tool_use_id", ""):
+                pending_use["result"] = result_text
+                del pending_use["tool_use_id"]
                 tool_uses.append(pending_use)
                 pending_use = None
-            elif pending_use:
-                tool_uses.append(pending_use)
-                pending_use = None
-                tool_uses.append({"name": "tool_result", "input": "", "result": te["result"]})
             else:
-                tool_uses.append({"name": "tool_result", "input": "", "result": te["result"]})
+                if pending_use:
+                    del pending_use["tool_use_id"]
+                    tool_uses.append(pending_use)
+                    pending_use = None
+                tool_uses.append({"name": "tool_result", "input": "", "result": result_text})
     if pending_use:
+        pending_use.pop("tool_use_id", None)
         tool_uses.append(pending_use)
 
-    original_prompt = user_messages[0]["content"] if user_messages else ""
+    first_user = ""
+    for t in turns:
+        if t["role"] == "user":
+            first_user = t["content"]
+            break
 
     return {
         "accumulated_response": "\n".join(conversation_parts)[:8000],
         "tool_uses": tool_uses[-_MAX_TOOL_ENTRIES:],
-        "original_prompt": original_prompt[:2000],
-        "timestamp": now_local().isoformat(),
+        "original_prompt": first_user[:2000],
+        "timestamp": now.isoformat(),
         "trigger": "idle_compaction",
         "notes": "Auto-extracted from activity_log (session discarded)",
     }
@@ -288,7 +299,7 @@ async def _compact_mode_s(anima: DigitalAnima, thread_id: str) -> bool:
 
     logger.debug("_compact_mode_s: entry (anima=%s, thread=%s)", anima.name, thread_id)
 
-    ctx = _extract_recent_chat_context(anima.anima_dir)
+    ctx = _extract_recent_chat_context(anima.anima_dir, thread_id=thread_id)
 
     if ctx.get("accumulated_response") or ctx.get("tool_uses"):
         shortterm = ShortTermMemory(anima.anima_dir, session_type="chat", thread_id=thread_id)

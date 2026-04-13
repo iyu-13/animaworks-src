@@ -620,10 +620,11 @@ class TestExtractRecentChatContext:
         (d / "activity_log").mkdir(parents=True)
         return d
 
-    def _write_log(self, anima_dir: Path, entries: list[dict]) -> None:
+    def _write_log(self, anima_dir: Path, entries: list[dict], date_str: str | None = None) -> None:
         from core.time_utils import now_local
 
-        log_file = anima_dir / "activity_log" / f"{now_local().date().isoformat()}.jsonl"
+        date = date_str or now_local().date().isoformat()
+        log_file = anima_dir / "activity_log" / f"{date}.jsonl"
         log_file.write_text(
             "\n".join(json.dumps(e, ensure_ascii=False) for e in entries),
             encoding="utf-8",
@@ -635,12 +636,12 @@ class TestExtractRecentChatContext:
         assert result == {}
 
     def test_extracts_user_assistant_rounds(self, anima_dir: Path) -> None:
-        """Extracts user/assistant message pairs."""
+        """Extracts user/assistant message pairs in chronological order."""
         entries = [
-            {"ts": "2026-04-13T10:00:00+09:00", "type": "message_received", "content": "Question 1", "meta": {"from_type": "human"}},
-            {"ts": "2026-04-13T10:00:30+09:00", "type": "response_sent", "content": "Answer 1", "meta": {}},
-            {"ts": "2026-04-13T10:01:00+09:00", "type": "message_received", "content": "Question 2", "meta": {"from_type": "human"}},
-            {"ts": "2026-04-13T10:01:30+09:00", "type": "response_sent", "content": "Answer 2", "meta": {}},
+            {"ts": "2026-04-13T10:00:00+09:00", "type": "message_received", "content": "Question 1", "meta": {"from_type": "human", "thread_id": "default"}},
+            {"ts": "2026-04-13T10:00:30+09:00", "type": "response_sent", "content": "Answer 1", "meta": {"thread_id": "default"}},
+            {"ts": "2026-04-13T10:01:00+09:00", "type": "message_received", "content": "Question 2", "meta": {"from_type": "human", "thread_id": "default"}},
+            {"ts": "2026-04-13T10:01:30+09:00", "type": "response_sent", "content": "Answer 2", "meta": {"thread_id": "default"}},
         ]
         self._write_log(anima_dir, entries)
 
@@ -656,8 +657,8 @@ class TestExtractRecentChatContext:
         """Only the most recent 3 user/assistant rounds are kept."""
         entries = []
         for i in range(5):
-            entries.append({"ts": f"2026-04-13T10:{i:02d}:00+09:00", "type": "message_received", "content": f"Q{i}", "meta": {"from_type": "human"}})
-            entries.append({"ts": f"2026-04-13T10:{i:02d}:30+09:00", "type": "response_sent", "content": f"A{i}", "meta": {}})
+            entries.append({"ts": f"2026-04-13T10:{i:02d}:00+09:00", "type": "message_received", "content": f"Q{i}", "meta": {"from_type": "human", "thread_id": "default"}})
+            entries.append({"ts": f"2026-04-13T10:{i:02d}:30+09:00", "type": "response_sent", "content": f"A{i}", "meta": {"thread_id": "default"}})
         self._write_log(anima_dir, entries)
 
         result = _extract_recent_chat_context(anima_dir)
@@ -668,30 +669,32 @@ class TestExtractRecentChatContext:
         assert "Q0" not in result["accumulated_response"]
         assert "Q1" not in result["accumulated_response"]
 
-    def test_extracts_tool_use_and_result(self, anima_dir: Path) -> None:
-        """Extracts tool_use and tool_result entries."""
+    def test_extracts_tool_use_and_result_paired(self, anima_dir: Path) -> None:
+        """Extracts tool_use and tool_result entries with correct pairing."""
         entries = [
-            {"ts": "2026-04-13T10:00:00+09:00", "type": "message_received", "content": "Read file", "meta": {"from_type": "human"}},
-            {"ts": "2026-04-13T10:00:05+09:00", "type": "tool_use", "tool": "Read", "content": "/tmp/f.md", "meta": {"args": {"path": "/tmp/f.md"}, "tool_use_id": "tu1"}},
-            {"ts": "2026-04-13T10:00:06+09:00", "type": "tool_result", "content": "file content", "meta": {"tool_use_id": "tu1", "is_error": False}},
-            {"ts": "2026-04-13T10:00:30+09:00", "type": "response_sent", "content": "Done", "meta": {}},
+            {"ts": "2026-04-13T10:00:00+09:00", "type": "message_received", "content": "Read file", "meta": {"from_type": "human", "thread_id": "default"}},
+            {"ts": "2026-04-13T10:00:05+09:00", "type": "tool_use", "tool": "Read", "content": "/tmp/f.md", "meta": {"args": {"path": "/tmp/f.md"}, "tool_use_id": "tu1", "thread_id": "default"}},
+            {"ts": "2026-04-13T10:00:06+09:00", "type": "tool_result", "content": "file content here", "meta": {"tool_use_id": "tu1", "is_error": False, "thread_id": "default"}},
+            {"ts": "2026-04-13T10:00:30+09:00", "type": "response_sent", "content": "Done", "meta": {"thread_id": "default"}},
         ]
         self._write_log(anima_dir, entries)
 
         result = _extract_recent_chat_context(anima_dir)
 
         assert len(result["tool_uses"]) >= 1
-        tool_names = [t.get("name", "") for t in result["tool_uses"]]
-        assert any("Read" in n for n in tool_names)
+        paired = result["tool_uses"][0]
+        assert paired["name"] == "Read"
+        assert "result" in paired
+        assert "file content" in paired["result"]
 
     def test_limits_to_10_tool_entries(self, anima_dir: Path) -> None:
         """Only the most recent 10 tool entries are kept."""
         entries = [
-            {"ts": "2026-04-13T10:00:00+09:00", "type": "message_received", "content": "Go", "meta": {"from_type": "human"}},
+            {"ts": "2026-04-13T10:00:00+09:00", "type": "message_received", "content": "Go", "meta": {"from_type": "human", "thread_id": "default"}},
         ]
         for i in range(15):
-            entries.append({"ts": f"2026-04-13T10:00:{i+1:02d}+09:00", "type": "tool_use", "tool": f"Tool{i}", "content": f"arg{i}", "meta": {"args": {}, "tool_use_id": f"tu{i}"}})
-        entries.append({"ts": "2026-04-13T10:01:00+09:00", "type": "response_sent", "content": "Done", "meta": {}})
+            entries.append({"ts": f"2026-04-13T10:00:{i+1:02d}+09:00", "type": "tool_use", "tool": f"Tool{i}", "content": f"arg{i}", "meta": {"args": {}, "tool_use_id": f"tu{i}", "thread_id": "default"}})
+        entries.append({"ts": "2026-04-13T10:01:00+09:00", "type": "response_sent", "content": "Done", "meta": {"thread_id": "default"}})
         self._write_log(anima_dir, entries)
 
         result = _extract_recent_chat_context(anima_dir)
@@ -701,9 +704,9 @@ class TestExtractRecentChatContext:
     def test_skips_non_human_messages(self, anima_dir: Path) -> None:
         """Skips message_received entries that are not from humans (e.g. inbox)."""
         entries = [
-            {"ts": "2026-04-13T10:00:00+09:00", "type": "message_received", "content": "From another anima", "meta": {"from_type": "anima"}},
-            {"ts": "2026-04-13T10:01:00+09:00", "type": "message_received", "content": "From human", "meta": {"from_type": "human"}},
-            {"ts": "2026-04-13T10:01:30+09:00", "type": "response_sent", "content": "Reply", "meta": {}},
+            {"ts": "2026-04-13T10:00:00+09:00", "type": "message_received", "content": "From another anima", "meta": {"from_type": "anima", "thread_id": "default"}},
+            {"ts": "2026-04-13T10:01:00+09:00", "type": "message_received", "content": "From human", "meta": {"from_type": "human", "thread_id": "default"}},
+            {"ts": "2026-04-13T10:01:30+09:00", "type": "response_sent", "content": "Reply", "meta": {"thread_id": "default"}},
         ]
         self._write_log(anima_dir, entries)
 
@@ -717,8 +720,8 @@ class TestExtractRecentChatContext:
         entries = [
             {"ts": "2026-04-13T10:00:00+09:00", "type": "heartbeat_start", "content": "HB start", "meta": {}},
             {"ts": "2026-04-13T10:00:30+09:00", "type": "heartbeat_end", "content": "HB end", "meta": {}},
-            {"ts": "2026-04-13T10:01:00+09:00", "type": "message_received", "content": "Hello", "meta": {"from_type": "human"}},
-            {"ts": "2026-04-13T10:01:30+09:00", "type": "response_sent", "content": "Hi", "meta": {}},
+            {"ts": "2026-04-13T10:01:00+09:00", "type": "message_received", "content": "Hello", "meta": {"from_type": "human", "thread_id": "default"}},
+            {"ts": "2026-04-13T10:01:30+09:00", "type": "response_sent", "content": "Hi", "meta": {"thread_id": "default"}},
         ]
         self._write_log(anima_dir, entries)
 
@@ -730,8 +733,8 @@ class TestExtractRecentChatContext:
     def test_trigger_and_notes_fields(self, anima_dir: Path) -> None:
         """Result includes idle_compaction trigger and notes."""
         entries = [
-            {"ts": "2026-04-13T10:00:00+09:00", "type": "message_received", "content": "Hi", "meta": {"from_type": "human"}},
-            {"ts": "2026-04-13T10:00:30+09:00", "type": "response_sent", "content": "Hello", "meta": {}},
+            {"ts": "2026-04-13T10:00:00+09:00", "type": "message_received", "content": "Hi", "meta": {"from_type": "human", "thread_id": "default"}},
+            {"ts": "2026-04-13T10:00:30+09:00", "type": "response_sent", "content": "Hello", "meta": {"thread_id": "default"}},
         ]
         self._write_log(anima_dir, entries)
 
@@ -739,6 +742,53 @@ class TestExtractRecentChatContext:
 
         assert result["trigger"] == "idle_compaction"
         assert "activity_log" in result["notes"]
+
+    def test_filters_by_thread_id(self, anima_dir: Path) -> None:
+        """Only entries matching the specified thread_id are included."""
+        entries = [
+            {"ts": "2026-04-13T10:00:00+09:00", "type": "message_received", "content": "Thread1 Q", "meta": {"from_type": "human", "thread_id": "thread-1"}},
+            {"ts": "2026-04-13T10:00:30+09:00", "type": "response_sent", "content": "Thread1 A", "meta": {"thread_id": "thread-1"}},
+            {"ts": "2026-04-13T10:01:00+09:00", "type": "message_received", "content": "Default Q", "meta": {"from_type": "human", "thread_id": "default"}},
+            {"ts": "2026-04-13T10:01:30+09:00", "type": "response_sent", "content": "Default A", "meta": {"thread_id": "default"}},
+        ]
+        self._write_log(anima_dir, entries)
+
+        result = _extract_recent_chat_context(anima_dir, thread_id="thread-1")
+
+        assert "Thread1 Q" in result["accumulated_response"]
+        assert "Thread1 A" in result["accumulated_response"]
+        assert "Default Q" not in result["accumulated_response"]
+
+    def test_date_boundary_fallback(self, anima_dir: Path) -> None:
+        """Falls back to yesterday's log when today's is empty."""
+        from core.time_utils import now_local
+
+        yesterday = (now_local().date() - timedelta(days=1)).isoformat()
+        entries = [
+            {"ts": f"{yesterday}T23:55:00+09:00", "type": "message_received", "content": "Late night Q", "meta": {"from_type": "human", "thread_id": "default"}},
+            {"ts": f"{yesterday}T23:55:30+09:00", "type": "response_sent", "content": "Late night A", "meta": {"thread_id": "default"}},
+        ]
+        self._write_log(anima_dir, entries, date_str=yesterday)
+
+        result = _extract_recent_chat_context(anima_dir)
+
+        assert "Late night Q" in result["accumulated_response"]
+        assert "Late night A" in result["accumulated_response"]
+
+    def test_tool_use_id_not_leaked_to_output(self, anima_dir: Path) -> None:
+        """tool_use_id is used for pairing but not included in output dict."""
+        entries = [
+            {"ts": "2026-04-13T10:00:00+09:00", "type": "message_received", "content": "Go", "meta": {"from_type": "human", "thread_id": "default"}},
+            {"ts": "2026-04-13T10:00:05+09:00", "type": "tool_use", "tool": "Write", "content": "f.txt", "meta": {"args": {"path": "f.txt"}, "tool_use_id": "tu99", "thread_id": "default"}},
+            {"ts": "2026-04-13T10:00:06+09:00", "type": "tool_result", "content": "ok", "meta": {"tool_use_id": "tu99", "thread_id": "default"}},
+            {"ts": "2026-04-13T10:00:30+09:00", "type": "response_sent", "content": "Done", "meta": {"thread_id": "default"}},
+        ]
+        self._write_log(anima_dir, entries)
+
+        result = _extract_recent_chat_context(anima_dir)
+
+        for tu in result["tool_uses"]:
+            assert "tool_use_id" not in tu
 
 
 # ── run_idle_compaction ───────────────────────────────────────────────────────
