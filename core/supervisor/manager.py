@@ -177,8 +177,8 @@ class ProcessSupervisor(HealthMixin, ReconcileMixin, SchedulerMixin):
     # ── Process Lifecycle ─────────────────────────────────────────
 
     async def start_all(self, anima_names: list[str]) -> None:
-        """Start all Anima processes in parallel."""
-        logger.info("Starting %d Anima processes (parallel)", len(anima_names))
+        """Start all Anima processes sequentially (staggered)."""
+        logger.info("Starting %d Anima processes (staggered)", len(anima_names))
 
         # Create socket directory and clean up stale sockets from previous runs
         socket_dir = self.run_dir / "sockets"
@@ -193,15 +193,17 @@ class ProcessSupervisor(HealthMixin, ReconcileMixin, SchedulerMixin):
         # Kill zombie runner processes from a previous server crash
         self._kill_zombie_runners(anima_names)
 
-        # Start all processes in parallel
+        # Start processes one-by-one to avoid resource contention
         if anima_names:
-            results = await asyncio.gather(
-                *(self.start_anima(name) for name in anima_names),
-                return_exceptions=True,
-            )
-            for name, result in zip(anima_names, results, strict=False):
-                if isinstance(result, Exception):
-                    logger.error("Failed to start anima %s: %s", name, result)
+            results: list[Exception | None] = []
+            for name in anima_names:
+                try:
+                    await self.start_anima(name)
+                    results.append(None)
+                    logger.info("Staggered startup: %s ready, proceeding to next", name)
+                except Exception as e:
+                    logger.error("Staggered startup: %s failed: %s", name, e)
+                    results.append(e)
 
         # Start health check loop
         self._health_check_task = asyncio.create_task(self._health_check_loop())
