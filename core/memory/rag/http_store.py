@@ -73,13 +73,16 @@ class HttpVectorStore(VectorStore):
         if self._client is None:
             import httpx
 
-            self._client = httpx.Client(base_url=self._base_url, timeout=30.0)
+            self._client = httpx.Client(base_url=self._base_url, timeout=10.0)
         return self._client
 
     def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any] | None:
         """POST to endpoint and return JSON, or None on error."""
         try:
             resp = self._get_client().post(path, json=payload)
+            if resp.status_code == 503:
+                logger.debug("Vector DB unavailable (503) for %s, skipping", path)
+                return None
             resp.raise_for_status()
             return resp.json()
         except Exception as e:
