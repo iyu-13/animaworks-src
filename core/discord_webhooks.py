@@ -114,6 +114,8 @@ class DiscordWebhookManager:
         channel_id: str,
         anima_name: str,
         content: str,
+        *,
+        components: list[dict[str, Any]] | None = None,
     ) -> str:
         """Send a message to a Discord channel appearing as a specific Anima.
 
@@ -130,8 +132,10 @@ class DiscordWebhookManager:
         # Split long messages
         chunks = _split_message(content)
         last_msg_id = ""
+        last_i = len(chunks) - 1
 
-        for chunk in chunks:
+        for i, chunk in enumerate(chunks):
+            comp = components if (i == last_i and components) else None
             try:
                 result = client.execute_webhook(
                     wh_id,
@@ -139,6 +143,7 @@ class DiscordWebhookManager:
                     chunk,
                     username=anima_name,
                     avatar_url=avatar_url or None,
+                    components=comp,
                 )
                 last_msg_id = str(result.get("id", ""))
             except DiscordAPIError as exc:
@@ -153,6 +158,7 @@ class DiscordWebhookManager:
                         chunk,
                         username=anima_name,
                         avatar_url=avatar_url or None,
+                        components=comp,
                     )
                     last_msg_id = str(result.get("id", ""))
                 else:

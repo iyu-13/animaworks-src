@@ -176,7 +176,7 @@ def create_webhooks_router() -> APIRouter:
             try:
                 from core.notification.reply_routing import route_thread_reply
 
-                if route_thread_reply(event, get_data_dir() / "shared", slack_token=_token or ""):
+                if await route_thread_reply(event, get_data_dir() / "shared", slack_token=_token or ""):
                     return {"ok": True}
             except Exception:
                 logger.debug("Reply routing lookup failed", exc_info=True)
