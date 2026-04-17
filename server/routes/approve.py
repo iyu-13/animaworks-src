@@ -30,6 +30,9 @@ def create_approve_router() -> APIRouter:
 
         rtr = get_interaction_router()
 
+        # Magic-link pattern: the token is the URL secret. Re-verify here so a request
+        # without a valid token cannot load the page (even though POST also checks;
+        # the HTML embeds the token for the client script, not as a server-side auth bypass).
         if not rtr.verify_approval_token(callback_id, token):
             raise HTTPException(status_code=403, detail="Invalid or expired token")
 
