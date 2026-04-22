@@ -211,6 +211,7 @@ class AnimaWorksLoCoMoAdapter:
         from core.memory.rag.store import ChromaVectorStore  # noqa: PLC0415
 
         self._previous_animaworks_data = os.environ.get("ANIMAWORKS_DATA_DIR")
+        real_data_dir = Path(os.environ.get("ANIMAWORKS_DATA_DIR", "~/.animaworks")).expanduser().resolve()
         self._temp_dir = tempfile.mkdtemp(prefix="animaworks-locomo-")
         os.environ["ANIMAWORKS_DATA_DIR"] = self._temp_dir
         self._own_data_env = True
@@ -223,6 +224,10 @@ class AnimaWorksLoCoMoAdapter:
             "common_knowledge",
         ):
             (self._anima_dir / sub).mkdir(parents=True, exist_ok=True)
+        real_models = real_data_dir / "models"
+        tmp_models = Path(self._temp_dir) / "models"
+        if real_models.is_dir() and not tmp_models.exists():
+            tmp_models.symlink_to(real_models)
 
         vdir = self._anima_dir / "vectordb"
         vdir.mkdir(parents=True, exist_ok=True)
