@@ -100,7 +100,7 @@ def cmd_chat(args: argparse.Namespace) -> None:
             args,
             "POST",
             f"/api/animas/{args.anima}/chat",
-            json={"message": args.message, "from_person": args.from_person},
+            json={"message": args.message, "from_person": args.from_person, "thread_id": args.thread, "intent": args.intent},
             timeout=300.0,
         )
         print(data.get("response", data.get("error", "Unknown error")))

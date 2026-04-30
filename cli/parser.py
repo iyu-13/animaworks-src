@@ -189,6 +189,8 @@ def cli_main() -> None:
         default="human",
         help="Sender name (default: human)",
     )
+    p_chat.add_argument("--thread", default="default", help="Thread ID for message routing (default: default)")
+    p_chat.add_argument("--intent", default="", help="Message intent (e.g. task, question)")
     p_chat.set_defaults(func=_lazy_chat)
 
     # ── Heartbeat ─────────────────────────────────────────
