@@ -170,6 +170,8 @@ def _handle_chunk(
         }
         if "code" in chunk:
             error_payload["code"] = chunk["code"]
+        if "retry_after" in chunk:
+            error_payload["retry_after"] = chunk["retry_after"]
         return _format_sse("error", error_payload), ""
 
     return None, ""
@@ -247,5 +249,7 @@ def _chunk_to_event(chunk: dict[str, Any]) -> tuple[str, dict[str, Any]] | None:
         payload = {"message": chunk.get("message", "Unknown error")}
         if "code" in chunk:
             payload["code"] = chunk["code"]
+        if "retry_after" in chunk:
+            payload["retry_after"] = chunk["retry_after"]
         return "error", payload
     return None

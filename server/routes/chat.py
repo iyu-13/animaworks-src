@@ -6,6 +6,8 @@ from __future__ import annotations
 """Chat routes facade. Imports from submodules and re-exports for tests."""
 import asyncio
 import logging
+import re
+import time
 from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Request
@@ -34,6 +36,44 @@ from server.routes.chat_ws_effects import _emit_ws_side_effects
 from server.stream_registry import StreamRegistry
 
 logger = logging.getLogger("animaworks.routes.chat")
+
+_INTERNAL_CALLERS = frozenset({"human", "user", "system", ""})
+
+_CONTENT_FILTERS: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"推定(所要)?時間[:：]\s*[^\n]*"), ""),
+    (re.compile(r"(estimated\s+)?time[:：]\s*\d+\s*(min|minutes?|hours?|h)\b", re.IGNORECASE), ""),
+]
+
+
+def _filter_external_content(message: str, from_person: str) -> tuple[str, bool]:
+    """外部callerのメッセージから操作的パターンを除去する。"""
+    if from_person in _INTERNAL_CALLERS:
+        return (message, False)
+    filtered = False
+    for pattern, replacement in _CONTENT_FILTERS:
+        new_message = pattern.sub(replacement, message)
+        if new_message != message:
+            filtered = True
+            message = new_message
+    return (message, filtered)
+
+
+_rate_limit_store: dict[tuple[str, str], float] = {}
+_RATE_LIMIT_INTERVAL = 10
+
+
+def _check_rate_limit(from_person: str, anima_name: str) -> int | None:
+    """外部callerのレート制限を確認する。超過時はretry_after秒数を返す。"""
+    if from_person in _INTERNAL_CALLERS:
+        return None
+    key = (from_person, anima_name)
+    now = time.monotonic()
+    last = _rate_limit_store.get(key, 0.0)
+    if now - last < _RATE_LIMIT_INTERVAL:
+        return int(_RATE_LIMIT_INTERVAL - (now - last)) + 1
+    _rate_limit_store[key] = now
+    return None
+
 
 # Re-exports for tests and external consumers
 __all__ = [
@@ -71,6 +111,17 @@ def create_chat_router() -> APIRouter:
             body.from_person = request.state.user.username
         logger.info("chat_request anima=%s user=%s msg_len=%d", name, body.from_person, len(body.message))
         supervisor = request.app.state.supervisor
+
+        # E4: Rate limiting for external callers
+        retry_after = _check_rate_limit(body.from_person, name)
+        if retry_after is not None:
+            return JSONResponse(
+                status_code=429,
+                content={"error": "rate_limited", "retry_after": retry_after},
+            )
+
+        # E2: Content filter for external callers
+        body.message, _content_filtered = _filter_external_content(body.message, body.from_person)
 
         # Guard: reject if anima is bootstrapping
         if supervisor.is_bootstrapping(name):
@@ -113,6 +164,14 @@ def create_chat_router() -> APIRouter:
                 },
                 timeout=60.0,
             )
+
+            # E3: Busy rejection from Anima (external caller)
+            _cycle_result = result.get("cycle_result", {})
+            if isinstance(_cycle_result, dict) and _cycle_result.get("status") == "rejected":
+                return JSONResponse(
+                    status_code=429,
+                    content={"error": _cycle_result["error"], "retry_after": _cycle_result.get("retry_after", 30)},
+                )
 
             response = result.get("response", "")
             clean_response, _ = extract_emotion(response)
@@ -211,6 +270,17 @@ def create_chat_router() -> APIRouter:
             body.from_person = request.state.user.username
         logger.info("chat_stream_request anima=%s user=%s msg_len=%d", name, body.from_person, len(body.message))
         supervisor = request.app.state.supervisor
+
+        # E4: Rate limiting for external callers
+        retry_after = _check_rate_limit(body.from_person, name)
+        if retry_after is not None:
+            return JSONResponse(
+                status_code=429,
+                content={"error": "rate_limited", "retry_after": retry_after},
+            )
+
+        # E2: Content filter for external callers
+        body.message, _content_filtered = _filter_external_content(body.message, body.from_person)
 
         # Verify anima exists before starting the stream
         if name not in supervisor.processes:
