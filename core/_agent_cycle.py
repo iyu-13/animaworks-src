@@ -855,8 +855,8 @@ class CycleMixin:
                             self._progress_callback()
                         yield chunk
                     elif chunk["type"] == "context_update":
-                        # Context budget monitoring — F1 countermeasure
-                        # Reference: /home/deploy/.animaworks/common_knowledge/issues/streaming-disconnect-rca-v2.md §4.2
+                        # Context budget monitoring implementation
+                        # See: /home/deploy/.animaworks/common_knowledge/issues/streaming-disconnect-rca-v2.md §3.1 (F1)
                         ratio = chunk.get("context_usage_ratio", 0.0)
                         if ratio > 0.85 and not context_budget_exceeded:
                             context_budget_exceeded = True
