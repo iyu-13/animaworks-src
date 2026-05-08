@@ -793,6 +793,7 @@ class CycleMixin:
         current_prompt = prompt
         current_system_prompt = system_prompt
         retry_count = 0
+        context_budget_exceeded = False
 
         while True:
             completed_tools: list[dict[str, Any]] = []
@@ -852,6 +853,34 @@ class CycleMixin:
                         )
                         if self._progress_callback:
                             self._progress_callback()
+                        yield chunk
+                    elif chunk["type"] == "context_update":
+                        ratio = chunk.get("context_usage_ratio", 0.0)
+                        if ratio > 0.85 and not context_budget_exceeded:
+                            context_budget_exceeded = True
+                            logger.error(
+                                "Context budget critical (ratio=%.2f > 0.85), "
+                                "triggering graceful interrupt for context preservation",
+                                ratio,
+                            )
+                            # Trigger graceful interrupt via existing mechanism
+                            from core.execution.base import _active_interrupt_event
+                            evt = _active_interrupt_event.get(None)
+                            if evt is None and hasattr(self._executor, '_interrupt_event'):
+                                evt = self._executor._interrupt_event
+                            if evt is not None:
+                                evt.set()
+                        elif ratio > 0.80:
+                            logger.warning(
+                                "Context budget warning (ratio=%.2f > 0.80), "
+                                "approaching context window limit",
+                                ratio,
+                            )
+                        elif ratio > 0.70:
+                            logger.warning(
+                                "Context usage high (ratio=%.2f > 0.70)",
+                                ratio,
+                            )
                         yield chunk
                     else:
                         if chunk["type"] == "text_delta":
