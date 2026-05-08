@@ -1,3 +1,5 @@
+# Tests for context budget monitoring (F1 countermeasure)
+# Reference: /home/deploy/.animaworks/common_knowledge/issues/streaming-disconnect-rca-v2.md §4.2
 """E2E tests for context budget monitoring in _agent_cycle.py.
 
 Validates that context_update events trigger appropriate log levels
