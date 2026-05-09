@@ -35,6 +35,8 @@ _PENDING_WATCHER_POLL_INTERVAL = 3.0
 _LLM_TASK_TTL_HOURS = 24
 _PENDING_TASK_SUBPROCESS_TIMEOUT = 1800
 _TASK_RESULT_MAX_CHARS = 2000
+_MAX_AUTO_RESTARTS = 2  # F5: Max auto-restart attempts for streaming errors
+_AUTO_RESTART_BASE_DELAY_S = 60  # F5: Base cooldown before auto-restart (exponential backoff)
 
 _SENTINEL_CANCELLED = "(cancelled)"
 _SENTINEL_EXPIRED = "(expired)"
@@ -1003,6 +1005,101 @@ class PendingTaskExecutor:
                 self._anima_name,
                 task_id,
             )
+            # ── F5: Auto-restart for streaming errors ──────────────
+            _is_streaming_error = (
+                isinstance(exc, TaskExecError)
+                and "streaming error" in str(exc).lower()
+            )
+            _auto_restart_count = task_desc.get("_auto_restart_count", 0)
+
+            if _is_streaming_error and _auto_restart_count < _MAX_AUTO_RESTARTS:
+                import copy
+
+                new_count = _auto_restart_count + 1
+                _backoff_delay = _AUTO_RESTART_BASE_DELAY_S * (2 ** (_auto_restart_count))  # 60s, 120s
+                logger.warning(
+                    "[%s] F5 auto-restart: task=%s attempt=%d/%d (backoff=%ds)",
+                    self._anima_name,
+                    task_id,
+                    new_count,
+                    _MAX_AUTO_RESTARTS,
+                    _backoff_delay,
+                )
+
+                # Update queue to show restart in progress (not failed)
+                self._sync_task_queue(
+                    task_id,
+                    "in_progress",
+                    summary=f"Auto-restart {new_count}/{_MAX_AUTO_RESTARTS} (backoff {_backoff_delay}s)",
+                )
+
+                # Schedule restart after cooldown
+                restart_desc = copy.deepcopy(task_desc)
+                restart_desc["_auto_restart_count"] = new_count
+                restart_desc["_original_task_id"] = task_desc.get(
+                    "_original_task_id", task_id
+                )
+
+                async def _delayed_restart(
+                    desc: dict,
+                    delay: float,
+                    pending_dir: Path,
+                    tid: str,
+                    count: int,
+                ) -> None:
+                    await asyncio.sleep(delay)
+                    restart_path = pending_dir / f"restart_{tid}_{count}.json"
+                    restart_path.write_text(
+                        json.dumps(desc, ensure_ascii=False, default=str),
+                        encoding="utf-8",
+                    )
+                    self.wake()
+
+                llm_pending_dir = self._anima_dir / "state" / "pending"
+                asyncio.create_task(
+                    _delayed_restart(
+                        restart_desc,
+                        _backoff_delay,
+                        llm_pending_dir,
+                        task_id,
+                        new_count,
+                    )
+                )
+                # Notify supervisor about auto-restart (not failure)
+                reply_to = task_desc.get("reply_to")
+                if isinstance(reply_to, dict):
+                    reply_to = reply_to.get("name")
+                elif not isinstance(reply_to, str):
+                    reply_to = None
+                if reply_to:
+                    try:
+                        from core.execution._sanitize import ORIGIN_ANIMA
+
+                        notify_text = (
+                            f"[F5 Auto-restart] Task {task_id} encountered streaming error. "
+                            f"Auto-restart {new_count}/{_MAX_AUTO_RESTARTS} scheduled "
+                            f"(backoff: {_backoff_delay}s)."
+                        )
+                        self._anima.messenger.send(
+                            to=reply_to,
+                            content=notify_text,
+                            origin_chain=[ORIGIN_ANIMA],
+                        )
+                    except Exception:
+                        logger.warning(
+                            "[%s] Failed to send auto-restart notification",
+                            self._anima_name,
+                        )
+                # Activity log for auto-restart event
+                from core.memory.activity import ActivityLogger
+                ActivityLogger(self._anima_dir).log(
+                    "task_auto_restart",
+                    summary=f"F5: Task {task_id} auto-restart {new_count}/{_MAX_AUTO_RESTARTS} (backoff {_backoff_delay}s)",
+                    meta={"task_id": task_id, "restart_count": new_count, "backoff_s": _backoff_delay},
+                )
+                return  # Skip normal failure handling
+            # ── End F5 ────────────────────────────────────────────
+
             self._anima._status_slots["background"] = "idle"
             self._anima._task_slots["background"] = ""
             self._write_failed_result(
