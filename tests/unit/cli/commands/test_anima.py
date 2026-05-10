@@ -219,6 +219,7 @@ class TestCmdChat:
         args = argparse.Namespace(
             local=False, anima="alice", message="Hi",
             from_person="human", gateway_url="http://localhost:18500",
+            thread=None, intent=None,
         )
         cmd_chat(args)
 
@@ -232,6 +233,7 @@ class TestCmdChat:
         args = argparse.Namespace(
             local=False, anima="alice", message="Hi",
             from_person="human", gateway_url="http://localhost:18500",
+            thread=None, intent=None,
         )
         with pytest.raises(SystemExit):
             cmd_chat(args)
