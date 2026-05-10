@@ -1,8 +1,8 @@
 #!/bin/bash
 # AnimaWorks 本家リポジトリの変更を取り込み、fork(iyu13)に同期するスクリプト
-# - git rebase でyの独自変更を保持しつつupstream変更を取り込む
-# - rebase後は iyu13(fork) にpushしてVPSローカルと常に一致させる
-# - コンフリクト時はrebaseを中断（手動対応が必要）
+# - git merge でyの独自変更を保持しつつupstream変更を取り込む
+# - merge後は iyu13(fork) にpushしてVPSローカルと常に一致させる
+# - コンフリクト時はmergeを中断（手動対応が必要）
 
 LOG="/home/deploy/.animaworks/animas/leader/shortterm/auto_update.log"
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
@@ -25,38 +25,44 @@ git fetch origin >> "$LOG" 2>&1
 AHEAD=$(git rev-list HEAD..origin/main --count)
 
 if [ "$AHEAD" -eq 0 ]; then
-  echo "[$TIMESTAMP] already up to date, skipping rebase" >> "$LOG"
+  echo "[$TIMESTAMP] already up to date, skipping merge" >> "$LOG"
   exit 0
 fi
 
-echo "[$TIMESTAMP] ${AHEAD} new commit(s) found, rebasing..." >> "$LOG"
+echo "[$TIMESTAMP] ${AHEAD} new commit(s) found, merging..." >> "$LOG"
 
-# 自動生成ファイル(uv.lock)の変更をリセット（rebaseの邪魔になるため）
+# 自動生成ファイル(uv.lock)の変更をリセット（mergeの邪魔になるため）
 git checkout -- uv.lock 2>/dev/null || true
 
 # 未コミット変更があればstashで退避（uv.lock等の自動生成ファイル対策）
 STASHED=0
 if ! git diff --quiet || ! git diff --cached --quiet; then
   echo "[$TIMESTAMP] uncommitted changes found, stashing..." >> "$LOG"
-  git stash push -m "auto_update pre-rebase stash" >> "$LOG" 2>&1
+  git stash push -m "auto_update pre-merge stash" >> "$LOG" 2>&1
   STASHED=1
 fi
 
-# (1) git config チェック: rebase前にuser.emailが未設定なら自動設定
+# (1) git config チェック: merge前にuser.emailが未設定なら自動設定
 if [ -z "$(git config user.email)" ]; then
   git config user.email "anima@animaworks.local"
   git config user.name "AnimaWorks"
   echo "[$TIMESTAMP] git config user.email/name set automatically" >> "$LOG"
 fi
 
-# yの独自変更を保持しつつ取り込む
-REBASE_OUTPUT=$(git rebase origin/main 2>&1)
-REBASE_EXIT=$?
-echo "$REBASE_OUTPUT" >> "$LOG"
+# yの独自変更を保持しつつ取り込む（merge戦略）
+MERGE_OUTPUT=$(git merge origin/main --no-edit 2>&1)
+MERGE_EXIT=$?
+echo "$MERGE_OUTPUT" >> "$LOG"
 
-if [ $REBASE_EXIT -ne 0 ]; then
-  echo "[$TIMESTAMP] rebase conflict! aborting..." >> "$LOG"
-  git rebase --abort >> "$LOG" 2>&1
+if [ $MERGE_EXIT -ne 0 ]; then
+  echo "[$TIMESTAMP] merge conflict! aborting..." >> "$LOG"
+  git merge --abort >> "$LOG" 2>&1
+
+  # BUG FIX: merge失敗時もstashを復元する（旧版はここでstashが孤立していた）
+  if [ "$STASHED" = "1" ]; then
+    echo "[$TIMESTAMP] restoring stash after merge abort..." >> "$LOG"
+    git stash pop >> "$LOG" 2>&1 || echo "[$TIMESTAMP] WARNING: stash pop failed after abort" >> "$LOG"
+  fi
 
   # === 原因診断 ===
   CAUSE=""
@@ -64,7 +70,7 @@ if [ $REBASE_EXIT -ne 0 ]; then
   RECOMMENDATION=""
 
   # (A) 未追跡ファイルの衝突を検出
-  UNTRACKED_CONFLICTS=$(echo "$REBASE_OUTPUT" | grep -A1 "untracked working tree files" | grep -v "untracked\|Please\|Aborting\|error" | sed 's/^\t//' | xargs)
+  UNTRACKED_CONFLICTS=$(echo "$MERGE_OUTPUT" | grep -A1 "untracked working tree files" | grep -v "untracked\|Please\|Aborting\|error" | sed 's/^\t//' | xargs)
   if [ -n "$UNTRACKED_CONFLICTS" ]; then
     CAUSE="未追跡（未コミット）ファイルがupstreamと衝突"
     DETAIL="*衝突ファイル:*"
@@ -83,12 +89,12 @@ if [ $REBASE_EXIT -ne 0 ]; then
     RECOMMENDATION="*推奨対応:*
 1. 本家にも存在するファイル → ローカル版を削除（本家版が上位互換の可能性大）
 2. ローカルのみのファイル → \`.gitignore\` に追加するか、コミットする
-3. 対処後 \`git rebase origin/main\` → \`git push iyu13 main --force-with-lease\`"
+3. 対処後 \`git merge origin/main\` → \`git push iyu13 main\`"
   fi
 
   # (B) コミット同士の衝突を検出
   if [ -z "$CAUSE" ]; then
-    CONFLICT_FILES=$(echo "$REBASE_OUTPUT" | grep "^CONFLICT" | sed 's/CONFLICT ([^)]*): //' | head -5)
+    CONFLICT_FILES=$(echo "$MERGE_OUTPUT" | grep "^CONFLICT" | sed 's/CONFLICT ([^)]*): //' | head -5)
     if [ -n "$CONFLICT_FILES" ]; then
       CAUSE="ローカルコミットとupstreamコミットがコード競合"
       DETAIL="*競合ファイル:*
@@ -96,15 +102,15 @@ $(echo "$CONFLICT_FILES" | sed 's/^/• /')"
       RECOMMENDATION="*推奨対応:*
 1. 各ファイルの差分を確認し、ローカル変更が不要なら本家に合わせる
 2. 必要な変更なら手動でマージする
-3. 対処後 \`git rebase --continue\` → \`git push iyu13 main --force-with-lease\`"
+3. 対処後 衝突を解決し \`git merge --continue\` → \`git push iyu13 main\`"
     fi
   fi
 
   # (C) その他
   if [ -z "$CAUSE" ]; then
     CAUSE="不明（ログを確認してください）"
-    DETAIL="*rebase出力:*
-\`\`\`$(echo "$REBASE_OUTPUT" | tail -5)\`\`\`"
+    DETAIL="*merge出力:*
+\`\`\`$(echo "$MERGE_OUTPUT" | tail -5)\`\`\`"
     RECOMMENDATION="*推奨対応:* ログを確認し、手動で対処してください"
   fi
 
@@ -141,19 +147,19 @@ ${RECOMMENDATION}
     else
       echo "[$TIMESTAMP] ERROR: slack conflict notification failed (exit $?)" >> "$LOG"
       # (3) Slack通知失敗時のcall_human fallback
-      /home/deploy/animaworks/.venv/bin/animaworks-tool call_human "AutoUpdate: rebaseコンフリクト" "原因: ${CAUSE} / 時刻: ${TIMESTAMP} / ログ: ${LOG}" --priority high 2>/dev/null || true
+      /home/deploy/animaworks/.venv/bin/animaworks-tool call_human "AutoUpdate: mergeコンフリクト" "原因: ${CAUSE} / 時刻: ${TIMESTAMP} / ログ: ${LOG}" --priority high 2>/dev/null || true
     fi
   fi
   exit 1
 fi
 
-echo "[$TIMESTAMP] rebase done" >> "$LOG"
+echo "[$TIMESTAMP] merge done" >> "$LOG"
 
 if [ "$STASHED" = "1" ]; then
   echo "[$TIMESTAMP] restoring stash..." >> "$LOG"
   if ! git stash pop >> "$LOG" 2>&1; then
     echo "[$TIMESTAMP] stash pop failed, manual recovery needed" >> "$LOG"
-    /home/deploy/animaworks/.venv/bin/animaworks send mio y "【AnimaWorks自動アップデート】rebaseは成功しましたが、stash popに失敗しました。手動確認が必要です。ログ: $LOG" --intent report
+    /home/deploy/animaworks/.venv/bin/animaworks send mio y "【AnimaWorks自動アップデート】mergeは成功しましたが、stash popに失敗しました。手動確認が必要です。ログ: $LOG" --intent report
   fi
 fi
 
@@ -162,9 +168,9 @@ COMMITS=$(git log --oneline origin/main~${AHEAD}..origin/main 2>/dev/null || ech
 
 # fork(iyu13)にpushしてVPSローカルと同期
 echo "[$TIMESTAMP] pushing to iyu13 fork..." >> "$LOG"
-if ! git push iyu13 main --force-with-lease >> "$LOG" 2>&1; then
+if ! git push iyu13 main >> "$LOG" 2>&1; then
   echo "[$TIMESTAMP] push to iyu13 failed!" >> "$LOG"
-  /home/deploy/animaworks/.venv/bin/animaworks send mio y "【AnimaWorks自動アップデート】rebaseは成功しましたが、forkへのpushが失敗しました。手動で確認してください。ログ: $LOG" --intent report
+  /home/deploy/animaworks/.venv/bin/animaworks send mio y "【AnimaWorks自動アップデート】mergeは成功しましたが、forkへのpushが失敗しました。手動で確認してください。ログ: $LOG" --intent report
   # push失敗時もSlack通知
   SLACK_TOKEN_PUSH=$(python3 -c "import json; d=json.load(open('/home/deploy/.animaworks/shared/credentials.json')); print(d.get('SLACK_BOT_TOKEN',''))" 2>/dev/null)
   if [ -n "$SLACK_TOKEN_PUSH" ]; then
