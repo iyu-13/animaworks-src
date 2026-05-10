@@ -179,6 +179,26 @@ _DEFAULT_ENGINE_PRIORITY: list[str] = [
 
 _LIST_SENTINEL = "__list__"
 
+# ── PATH Resolution ────────────────────────────────────────
+
+
+def _expanded_path(base_path: str | None = None) -> str:
+    """Return PATH with ``~/.local/bin`` prepended if not already present.
+
+    AnimaWorks worker processes are typically launched without
+    ``~/.local/bin`` on PATH, but engine binaries (claude/codex/
+    cursor-agent/gemini) are installed there.  Both ``shutil.which()``
+    used to detect engines and the subprocess environment need the
+    directory available.
+    """
+    base = base_path if base_path is not None else os.environ.get("PATH", "")
+    local_bin = str(Path.home() / ".local" / "bin")
+    parts = base.split(os.pathsep) if base else []
+    if local_bin in parts:
+        return base
+    return os.pathsep.join([local_bin, *parts]) if parts else local_bin
+
+
 # ── Engine Availability ───────────────────────────────────
 
 
@@ -195,6 +215,18 @@ def _get_engine_priority() -> list[str]:
     return list(_DEFAULT_ENGINE_PRIORITY)
 
 
+def _get_default_model(engine: str) -> str | None:
+    """Return config-level default model for *engine*, or ``None``."""
+    try:
+        from core.config.models import load_config
+
+        config = load_config()
+        return config.machine.default_models.get(engine)
+    except Exception as exc:
+        logger.debug("Failed to load default model for engine %s: %s", engine, exc)
+    return None
+
+
 def _get_available_engines() -> list[str]:
     """Return engines whose CLI binary is found in PATH, ordered by priority.
 
@@ -203,7 +235,8 @@ def _get_available_engines() -> list[str]:
     the priority table are appended alphabetically.
     """
     priority = _get_engine_priority()
-    available = {e for e in _VALID_ENGINES if shutil.which(_ENGINE_COMMANDS[e][0])}
+    search_path = _expanded_path()
+    available = {e for e in _VALID_ENGINES if shutil.which(_ENGINE_COMMANDS[e][0], path=search_path)}
     result = [e for e in priority if e in available]
     for e in sorted(available):
         if e not in result:
@@ -298,6 +331,11 @@ def _build_env(engine: str) -> dict[str, str]:
         if k not in env:
             env[k] = v
 
+    # Ensure ~/.local/bin is on PATH so engine binaries (claude/codex/
+    # cursor-agent/gemini) installed there are discoverable in the
+    # subprocess.  AnimaWorks worker processes are launched without it.
+    env["PATH"] = _expanded_path(env.get("PATH", ""))
+
     return env
 
 
@@ -328,16 +366,21 @@ def _build_command(
 
     The instruction is NOT included in the command — it is passed via stdin
     to avoid shell escaping issues and hangs with some CLIs.
+
+    When *model* is not provided, falls back to ``config.json``
+    ``machine.default_models[engine]`` so the engine's own default
+    (e.g. cursor-agent's cli-config.json) is never used implicitly.
     """
     base = list(_ENGINE_COMMANDS[engine])
 
     perm_flags = _ENGINE_PERMISSION_FLAGS.get(engine, [])
     base.extend(perm_flags)
 
-    if model:
+    effective_model = model or _get_default_model(engine)
+    if effective_model:
         flag = _ENGINE_MODEL_FLAGS.get(engine)
         if flag:
-            base.extend([flag, model])
+            base.extend([flag, effective_model])
 
     workdir_flags = _ENGINE_WORKDIR_FLAGS.get(engine, [])
     if workdir_flags:
@@ -451,7 +494,7 @@ def _execute(
     anima_dir: str | None = None,
 ) -> ToolResult:
     """Execute a machine tool synchronously."""
-    exe = shutil.which(_ENGINE_COMMANDS[engine][0])
+    exe = shutil.which(_ENGINE_COMMANDS[engine][0], path=_expanded_path())
     if exe is None:
         return ToolResult(
             success=False,

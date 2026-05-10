@@ -254,6 +254,7 @@ class ConsolidationConfig(BaseModel):
     daily_time: str = "02:00"  # Format: HH:MM
     min_episodes_threshold: int = 1
     llm_model: str = DEFAULT_CONSOLIDATION_MODEL
+    llm_credential: str = ""
     max_turns: int = 30  # Tool-call loop limit for consolidation tasks
     weekly_enabled: bool = True  # Phase 3 implementation
     weekly_time: str = "sun:03:00"  # Format: day:HH:MM
@@ -350,6 +351,7 @@ class ExternalMessagingChannelConfig(BaseModel):
     app_id_mapping: dict[str, str] = {}  # api_app_id → anima_name (per-Anima webhook routing)
     auto_response: bool = False  # auto-post LLM responses back to originating platform
     board_mapping: dict[str, str] = {}  # channel_id → animaworks_board_name (auto-populated)
+    board_outbound_sync: list[str] = []  # board names to sync outbound to this platform (whitelist)
     guild_id: str = ""  # Discord guild snowflake ID (Discord only)
     channel_members: dict[str, list[str]] = {}  # channel_id → [anima_name, ...] (Discord only)
 

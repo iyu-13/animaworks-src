@@ -135,3 +135,4 @@ swe/results/
 .claude/worktrees/
 server/routes/libera_routes.py
 animaworks.db
+vendor/

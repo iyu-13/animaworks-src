@@ -162,7 +162,9 @@ def create_chat_router() -> APIRouter:
                     "attachment_paths": saved_paths,
                     "thread_id": body.thread_id,
                 },
-                timeout=60.0,
+                timeout=float(
+                    __import__("core.config", fromlist=["load_config"]).load_config().server.ipc_stream_timeout
+                ),
             )
 
             # E3: Busy rejection from Anima (external caller)

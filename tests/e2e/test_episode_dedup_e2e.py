@@ -14,8 +14,8 @@ import re
 from pathlib import Path
 
 import pytest
-from core.time_utils import today_local
 
+from core.time_utils import today_local
 
 # ── Fire-and-forget removal verification ─────────────────────
 
@@ -89,10 +89,10 @@ class TestDifferentialFinalizationE2E:
     @pytest.mark.asyncio
     async def test_finalize_full_flow(self, data_dir):
         """Full finalization: turns → episode → state update → resolution."""
-        from tests.helpers.filesystem import create_anima_dir
-        from tests.helpers.mocks import make_litellm_response, patch_litellm
         from core.memory.conversation import ConversationMemory, ConversationTurn
         from core.schemas import ModelConfig
+        from tests.helpers.filesystem import create_anima_dir
+        from tests.helpers.mocks import make_litellm_response, patch_litellm
 
         anima_dir = create_anima_dir(data_dir, "e2e-dedup")
         model_config = ModelConfig(
@@ -157,18 +157,20 @@ class TestDifferentialFinalizationE2E:
         assert len(resolutions) >= 1
         assert any("サーバー障害" in r["issue"] for r in resolutions)
 
-        # Verify last_finalized_turn_index updated
+        # Verify turns cleared and index reset after successful finalization
         conv._state = None
         loaded = conv.load()
-        assert loaded.last_finalized_turn_index == 4
+        assert loaded.turns == []
+        assert loaded.last_finalized_turn_index == 0
+        assert loaded.compressed_summary == "サーバー障害修正完了、デプロイ予定"
 
     @pytest.mark.asyncio
     async def test_no_duplicate_episodes_on_double_finalize(self, data_dir):
         """Calling finalize_session twice does not create duplicate episodes."""
-        from tests.helpers.filesystem import create_anima_dir
-        from tests.helpers.mocks import make_litellm_response, patch_litellm
         from core.memory.conversation import ConversationMemory, ConversationTurn
         from core.schemas import ModelConfig
+        from tests.helpers.filesystem import create_anima_dir
+        from tests.helpers.mocks import make_litellm_response, patch_litellm
 
         anima_dir = create_anima_dir(data_dir, "e2e-nodup")
         model_config = ModelConfig(
@@ -206,9 +208,9 @@ class TestResolutionPropagationE2E:
 
     def test_resolution_in_system_prompt(self, data_dir):
         """Resolutions are visible in system prompt."""
-        from tests.helpers.filesystem import create_anima_dir
         from core.memory.manager import MemoryManager
         from core.prompt.builder import build_system_prompt
+        from tests.helpers.filesystem import create_anima_dir
 
         anima_dir = create_anima_dir(data_dir, "e2e-prompt")
         mm = MemoryManager(anima_dir)
