@@ -149,9 +149,13 @@ class LocalLLMConfig(BaseModel):
 # ── Outbound budget defaults per role ─────────────────────────────────────────
 ROLE_OUTBOUND_DEFAULTS: dict[str, dict[str, int]] = {
     "manager": {"max_outbound_per_hour": 60, "max_outbound_per_day": 300, "max_recipients_per_run": 10},
+    "planner": {"max_outbound_per_hour": 60, "max_outbound_per_day": 300, "max_recipients_per_run": 10},
     "engineer": {"max_outbound_per_hour": 40, "max_outbound_per_day": 200, "max_recipients_per_run": 5},
+    "worker": {"max_outbound_per_hour": 30, "max_outbound_per_day": 150, "max_recipients_per_run": 5},
     "writer": {"max_outbound_per_hour": 30, "max_outbound_per_day": 150, "max_recipients_per_run": 3},
     "researcher": {"max_outbound_per_hour": 30, "max_outbound_per_day": 150, "max_recipients_per_run": 3},
+    "verifier": {"max_outbound_per_hour": 20, "max_outbound_per_day": 100, "max_recipients_per_run": 5},
+    "learner": {"max_outbound_per_hour": 20, "max_outbound_per_day": 100, "max_recipients_per_run": 3},
     "ops": {"max_outbound_per_hour": 20, "max_outbound_per_day": 80, "max_recipients_per_run": 2},
     "general": {"max_outbound_per_hour": 15, "max_outbound_per_day": 50, "max_recipients_per_run": 2},
 }

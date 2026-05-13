@@ -31,6 +31,7 @@ from core.config.models import (
     invalidate_cache,
     resolve_anima_config,
 )
+from core.config.schemas import resolve_outbound_limits
 from core.execution.agent_sdk import _PROTECTED_FILES
 
 
@@ -961,3 +962,50 @@ class TestRoleTemplateIntegration:
         assert resolved.model == "claude-opus-4-6"
         assert resolved.max_turns == 200
         assert resolved.context_threshold == 0.80
+
+
+# ── 7. resolve_outbound_limits — new roles ────────────────────────
+
+
+class TestResolveOutboundLimitsNewRoles:
+    """Tests for the 4 newly added roles in ROLE_OUTBOUND_DEFAULTS."""
+
+    def test_planner_role_defaults(self, tmp_path: Path) -> None:
+        """Planner role gets coordinator-level outbound limits."""
+        anima_dir = tmp_path / "anima"
+        anima_dir.mkdir()
+        (anima_dir / "status.json").write_text('{"role": "planner"}', encoding="utf-8")
+        result = resolve_outbound_limits("test-planner", anima_dir)
+        assert result["max_outbound_per_hour"] == 60
+        assert result["max_outbound_per_day"] == 300
+        assert result["max_recipients_per_run"] == 10
+
+    def test_worker_role_defaults(self, tmp_path: Path) -> None:
+        """Worker role gets moderate outbound limits."""
+        anima_dir = tmp_path / "anima"
+        anima_dir.mkdir()
+        (anima_dir / "status.json").write_text('{"role": "worker"}', encoding="utf-8")
+        result = resolve_outbound_limits("test-worker", anima_dir)
+        assert result["max_outbound_per_hour"] == 30
+        assert result["max_outbound_per_day"] == 150
+        assert result["max_recipients_per_run"] == 5
+
+    def test_verifier_role_defaults(self, tmp_path: Path) -> None:
+        """Verifier role gets moderate outbound limits."""
+        anima_dir = tmp_path / "anima"
+        anima_dir.mkdir()
+        (anima_dir / "status.json").write_text('{"role": "verifier"}', encoding="utf-8")
+        result = resolve_outbound_limits("test-verifier", anima_dir)
+        assert result["max_outbound_per_hour"] == 20
+        assert result["max_outbound_per_day"] == 100
+        assert result["max_recipients_per_run"] == 5
+
+    def test_learner_role_defaults(self, tmp_path: Path) -> None:
+        """Learner role gets moderate outbound limits."""
+        anima_dir = tmp_path / "anima"
+        anima_dir.mkdir()
+        (anima_dir / "status.json").write_text('{"role": "learner"}', encoding="utf-8")
+        result = resolve_outbound_limits("test-learner", anima_dir)
+        assert result["max_outbound_per_hour"] == 20
+        assert result["max_outbound_per_day"] == 100
+        assert result["max_recipients_per_run"] == 3
