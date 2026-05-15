@@ -13,12 +13,12 @@ from unittest.mock import patch
 import pytest
 
 from core.config.models import (
+    DEFAULT_LOCAL_LLM_MODEL,
     AnimaDefaults,
     AnimaModelConfig,
     AnimaWorksConfig,
     CommandsPermission,
     CredentialConfig,
-    DEFAULT_LOCAL_LLM_MODEL,
     ExternalToolsPermission,
     GatewaySystemConfig,
     ImageGenConfig,
@@ -110,6 +110,7 @@ class TestAnimaWorksConfig:
         assert "anthropic" in config.credentials
         assert config.animas == {}
         assert config.local_llm.default_model == DEFAULT_LOCAL_LLM_MODEL
+        assert config.prompt.skill_catalog_router_enabled is True
 
     def test_roundtrip_json(self):
         config = AnimaWorksConfig()
@@ -592,11 +593,13 @@ class TestResolveExecutionModeWildcard:
         ~/.animaworks/models.json does not interfere with assertions
         about config.json model_modes and code-default priorities.
         """
+        import core.config.model_mode as _mode
         import core.config.models as _m
         from core.config.models import invalidate_models_json_cache
 
         invalidate_models_json_cache()
         monkeypatch.setattr(_m, "_load_models_json", lambda: {})
+        monkeypatch.setattr(_mode, "_load_models_json", lambda: {})
         yield
         invalidate_models_json_cache()
 
