@@ -55,14 +55,121 @@ MERGE_EXIT=$?
 echo "$MERGE_OUTPUT" >> "$LOG"
 
 if [ $MERGE_EXIT -ne 0 ]; then
-  echo "[$TIMESTAMP] merge conflict! aborting..." >> "$LOG"
+  echo "[$TIMESTAMP] Phase 1 merge conflict, attempting Phase 2 auto-recovery..." >> "$LOG"
   git merge --abort >> "$LOG" 2>&1
 
-  # BUG FIX: merge失敗時もstashを復元する（旧版はここでstashが孤立していた）
+  # BUG FIX: merge失敗時もstashを復元する
   if [ "$STASHED" = "1" ]; then
-    echo "[$TIMESTAMP] restoring stash after merge abort..." >> "$LOG"
+    echo "[$TIMESTAMP] restoring stash after Phase 1 abort..." >> "$LOG"
     git stash pop >> "$LOG" 2>&1 || echo "[$TIMESTAMP] WARNING: stash pop failed after abort" >> "$LOG"
+    # Phase 2用にstashし直す
+    if ! git diff --quiet || ! git diff --cached --quiet; then
+      git stash push -m "auto_update Phase 2 pre-merge stash" >> "$LOG" 2>&1
+      # STASHED は既に 1
+    else
+      STASHED=0
+    fi
   fi
+
+  # Phase 2: -X theirs で自動解決を試行
+  PHASE2_OUTPUT=$(git merge -X theirs origin/main --no-edit 2>&1)
+  PHASE2_EXIT=$?
+  echo "$PHASE2_OUTPUT" >> "$LOG"
+
+  if [ $PHASE2_EXIT -eq 0 ]; then
+    echo "[$TIMESTAMP] Phase 2 auto-recovery succeeded (-X theirs)" >> "$LOG"
+
+    # 変更された .py ファイルの構文チェック
+    SYNTAX_OK=1
+    CHANGED_PY=$(git diff --name-only HEAD~1 HEAD -- '*.py' 2>/dev/null)
+    for pyfile in $CHANGED_PY; do
+      if [ -f "$pyfile" ]; then
+        if ! python3 -c "import py_compile; py_compile.compile('$pyfile', doraise=True)" 2>/dev/null; then
+          echo "[$TIMESTAMP] SYNTAX ERROR in $pyfile" >> "$LOG"
+          SYNTAX_OK=0
+        fi
+      fi
+    done
+
+    if [ "$SYNTAX_OK" = "1" ]; then
+      echo "[$TIMESTAMP] syntax check passed" >> "$LOG"
+
+      # stash復元
+      if [ "$STASHED" = "1" ]; then
+        echo "[$TIMESTAMP] restoring stash after Phase 2 merge..." >> "$LOG"
+        if ! git stash pop >> "$LOG" 2>&1; then
+          echo "[$TIMESTAMP] stash pop failed, manual recovery needed" >> "$LOG"
+        fi
+      fi
+
+      # Phase 2で自動解決されたファイル一覧を取得
+      AUTO_RESOLVED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | head -20)
+
+      # push to iyu13 fork
+      echo "[$TIMESTAMP] pushing to iyu13 fork (Phase 2 auto-resolved)..." >> "$LOG"
+      if ! git push iyu13 main >> "$LOG" 2>&1; then
+        echo "[$TIMESTAMP] push to iyu13 failed after Phase 2!" >> "$LOG"
+        /home/deploy/animaworks/.venv/bin/animaworks send mio y "【AnimaWorks自動アップデート】Phase 2 mergeは成功しましたが、forkへのpushが失敗しました。手動で確認してください。ログ: $LOG" --intent report
+        exit 1
+      fi
+
+      echo "[$TIMESTAMP] push to iyu13 done (Phase 2)" >> "$LOG"
+
+      # 取り込んだコミット一覧
+      COMMITS=$(git log --oneline origin/main~${AHEAD}..origin/main 2>/dev/null || echo "(コミット一覧取得失敗)")
+
+      # Phase 2 成功通知: y + leader に通知
+      /home/deploy/animaworks/.venv/bin/animaworks send mio y "【AnimaWorks自動アップデート完了（自動コンフリクト解決）】本家から${AHEAD}件のコミットを取り込みました。Phase 2（upstream優先）で自動解決しました。反映するにはAnimaWorksの再起動が必要です。
+---
+自動解決ファイル: ${AUTO_RESOLVED_FILES}
+---
+${COMMITS}" --intent report
+
+      # leader にも通知（レビュー依頼）
+      /home/deploy/animaworks/.venv/bin/animaworks send mio leader "【auto_update Phase 2 自動解決報告】upstream優先（-X theirs）で自動解決しました。ローカル独自変更が失われている可能性があります。レビューをお願いします。
+---
+自動解決ファイル:
+${AUTO_RESOLVED_FILES}
+---
+取り込みコミット数: ${AHEAD}" --intent report
+
+      # Slack通知
+      SLACK_TOKEN_P2=$(python3 -c "import json; d=json.load(open('/home/deploy/.animaworks/shared/credentials.json')); print(d.get('SLACK_BOT_TOKEN',''))" 2>/dev/null)
+      if [ -n "$SLACK_TOKEN_P2" ]; then
+        /home/deploy/animaworks/.venv/bin/animaworks-tool slack send "#ops-logs" "🔄 *AnimaWorks* 自動アップデート完了（⚠️ Phase 2 自動解決）
+
+*📋 取り込んだ変更:* ${AHEAD}コミット
+*🔧 自動解決（upstream優先）:* ${AUTO_RESOLVED_FILES}
+*⚠️ ローカル独自変更が失われている可能性あり。leaderにレビュー依頼済み*
+*🕐 時刻:* ${TIMESTAMP}
+
+⚠️ *反映にはAnimaWorksの再起動が必要です。*
+yさん、再起動をお願いします 🙏" >> "$LOG" 2>&1 || true
+      fi
+
+      echo "[$TIMESTAMP] Phase 2 complete, notifications sent" >> "$LOG"
+      exit 0
+    else
+      # 構文チェック失敗 → Phase 2 結果を破棄して Phase 3 へ
+      echo "[$TIMESTAMP] syntax check failed, reverting Phase 2 merge..." >> "$LOG"
+      git reset --hard HEAD~1 >> "$LOG" 2>&1
+      if [ "$STASHED" = "1" ]; then
+        git stash pop >> "$LOG" 2>&1 || true
+      fi
+      # Phase 3 に落ちる
+    fi
+  else
+    # Phase 2 も失敗
+    echo "[$TIMESTAMP] Phase 2 also failed, proceeding to Phase 3 escalation..." >> "$LOG"
+    git merge --abort >> "$LOG" 2>&1
+    if [ "$STASHED" = "1" ]; then
+      git stash pop >> "$LOG" 2>&1 || true
+    fi
+    # Phase 3 に落ちる
+  fi
+
+  # === Phase 3: エスカレーション（既存の診断ロジック + leader DM追加） ===
+  echo "[$TIMESTAMP] Phase 3: escalation (all auto-recovery failed)" >> "$LOG"
 
   # === 原因診断 ===
   CAUSE=""
@@ -122,6 +229,16 @@ $(echo "$CONFLICT_FILES" | sed 's/^/• /')"
   UNTRACKED_ALL=$(git ls-files --others --exclude-standard 2>/dev/null | head -10)
 
   /home/deploy/animaworks/.venv/bin/animaworks send mio y "AnimaWorksの自動アップデートでコンフリクトが発生しました。診断結果付きで報告します。ログ: $LOG" --intent report
+
+  # === 追加: leader DM通知 ===
+  /home/deploy/animaworks/.venv/bin/animaworks send mio leader "【auto_update Phase 3 エスカレーション】自動アップデートのPhase 1（通常merge）およびPhase 2（-X theirs）が両方失敗しました。手動対応が必要です。
+---
+原因: ${CAUSE}
+${DETAIL}
+${RECOMMENDATION}
+---
+ローカル独自コミット: ${LOCAL_COUNT}件
+ログ: ${LOG}" --intent report
 
   # Slack #ops-logs に診断付き通知
   SLACK_TOKEN_CONFLICT=$(python3 -c "import json; d=json.load(open('/home/deploy/.animaworks/shared/credentials.json')); print(d.get('SLACK_BOT_TOKEN',''))" 2>/dev/null)
