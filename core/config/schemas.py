@@ -215,6 +215,11 @@ class RAGConfig(BaseModel):
     spreading_memory_types: list[str] = ["knowledge", "episodes"]
     min_retrieval_score: float = 0.3
     skill_match_min_score: float = 0.75
+    repair_enabled: bool = True
+    repair_error_threshold: int = 2
+    repair_window_minutes: int = 5
+    repair_cooldown_minutes: int = 60
+    repair_max_consecutive_failures: int = 2
 
 
 class Neo4jConfig(BaseModel):
@@ -820,6 +825,28 @@ def _format_permissions_for_prompt(config: PermissionsConfig, anima_name: str) -
 # ── Main Config ─────────────────────────────────────────────────────────────
 
 
+class SkillPromotionConfig(BaseModel):
+    success_count_threshold: int = Field(default=3, ge=1)
+    confidence_threshold: float = Field(default=0.8, ge=0.0, le=1.0)
+    failure_count_max: int = Field(default=1, ge=0)
+    last_used_within_days: int = Field(default=180, ge=1)
+    auto_activate: bool = False
+    require_approval_on_warn: bool = True
+
+
+class SkillCronConfig(BaseModel):
+    max_skill_chars: int = Field(default=6000, ge=0)
+    max_total_chars: int = Field(default=12000, ge=0)
+    allow_warn_caution: bool = False
+    allow_destructive: bool = False
+    allow_external_send: bool = False
+
+
+class SkillsConfig(BaseModel):
+    promotion: SkillPromotionConfig = SkillPromotionConfig()
+    cron: SkillCronConfig = SkillCronConfig()
+
+
 class AnimaWorksConfig(BaseModel):
     version: int = 1
     setup_complete: bool = False
@@ -834,6 +861,7 @@ class AnimaWorksConfig(BaseModel):
     consolidation: ConsolidationConfig = ConsolidationConfig()
     rag: RAGConfig = RAGConfig()
     memory: MemoryConfig = MemoryConfig()
+    skills: SkillsConfig = SkillsConfig()
     prompt: PromptConfig = PromptConfig()
     priming: PrimingConfig = PrimingConfig()
     image_gen: ImageGenConfig = ImageGenConfig()
@@ -902,6 +930,8 @@ __all__ = [
     "RAGConfig",
     "ROLE_OUTBOUND_DEFAULTS",
     "ServerConfig",
+    "SkillPromotionConfig",
+    "SkillsConfig",
     "StyleBertVits2Config",
     "SystemConfig",
     "UIConfig",

@@ -14,6 +14,7 @@ from typing import Any
 from core.tooling.schemas.admin import _AW_CORE_NAMES, ADMIN_TOOLS, CC_TOOLS
 from core.tooling.schemas.channel import _channel_tools
 from core.tooling.schemas.converters import apply_db_descriptions
+from core.tooling.schemas.goal import _goal_tools
 from core.tooling.schemas.memory import (
     FILE_TOOLS,
     KNOWLEDGE_TOOLS,
@@ -23,7 +24,13 @@ from core.tooling.schemas.memory import (
 )
 from core.tooling.schemas.notification import _notification_tools
 from core.tooling.schemas.session_todo import _session_todo_tools
-from core.tooling.schemas.skill import DISCOVERY_TOOLS, TOOL_MANAGEMENT_TOOLS, USE_TOOL, _create_skill_schemas
+from core.tooling.schemas.skill import (
+    DISCOVERY_TOOLS,
+    TOOL_MANAGEMENT_TOOLS,
+    USE_TOOL,
+    _create_skill_schemas,
+    _curator_skill_schemas,
+)
 from core.tooling.schemas.supervisor import (
     _background_task_tools,
     _check_permissions_tools,
@@ -33,7 +40,7 @@ from core.tooling.schemas.supervisor import (
 from core.tooling.schemas.task import _submit_tasks_tools, _task_tools
 
 _CONSOLIDATION_BLOCKED_TOOLS: frozenset[str] = frozenset(
-    {"delegate_task", "submit_tasks", "send_message", "post_channel"}
+    {"delegate_task", "submit_tasks", "goal", "send_message", "post_channel"}
 )
 
 _COMPACT_COMM_TOOLS: frozenset[str] = frozenset(
@@ -66,6 +73,7 @@ def build_tool_list(
     include_tool_management: bool = False,
     include_task_tools: bool = False,
     include_submit_tasks: bool = False,
+    include_goal_tools: bool = False,
     include_background_task_tools: bool = False,
     include_vault_tools: bool = False,
     include_create_skill: bool = False,
@@ -85,6 +93,7 @@ def build_tool_list(
         include_tool_management: Include refresh_tools/share_tool tools.
         include_task_tools: Include task queue tools (backlog_task, update_task, list_tasks).
         include_submit_tasks: Include submit_tasks DAG batch submission tool.
+        include_goal_tools: Include persistent goal loop tool.
         include_background_task_tools: Include background task check/list tools.
         include_vault_tools: Include credential vault tools (get/store/list).
         include_create_skill: Include create_skill tool.
@@ -121,6 +130,8 @@ def build_tool_list(
         tools.extend(_task_tools())
     if include_submit_tasks and not is_consolidation:
         tools.extend(_submit_tasks_tools())
+    if (include_goal_tools or include_task_tools) and not is_consolidation:
+        tools.extend(_goal_tools())
     if include_background_task_tools:
         tools.extend(_background_task_tools())
     if include_vault_tools:
@@ -135,6 +146,7 @@ def build_tool_list(
 
     if include_create_skill:
         tools.extend(_create_skill_schemas())
+        tools.extend(_curator_skill_schemas())
     return tools
 
 
@@ -146,7 +158,7 @@ def build_unified_tool_list(
     trigger: str = "",
     compact: bool = False,
 ) -> list[dict[str, Any]]:
-    """Build the unified 18-tool list (Claude Code-compatible 8 + AW-essential 10).
+    """Build the unified runtime tool list.
 
     Used by Mode A (LiteLLM) and Mode B (Assisted) executors.
     Mode S/C get the CC tools from the Agent SDK built-ins and the AW tools
@@ -196,6 +208,7 @@ def build_unified_tool_list(
     # AW-essential: task management (always present, but submit_tasks blocked during consolidation)
     if not is_consolidation:
         tools.extend(_submit_tasks_tools())
+        tools.extend(_goal_tools())
     for t in _task_tools():
         if t["name"] == "update_task":
             tools.append(t)
@@ -213,7 +226,8 @@ def build_unified_tool_list(
     tools = apply_db_descriptions(tools)
 
     if include_create_skill:
-        tools.extend(_create_skill_schemas())
+        tools.extend(t for t in _create_skill_schemas() if t["name"] == "create_skill")
+        tools.extend(_curator_skill_schemas())
 
     if compact:
         tools = [t for t in tools if t["name"] in _COMPACT_COMM_TOOLS]

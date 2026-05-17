@@ -274,6 +274,7 @@ class CycleMixin:
             trigger=trigger,
             context_window=_ctx_window,
             pending_human_notifications=pending_human_notifications,
+            thread_id=thread_id,
         )
         system_prompt = build_result.system_prompt
         injected_procedures = build_result.injected_procedures
@@ -288,6 +289,7 @@ class CycleMixin:
             mode=mode,
             trigger=trigger,
             pending_human_notifications=pending_human_notifications,
+            thread_id=thread_id,
         )
 
         if injected_procedures and uses_chat_session:
@@ -884,6 +886,7 @@ class CycleMixin:
             trigger=trigger,
             context_window=_ctx_window_s,
             pending_human_notifications=pending_human_notifications,
+            thread_id=thread_id,
         )
         system_prompt = build_result.system_prompt
 
@@ -925,6 +928,7 @@ class CycleMixin:
             trigger=trigger,
             context_window=_ctx_window_s,
             pending_human_notifications=pending_human_notifications,
+            thread_id=thread_id,
         )
         if use_fallback:
             logger.warning("Streaming fallback: using blocking S Fallback for oversized prompt")
@@ -1187,6 +1191,7 @@ class CycleMixin:
                     trigger=trigger,
                     context_window=_ctx_window_s,
                     pending_human_notifications=pending_human_notifications,
+                    thread_id=thread_id,
                 ).system_prompt
 
                 await asyncio.sleep(actual_delay)

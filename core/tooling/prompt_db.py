@@ -19,6 +19,8 @@ Database: ``~/.animaworks/tool_prompts.sqlite3`` (WAL mode).
 
 import logging
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -819,16 +821,25 @@ class ToolPromptStore:
         conn.row_factory = sqlite3.Row
         return conn
 
+    @contextmanager
+    def _connection(self) -> Iterator[sqlite3.Connection]:
+        conn = self._connect()
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
+
     def _ensure_schema(self) -> None:
         """Create tables if they don't exist."""
-        with self._connect() as conn:
+        with self._connection() as conn:
             conn.executescript(_SCHEMA_SQL)
 
     # ── Descriptions CRUD ───────────────────────────────────
 
     def get_description(self, name: str) -> str | None:
         """Return the description for *name*, or ``None`` if not found."""
-        with self._connect() as conn:
+        with self._connection() as conn:
             row = conn.execute(
                 "SELECT description FROM tool_descriptions WHERE name = ?",
                 (name,),
@@ -838,7 +849,7 @@ class ToolPromptStore:
     def set_description(self, name: str, description: str) -> dict[str, Any]:
         """Insert or update a tool description.  Returns the saved record."""
         ts = now_local().isoformat()
-        with self._connect() as conn:
+        with self._connection() as conn:
             conn.execute(
                 "INSERT INTO tool_descriptions (name, description, updated_at) "
                 "VALUES (?, ?, ?) "
@@ -850,7 +861,7 @@ class ToolPromptStore:
 
     def list_descriptions(self) -> list[dict[str, Any]]:
         """Return all tool descriptions as dicts."""
-        with self._connect() as conn:
+        with self._connection() as conn:
             rows = conn.execute(
                 "SELECT name, description, updated_at FROM tool_descriptions ORDER BY name",
             ).fetchall()
@@ -864,7 +875,7 @@ class ToolPromptStore:
         Empty string stored in DB acts as "disabled" — returns None so callers
         fall through to DEFAULT_GUIDES or skip injection entirely.
         """
-        with self._connect() as conn:
+        with self._connection() as conn:
             row = conn.execute(
                 "SELECT content FROM tool_guides WHERE key = ?",
                 (key,),
@@ -876,7 +887,7 @@ class ToolPromptStore:
     def set_guide(self, key: str, content: str) -> dict[str, Any]:
         """Insert or update a tool guide.  Returns the saved record."""
         ts = now_local().isoformat()
-        with self._connect() as conn:
+        with self._connection() as conn:
             conn.execute(
                 "INSERT INTO tool_guides (key, content, updated_at) "
                 "VALUES (?, ?, ?) "
@@ -888,7 +899,7 @@ class ToolPromptStore:
 
     def list_guides(self) -> list[dict[str, Any]]:
         """Return all tool guides as dicts."""
-        with self._connect() as conn:
+        with self._connection() as conn:
             rows = conn.execute(
                 "SELECT key, content, updated_at FROM tool_guides ORDER BY key",
             ).fetchall()
@@ -898,7 +909,7 @@ class ToolPromptStore:
 
     def get_section(self, key: str) -> str | None:
         """Return the section content for *key*, or ``None`` if not found."""
-        with self._connect() as conn:
+        with self._connection() as conn:
             row = conn.execute(
                 "SELECT content FROM system_sections WHERE key = ?",
                 (key,),
@@ -907,7 +918,7 @@ class ToolPromptStore:
 
     def get_section_with_condition(self, key: str) -> tuple[str, str | None] | None:
         """Return ``(content, condition)`` for *key*, or ``None``."""
-        with self._connect() as conn:
+        with self._connection() as conn:
             row = conn.execute(
                 "SELECT content, condition FROM system_sections WHERE key = ?",
                 (key,),
@@ -922,7 +933,7 @@ class ToolPromptStore:
     ) -> dict[str, Any]:
         """Insert or update a system section.  Returns the saved record."""
         ts = now_local().isoformat()
-        with self._connect() as conn:
+        with self._connection() as conn:
             conn.execute(
                 "INSERT INTO system_sections (key, content, condition, updated_at) "
                 "VALUES (?, ?, ?, ?) "
@@ -939,7 +950,7 @@ class ToolPromptStore:
 
     def list_sections(self) -> list[dict[str, Any]]:
         """Return all system sections as dicts."""
-        with self._connect() as conn:
+        with self._connection() as conn:
             rows = conn.execute(
                 "SELECT key, content, condition, updated_at FROM system_sections ORDER BY key",
             ).fetchall()
@@ -960,7 +971,7 @@ class ToolPromptStore:
         """
         loc = _get_locale()
         ts = now_local().isoformat()
-        with self._connect() as conn:
+        with self._connection() as conn:
             if descriptions:
                 flat = {}
                 for k, v in descriptions.items():

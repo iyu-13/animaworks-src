@@ -94,6 +94,55 @@ def _is_openai_api_key(key: str) -> bool:
     return bool(key) and not key.startswith("sk-ant-")
 
 
+@dataclass(frozen=True)
+class _CodexProviderConfig:
+    model: str
+    provider: str
+    is_azure: bool = False
+    base_url: str | None = None
+    api_version: str | None = None
+    env_key: str = "OPENAI_API_KEY"
+    wire_api: str = "responses"
+
+
+def _is_codex_azure_config(model_config: ModelConfig) -> bool:
+    """Return True when the resolved credential explicitly selects Azure for Codex."""
+    return model_config.credential_type == "codex_azure"
+
+
+def _normalize_azure_openai_base_url(base_url: str) -> str:
+    """Return the Azure OpenAI Codex provider base URL with the required /openai suffix."""
+    normalized = base_url.rstrip("/")
+    if normalized.endswith("/openai"):
+        return normalized
+    return f"{normalized}/openai"
+
+
+def _resolve_codex_provider_config(model_config: ModelConfig) -> _CodexProviderConfig:
+    """Resolve Codex CLI provider settings from the AnimaWorks model config."""
+    extra = model_config.extra_keys or {}
+    model = extra.get("codex_model") or _resolve_codex_model(model_config.model)
+
+    if not _is_codex_azure_config(model_config):
+        return _CodexProviderConfig(model=model, provider="openai")
+
+    if not model_config.api_base_url:
+        raise ValueError("Codex Azure credential requires base_url for the Azure OpenAI resource")
+    api_version = extra.get("api_version")
+    if not api_version:
+        raise ValueError("Codex Azure credential requires keys.api_version")
+
+    return _CodexProviderConfig(
+        model=model,
+        provider="azure",
+        is_azure=True,
+        base_url=_normalize_azure_openai_base_url(model_config.api_base_url),
+        api_version=api_version,
+        env_key="AZURE_OPENAI_API_KEY",
+        wire_api=extra.get("codex_wire_api") or "responses",
+    )
+
+
 def _escape_toml_string(value: str) -> str:
     """Escape a string for safe embedding in a TOML double-quoted value."""
     return value.replace("\\", "\\\\").replace('"', '\\"')
@@ -220,6 +269,39 @@ def _should_prefer_cli_exec(trigger: str) -> bool:
     if not is_background or sys.platform != "win32":
         return False
     return _is_desktop_extension_codex(get_codex_executable())
+
+
+def _close_stream_transport(stream: Any, stream_name: str) -> None:
+    """Best-effort close for subprocess stdio objects.
+
+    ``asyncio`` subprocess readers expose the underlying pipe transport via a
+    private ``_transport`` attribute, while writers expose ``close()``.  Close
+    both when available so parent-side pipe descriptors do not linger across
+    repeated background runs.
+    """
+    if stream is None:
+        return
+
+    close = getattr(stream, "close", None)
+    if callable(close):
+        try:
+            close()
+        except Exception:
+            logger.debug("Failed to close Codex subprocess %s stream", stream_name, exc_info=True)
+
+    transport = getattr(stream, "_transport", None) or getattr(stream, "transport", None)
+    if transport is not None:
+        try:
+            transport.close()
+        except Exception:
+            logger.debug("Failed to close Codex subprocess %s transport", stream_name, exc_info=True)
+
+
+def _close_subprocess_stdio(proc: asyncio.subprocess.Process) -> None:
+    """Best-effort close of parent-side subprocess stdio transports."""
+    _close_stream_transport(getattr(proc, "stdin", None), "stdin")
+    _close_stream_transport(getattr(proc, "stdout", None), "stdout")
+    _close_stream_transport(getattr(proc, "stderr", None), "stderr")
 
 
 def _extract_item_text(item: Any) -> str:
@@ -494,6 +576,7 @@ def _patch_codex_exec_stream_limit(exec_: Any) -> None:
             try:
                 proc.kill()
             finally:
+                _close_subprocess_stdio(proc)
                 raise CodexExecError("Child process missing stdin/stdout")
 
         async def _read_stderr(stream, fatal_future: asyncio.Future[str]):  # type: ignore[no-untyped-def]
@@ -573,6 +656,7 @@ def _patch_codex_exec_stream_limit(exec_: Any) -> None:
                     pass
             stderr_task.cancel()
             await asyncio.gather(stderr_task, return_exceptions=True)
+            _close_subprocess_stdio(proc)
 
     exec_.run = _patched_run
     logger.info(
@@ -630,6 +714,13 @@ class CodexSDKExecutor(BaseExecutor):
                 if val:
                     env[var] = val
         api_key = self._resolve_api_key()
+        if _is_codex_azure_config(self._model_config):
+            if api_key:
+                env["AZURE_OPENAI_API_KEY"] = api_key
+            elif os.environ.get("AZURE_OPENAI_API_KEY"):
+                env["AZURE_OPENAI_API_KEY"] = os.environ["AZURE_OPENAI_API_KEY"]
+            return env
+
         if api_key and _is_openai_api_key(api_key):
             env["OPENAI_API_KEY"] = api_key
         elif api_key:
@@ -728,7 +819,7 @@ class CodexSDKExecutor(BaseExecutor):
         instructions_file = self._codex_home / "instructions.md"
         instructions_file.write_text(system_prompt, encoding="utf-8")
 
-        bare_model = _resolve_codex_model(self._model_config.model)
+        provider_config = _resolve_codex_provider_config(self._model_config)
         esc = _escape_toml_string
 
         from core.config.models import load_permissions
@@ -754,10 +845,21 @@ class CodexSDKExecutor(BaseExecutor):
 
         mcp_env = self._build_mcp_env()
         mcp_env_lines = "\n".join(f'{k} = "{esc(v)}"' for k, v in mcp_env.items())
+        provider_section = ""
+        if provider_config.is_azure:
+            provider_section = (
+                f"\n"
+                f"[model_providers.azure]\n"
+                f'name = "Azure"\n'
+                f'base_url = "{esc(provider_config.base_url or "")}"\n'
+                f'env_key = "{esc(provider_config.env_key)}"\n'
+                f'query_params = {{ api-version = "{esc(provider_config.api_version or "")}" }}\n'
+                f'wire_api = "{esc(provider_config.wire_api)}"\n'
+            )
 
         config_toml = (
-            f'model = "{esc(bare_model)}"\n'
-            f'model_provider = "openai"\n'
+            f'model = "{esc(provider_config.model)}"\n'
+            f'model_provider = "{esc(provider_config.provider)}"\n'
             f'model_instructions_file = "{esc(str(instructions_file))}"\n'
             f'developer_instructions = "{esc(self._CODEX_DEVELOPER_INSTRUCTIONS)}"\n'
             f'personality = "friendly"\n'
@@ -765,6 +867,7 @@ class CodexSDKExecutor(BaseExecutor):
             f'sandbox_mode = "{sandbox_mode}"\n'
             f'approval_policy = "never"\n'
             f"{sandbox_section}"
+            f"{provider_section}"
             f"\n"
             f"[mcp_servers.aw]\n"
             f'command = "{esc(sys.executable)}"\n'
@@ -837,6 +940,7 @@ class CodexSDKExecutor(BaseExecutor):
                 proc.kill()
             except ProcessLookupError:
                 pass
+            _close_subprocess_stdio(proc)
             raise RuntimeError("Codex CLI exec fallback missing stdin/stdout")
 
         stderr_chunks: list[bytes] = []
@@ -948,6 +1052,7 @@ class CodexSDKExecutor(BaseExecutor):
                 await proc.wait()
             stderr_task.cancel()
             await asyncio.gather(stderr_task, return_exceptions=True)
+            _close_subprocess_stdio(proc)
 
         full_text = "\n".join(response_parts)
         if not full_text and tool_records:

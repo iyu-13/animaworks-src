@@ -246,6 +246,88 @@ class PendingTaskExecutor:
             )
             return None
 
+    async def _handle_goal_completion(self, task_desc: dict[str, Any], result_summary: str) -> None:
+        """Run persistent-goal judging after a TaskExec task has completed."""
+        task_id = task_desc.get("task_id", "")
+        if not task_id:
+            return
+        try:
+            from core.goals import GoalJudge, GoalManager
+            from core.memory.task_queue import TaskQueueManager
+
+            entry = TaskQueueManager(self._anima_dir).get_task_by_id(task_id)
+            meta = entry.meta if entry is not None else {}
+            goal_id = str(meta.get("goal_id") or task_desc.get("goal_id") or "").strip()
+            if not goal_id:
+                return
+
+            manager = GoalManager(self._anima_dir)
+            state = manager.get_goal(goal_id)
+            if state is None or state.status != "active":
+                return
+
+            judge = GoalJudge(
+                self._anima_dir,
+                judge_fn=getattr(self, "_goal_judge_fn", None),
+            )
+            judgment = await judge.judge(
+                state,
+                task_id=task_id,
+                result_summaries=[result_summary],
+                verification_output=str(task_desc.get("verification_output") or ""),
+            )
+            updated = manager.record_judgment(
+                goal_id,
+                judgment,
+                result_summary=result_summary,
+                actor="goal_judge",
+            )
+            if updated is None or updated.last_judgment is None:
+                return
+
+            actual = updated.last_judgment
+            if actual.verdict == "done":
+                manager.mark_done_activity(updated)
+                return
+            if actual.verdict == "blocked":
+                manager.mark_blocked_activity(updated)
+                await self._notify_goal_blocked(updated)
+                return
+            if actual.verdict == "continue":
+                continuation = manager.enqueue_continuation(
+                    goal_id,
+                    actual,
+                    source_task_desc=task_desc,
+                    result_summary=result_summary,
+                    respect_human_priority=True,
+                )
+                if continuation is not None:
+                    self.wake()
+        except Exception:
+            logger.warning(
+                "[%s] Goal completion hook failed for task %s",
+                self._anima_name,
+                task_id,
+                exc_info=True,
+            )
+
+    async def _notify_goal_blocked(self, state: Any) -> None:
+        """Best-effort human notification for blocked persistent goals."""
+        try:
+            agent = getattr(self._anima, "agent", None)
+            notifier = getattr(agent, "human_notifier", None)
+            if notifier is None:
+                return
+            reason = state.blocked_reason or (state.last_judgment.reason if state.last_judgment else "")
+            await notifier.notify(
+                f"Goal blocked: {state.title or state.goal_id}",
+                reason or state.objective,
+                "high",
+                anima_name=self._anima_name,
+            )
+        except Exception:
+            logger.debug("[%s] Goal blocked notification failed", self._anima_name, exc_info=True)
+
     def _pending_json_age_hours(
         self,
         task_desc: dict[str, Any],
@@ -883,6 +965,8 @@ class PendingTaskExecutor:
                 self._save_task_result(task_id, result)
                 status, summary = _classify_task_result(result)
                 self._sync_task_queue(task_id, status, summary=summary)
+                if status == "done":
+                    await self._handle_goal_completion(task_desc, result)
                 return result
             finally:
                 self._anima._active_parallel_tasks.pop(task_id, None)
@@ -899,6 +983,8 @@ class PendingTaskExecutor:
         self._save_task_result(task_id, result)
         status, summary = _classify_task_result(result)
         self._sync_task_queue(task_id, status, summary=summary)
+        if status == "done":
+            await self._handle_goal_completion(task_desc, result)
         return result
 
     async def _run_llm_task(
@@ -1021,8 +1107,10 @@ class PendingTaskExecutor:
             file_paths=paths_text,
         )
 
+        lane_getter = getattr(type(self._anima), "_agent_for_lane", None)
+        agent = self._anima._agent_for_lane("background") if callable(lane_getter) else self._anima.agent
         if working_directory:
-            self._anima.agent.set_task_cwd(Path(working_directory))
+            agent.set_task_cwd(Path(working_directory))
 
         if "machine" in description.lower():
             prompt += "\n\n" + t("pending_executor.machine_directive")
@@ -1036,54 +1124,57 @@ class PendingTaskExecutor:
         task_failed_reason = ""
         had_error = False
         error_message = ""
-        agent_session_acquired = False
-        agent_session_lock = getattr(self._anima, "_agent_session_lock", None)
-
         try:
-            if isinstance(agent_session_lock, asyncio.Lock):
-                await agent_session_lock.acquire()
-                agent_session_acquired = True
-            if self._anima and hasattr(self._anima, "_get_interrupt_event"):
-                self._anima._get_interrupt_event("_background").clear()
-                self._anima.agent.set_interrupt_event(
-                    self._anima._get_interrupt_event("_background"),
-                )
-            self._anima.agent.reset_reply_tracking(session_type="task")
-            self._anima.agent.reset_read_paths()
-            async for chunk in self._anima.agent.run_cycle_streaming(
-                prompt,
-                trigger=trigger,
-            ):
-                chunk_type = chunk.get("type")
-                if chunk_type == "text_delta":
-                    accumulated_text += chunk.get("text", "")
-                    journal.write_text(chunk.get("text", ""))
-                elif chunk_type == "error":
-                    had_error = True
-                    error_message = chunk.get("message", "unknown error")
-                    logger.warning(
-                        "[%s] Streaming error during task %s: %s",
-                        self._anima_name,
-                        task_id,
-                        error_message,
+            if callable(getattr(type(self._anima), "_agent_session_context", None)):
+                session_context = self._anima._agent_session_context("background")
+            else:
+                session_context = getattr(self._anima, "_agent_session_lock", None)
+                if not isinstance(session_context, asyncio.Lock):
+                    session_context = None
+            if session_context is None:
+                from contextlib import nullcontext
+
+                session_context = nullcontext()
+            async with session_context:
+                if self._anima and hasattr(self._anima, "_get_interrupt_event"):
+                    self._anima._get_interrupt_event("_background").clear()
+                    agent.set_interrupt_event(
+                        self._anima._get_interrupt_event("_background"),
                     )
-                elif chunk_type == "retry_start":
-                    had_error = False
-                    error_message = ""
-                elif chunk_type == "cycle_done":
-                    cycle_result = chunk.get("cycle_result", {})
-                    result_summary = cycle_result.get(
-                        "summary",
-                        accumulated_text[:500],
-                    )
-                    if cycle_result.get("action") == "error":
-                        task_failed_reason = result_summary or "task execution failed"
-                    journal.finalize(summary=result_summary[:500])
+                agent.reset_reply_tracking(session_type="task")
+                agent.reset_read_paths()
+                async for chunk in agent.run_cycle_streaming(
+                    prompt,
+                    trigger=trigger,
+                ):
+                    chunk_type = chunk.get("type")
+                    if chunk_type == "text_delta":
+                        accumulated_text += chunk.get("text", "")
+                        journal.write_text(chunk.get("text", ""))
+                    elif chunk_type == "error":
+                        had_error = True
+                        error_message = chunk.get("message", "unknown error")
+                        logger.warning(
+                            "[%s] Streaming error during task %s: %s",
+                            self._anima_name,
+                            task_id,
+                            error_message,
+                        )
+                    elif chunk_type == "retry_start":
+                        had_error = False
+                        error_message = ""
+                    elif chunk_type == "cycle_done":
+                        cycle_result = chunk.get("cycle_result", {})
+                        result_summary = cycle_result.get(
+                            "summary",
+                            accumulated_text[:500],
+                        )
+                        if cycle_result.get("action") == "error":
+                            task_failed_reason = result_summary or "task execution failed"
+                        journal.finalize(summary=result_summary[:500])
         finally:
-            if agent_session_acquired:
-                agent_session_lock.release()
             journal.close()
-            self._anima.agent.set_task_cwd(None)
+            agent.set_task_cwd(None)
 
         if had_error:
             _queue_done = False
@@ -1135,7 +1226,7 @@ class PendingTaskExecutor:
                     "task_complete_notify",
                     task_id=task_id,
                     title=title,
-                    result_summary=result_summary[:1000],
+                    result_summary=result_summary[:_TASK_COMPLETE_NOTIFY_MAX_CHARS],
                 )
                 from core.execution._sanitize import ORIGIN_ANIMA
 
@@ -1194,7 +1285,9 @@ class PendingTaskExecutor:
             logger.warning("Cannot execute pending task: anima not initialized")
             return
 
-        bg_mgr = self._anima.agent.background_manager
+        lane_getter = getattr(type(self._anima), "_agent_for_lane", None)
+        agent = self._anima._agent_for_lane("background") if callable(lane_getter) else self._anima.agent
+        bg_mgr = agent.background_manager
         if not bg_mgr:
             logger.warning(
                 "Cannot execute pending task: BackgroundTaskManager not available",
@@ -1287,6 +1380,8 @@ class PendingTaskExecutor:
                     result = await self._run_llm_task(task_desc)
                     status, summary = _classify_task_result(result)
                     self._sync_task_queue(task_id, status, summary=summary)
+                    if status == "done":
+                        await self._handle_goal_completion(task_desc, result)
                 finally:
                     self._anima._status_slots["background"] = "idle"
                     self._anima._task_slots["background"] = ""
