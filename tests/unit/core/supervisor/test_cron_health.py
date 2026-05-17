@@ -13,6 +13,7 @@ from core.supervisor.scheduler_manager import (
     SchedulerManager,
     _estimate_cron_interval_hours,
 )
+from core.time_utils import now_local
 
 
 @pytest.fixture

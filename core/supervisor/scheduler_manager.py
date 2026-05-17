@@ -493,6 +493,13 @@ class SchedulerManager:
             if not cron_jobs:
                 return
 
+            # Only treat a missing execution as unhealthy when at least one
+            # cron was actually expected to fire inside the health window.
+            now = now_local()
+            window_start = now - timedelta(hours=_HEALTH_CHECK_HOURS)
+            if not self._any_cron_expected_in_window(cron_jobs, window_start, now):
+                return
+
             # Determine the minimum expected interval across all registered jobs.
             # Jobs stored with real CronTask args provide schedule-based estimates;
             # others fall back to the global default.

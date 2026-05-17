@@ -37,6 +37,7 @@ _PENDING_WATCHER_POLL_INTERVAL = 3.0
 _LLM_TASK_TTL_HOURS = 24
 _PENDING_TASK_SUBPROCESS_TIMEOUT = 1800
 _TASK_RESULT_MAX_CHARS = 2000
+_TASK_COMPLETE_NOTIFY_MAX_CHARS = 10_000
 _MAX_AUTO_RESTARTS = 2  # F5: Max auto-restart attempts for streaming errors
 _AUTO_RESTART_BASE_DELAY_S = 60  # F5: Base cooldown before auto-restart (exponential backoff)
 
