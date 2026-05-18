@@ -338,6 +338,12 @@ def _suggest_bootstrap_action(status: dict) -> str:
     if status.get("needs_user_input"):
         return "Open chat and answer the initial character setup question."
     if state == "needs_repair":
+        errors = status.get("validation_errors") or []
+        if any(str(error).startswith("unexpected_bootstrap_artifact:") for error in errors):
+            return (
+                "Run repair-bootstrap --complete if identity/injection are already valid, "
+                "or --retry to rerun bootstrap."
+            )
         return "Run repair-bootstrap --retry, or --fresh if the runtime should be reset."
     if state == "failed":
         return "Run repair-bootstrap --retry after checking the last_error."
@@ -368,6 +374,7 @@ def cmd_anima_repair_bootstrap(args: argparse.Namespace) -> None:
     """Inspect or repair a first-run bootstrap runtime state."""
     from core.bootstrap_state import (
         get_bootstrap_status,
+        repair_bootstrap_complete,
         repair_bootstrap_fresh,
         repair_bootstrap_retry,
     )
@@ -384,6 +391,15 @@ def cmd_anima_repair_bootstrap(args: argparse.Namespace) -> None:
 
     if args.status:
         _print_bootstrap_status(name, get_bootstrap_status(anima_dir))
+        return
+
+    if getattr(args, "complete", False):
+        status = repair_bootstrap_complete(
+            anima_dir,
+            retry_counts_file=animas_dir / ".bootstrap_retries.json",
+        )
+        print(f"Completed bootstrap repair for anima '{name}'.")
+        _print_bootstrap_status(name, status)
         return
 
     gateway_url = getattr(args, "gateway_url", None) or "http://localhost:18500"
@@ -413,7 +429,7 @@ def cmd_anima_repair_bootstrap(args: argparse.Namespace) -> None:
         _print_bootstrap_status(name, get_bootstrap_status(new_dir))
         return
 
-    print("Error: choose one of --status, --retry, or --fresh")
+    print("Error: choose one of --status, --complete, --retry, or --fresh")
     sys.exit(1)
 
 

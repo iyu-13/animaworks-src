@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -118,7 +118,7 @@ def test_has_recent_corruption_reads_state_file(data_dir: Path):
             {
                 "recent_signals": [
                     {
-                        "at": datetime.now(timezone.utc).isoformat(),
+                        "at": datetime.now(UTC).isoformat(),
                         "collection": "sora_knowledge",
                         "reason": "chroma_error_finding_id",
                         "source": "query",
@@ -131,6 +131,68 @@ def test_has_recent_corruption_reads_state_file(data_dir: Path):
     )
 
     assert RAGRepairService(enabled=True).has_recent_corruption("sora") is True
+
+
+def test_discover_suspect_animas_from_state_and_native_log(data_dir: Path):
+    for name in ("rin", "sora"):
+        anima_dir = data_dir / "animas" / name
+        (anima_dir / "state").mkdir(parents=True)
+        (anima_dir / "identity.md").write_text(f"# {name}", encoding="utf-8")
+    (data_dir / "animas" / "rin" / "vectordb").mkdir()
+    disabled = data_dir / "animas" / "mika"
+    disabled.mkdir(parents=True)
+    (disabled / "identity.md").write_text("# mika", encoding="utf-8")
+    (disabled / "status.json").write_text('{"enabled": false}', encoding="utf-8")
+
+    (data_dir / "animas" / "sora" / "state" / "rag_repair.json").write_text(
+        json.dumps(
+            {
+                "recent_signals": [
+                    {
+                        "at": datetime.now(UTC).isoformat(),
+                        "collection": "sora_knowledge",
+                        "reason": "chroma_error_finding_id",
+                        "source": "query",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    log_path = data_dir / "logs" / "server-daemon.log"
+    log_path.parent.mkdir(exist_ok=True)
+    log_path.write_text(
+        f"{datetime.now(UTC).isoformat()} tokio-rt-worker segfault in chromadb_rust_bindings.abi3.so\n",
+        encoding="utf-8",
+    )
+
+    suspects = RAGRepairService(enabled=True).discover_suspect_animas(
+        window_minutes=60,
+        log_paths=[log_path],
+    )
+
+    assert suspects == ["rin", "sora"]
+
+
+def test_repair_animas_if_allowed_runs_each_target(data_dir: Path):
+    service = RAGRepairService(enabled=True)
+    service.repair_anima_if_allowed = MagicMock(  # type: ignore[method-assign]
+        side_effect=lambda anima_name, **kwargs: RepairResult(
+            status="success",
+            anima_name=anima_name,
+            reason=kwargs["reason"],
+        )
+    )
+
+    results = service.repair_animas_if_allowed(
+        {"sora", "rin"},
+        reason="startup_chroma_crash_preflight",
+        source="startup_preflight",
+        include_shared=True,
+    )
+
+    assert list(results) == ["rin", "sora"]
+    assert service.repair_anima_if_allowed.call_count == 2
 
 
 def test_request_repair_sync_uses_guard(data_dir: Path):
@@ -148,6 +210,35 @@ def test_request_repair_disabled_is_blocked(data_dir: Path):
     service = RAGRepairService(enabled=False)
 
     assert service.request_repair("sora", reason="test", source="test", background=False) is False
+
+
+def test_request_repair_background_records_request_without_running_repair(data_dir: Path):
+    anima_dir = data_dir / "animas" / "sora"
+    (anima_dir / "state").mkdir(parents=True)
+    service = RAGRepairService(enabled=True)
+    service.repair_anima = MagicMock()  # type: ignore[method-assign]
+
+    assert service.request_repair("sora", reason="sqlite_malformed", source="query", background=True) is True
+
+    service.repair_anima.assert_not_called()
+    state = json.loads((anima_dir / "state" / "rag_repair.json").read_text(encoding="utf-8"))
+    assert state["status"] == "requested"
+    assert state["stage"] == "detect"
+    assert state["reason"] == "sqlite_malformed"
+    assert state["source"] == "query"
+    assert state["pid"] is None
+
+
+def test_background_duplicate_request_is_not_started_twice(data_dir: Path):
+    anima_dir = data_dir / "animas" / "sora"
+    (anima_dir / "state").mkdir(parents=True)
+    service = RAGRepairService(enabled=True)
+
+    assert service.request_repair("sora", reason="sqlite_malformed", source="query", background=True) is True
+    assert service.request_repair("sora", reason="sqlite_malformed", source="query", background=True) is False
+
+    state = json.loads((anima_dir / "state" / "rag_repair.json").read_text(encoding="utf-8"))
+    assert state["status"] == "requested"
 
 
 def test_repair_quarantines_vectordb_and_reindexes(data_dir: Path, monkeypatch):
@@ -193,6 +284,8 @@ def test_repair_quarantines_vectordb_and_reindexes(data_dir: Path, monkeypatch):
 
     state = json.loads((anima_dir / "state" / "rag_repair.json").read_text(encoding="utf-8"))
     assert state["status"] == "success"
+    assert state["stage"] == "complete"
+    assert state["pid"] is None
     assert state["consecutive_failures"] == 0
     assert state["last_chunks_indexed"] == 4
 
@@ -280,8 +373,8 @@ def test_repair_if_allowed_respects_failed_cooldown(data_dir: Path):
         json.dumps(
             {
                 "status": "failed",
-                "last_attempt_at": datetime.now(timezone.utc).isoformat(),
-                "last_failure_at": datetime.now(timezone.utc).isoformat(),
+                "last_attempt_at": datetime.now(UTC).isoformat(),
+                "last_failure_at": datetime.now(UTC).isoformat(),
                 "consecutive_failures": 2,
             }
         ),
@@ -305,8 +398,8 @@ def test_repair_if_allowed_retries_before_failure_limit(data_dir: Path):
         json.dumps(
             {
                 "status": "failed",
-                "last_attempt_at": datetime.now(timezone.utc).isoformat(),
-                "last_failure_at": datetime.now(timezone.utc).isoformat(),
+                "last_attempt_at": datetime.now(UTC).isoformat(),
+                "last_failure_at": datetime.now(UTC).isoformat(),
                 "consecutive_failures": 1,
             }
         ),

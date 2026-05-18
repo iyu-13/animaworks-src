@@ -377,6 +377,20 @@ def _archive_bootstrap_file(anima_dir: Path, bootstrap_file: Path) -> Path:
     return archive_path
 
 
+def _archive_named_file(anima_dir: Path, source: Path, filename: str) -> Path:
+    archive_dir = anima_dir / "state" / "bootstrap_archive"
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    archive_path = archive_dir / filename
+    counter = 1
+    while archive_path.exists():
+        stem = archive_path.stem
+        suffix = archive_path.suffix
+        archive_path = archive_dir / f"{stem}-{counter}{suffix}"
+        counter += 1
+    shutil.move(str(source), str(archive_path))
+    return archive_path
+
+
 def finalize_bootstrap_run(anima_dir: Path) -> dict[str, Any]:
     """Validate bootstrap output and persist completed or needs_repair state."""
     status = validate_bootstrap(anima_dir)
@@ -432,16 +446,7 @@ def repair_bootstrap_retry(anima_dir: Path, *, retry_counts_file: Path | None = 
     for session_file in (anima_dir / "state").glob("current_session_*.json"):
         session_file.unlink(missing_ok=True)
 
-    for pending_dir in [
-        anima_dir / "state" / "pending",
-        anima_dir / "state" / "background_tasks" / "pending",
-    ]:
-        if pending_dir.exists():
-            for path in pending_dir.rglob("*.json"):
-                data = _read_json(path)
-                task_id = str(data.get("task_id") or data.get("id") or path.stem)
-                if task_id.startswith("bootstrap-"):
-                    path.unlink(missing_ok=True)
+    _remove_bootstrap_pending_tasks(anima_dir)
 
     if retry_counts_file and retry_counts_file.exists():
         data = _read_json(retry_counts_file)
@@ -454,6 +459,81 @@ def repair_bootstrap_retry(anima_dir: Path, *, retry_counts_file: Path | None = 
         reason="retry_prepared",
         retry_count=0,
     )
+    write_bootstrap_state(anima_dir, payload)
+    return get_bootstrap_status(anima_dir)
+
+
+def _remove_bootstrap_pending_tasks(anima_dir: Path) -> None:
+    for pending_dir in [
+        anima_dir / "state" / "pending",
+        anima_dir / "state" / "background_tasks" / "pending",
+    ]:
+        if not pending_dir.exists():
+            continue
+        for path in pending_dir.rglob("*.json"):
+            data = _read_json(path)
+            task_id = str(data.get("task_id") or data.get("id") or path.stem)
+            if task_id.startswith("bootstrap-"):
+                path.unlink(missing_ok=True)
+
+
+def repair_bootstrap_complete(anima_dir: Path, *, retry_counts_file: Path | None = None) -> dict[str, Any]:
+    """Mark a fully defined Anima as bootstrapped and archive stale bootstrap inputs."""
+    if not anima_dir.exists():
+        raise FileNotFoundError(f"Anima not found: {anima_dir.name}")
+
+    errors: list[str] = []
+    if not file_is_defined(anima_dir / "identity.md"):
+        errors.append("identity_undefined")
+    if not file_is_defined(anima_dir / "injection.md"):
+        errors.append("injection_undefined")
+    if errors:
+        payload = _base_state(
+            STATE_NEEDS_REPAIR,
+            reason="complete_repair_requires_defined_identity",
+            validation_errors=errors,
+            retry_count=int(read_bootstrap_state(anima_dir).get("retry_count") or 0),
+        )
+        write_bootstrap_state(anima_dir, payload)
+        return get_bootstrap_status(anima_dir)
+
+    archived_bootstrap: list[str] = []
+    bootstrap_file = anima_dir / "bootstrap.md"
+    if bootstrap_file.exists():
+        archived_bootstrap.append(str(_archive_bootstrap_file(anima_dir, bootstrap_file)))
+
+    timestamp = now_local().strftime("%Y%m%d_%H%M%S")
+    for artifact in _bootstrap_artifacts(anima_dir):
+        if artifact.exists():
+            archived_bootstrap.append(
+                str(_archive_named_file(anima_dir, artifact, f"{artifact.name}.{timestamp}"))
+            )
+
+    character_sheet = anima_dir / "character_sheet.md"
+    archived_character_sheet = ""
+    if character_sheet.exists():
+        archived_character_sheet = str(
+            _archive_named_file(anima_dir, character_sheet, f"character_sheet-{timestamp}.md")
+        )
+
+    _remove_bootstrap_pending_tasks(anima_dir)
+
+    if retry_counts_file and retry_counts_file.exists():
+        data = _read_json(retry_counts_file)
+        data.pop(anima_dir.name, None)
+        retry_counts_file.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    payload = _base_state(
+        STATE_COMPLETED,
+        mode="repaired",
+        reason="completed_after_bootstrap_repair",
+        retry_count=0,
+        completed_at=_now_iso(),
+    )
+    if archived_bootstrap:
+        payload["archived_bootstrap_artifacts"] = archived_bootstrap
+    if archived_character_sheet:
+        payload["archived_character_sheet"] = archived_character_sheet
     write_bootstrap_state(anima_dir, payload)
     return get_bootstrap_status(anima_dir)
 

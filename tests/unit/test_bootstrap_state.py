@@ -10,6 +10,7 @@ from core.bootstrap_state import (
     STATE_PENDING_USER_INPUT,
     finalize_bootstrap_run,
     get_bootstrap_status,
+    repair_bootstrap_complete,
     repair_bootstrap_fresh,
     repair_bootstrap_retry,
 )
@@ -129,6 +130,33 @@ def test_retry_restores_artifact_and_cleans_session_state(tmp_path: Path) -> Non
     assert status["state"] == STATE_PENDING_USER_INPUT
 
 
+def test_complete_archives_artifacts_and_preserves_runtime_session(tmp_path: Path) -> None:
+    anima_dir = _make_anima_dir(tmp_path)
+    (anima_dir / "identity.md").write_text("# Midori\n\nDefined identity\n", encoding="utf-8")
+    (anima_dir / "injection.md").write_text("# Role\n\nDefined role\n", encoding="utf-8")
+    (anima_dir / "bootstrap.md").rename(anima_dir / "bootstrap.md.failed")
+    (anima_dir / "character_sheet.md").write_text("# Character Sheet\n", encoding="utf-8")
+    (anima_dir / "shortterm" / "chat" / "codex_thread_id.txt").write_text("thread", encoding="utf-8")
+    pending_dir = anima_dir / "state" / "pending"
+    pending_dir.mkdir(parents=True)
+    (pending_dir / "bootstrap-midori.json").write_text('{"task_id": "bootstrap-midori"}', encoding="utf-8")
+    retries = tmp_path / "animas" / ".bootstrap_retries.json"
+    retries.write_text(json.dumps({"midori": 3}), encoding="utf-8")
+
+    status = repair_bootstrap_complete(anima_dir, retry_counts_file=retries)
+
+    assert status["state"] == STATE_COMPLETED
+    assert not (anima_dir / "bootstrap.md.failed").exists()
+    assert not (anima_dir / "character_sheet.md").exists()
+    assert not (pending_dir / "bootstrap-midori.json").exists()
+    assert (anima_dir / "shortterm" / "chat" / "codex_thread_id.txt").exists()
+    assert json.loads(retries.read_text(encoding="utf-8")) == {}
+    archived = list((anima_dir / "state" / "bootstrap_archive").glob("bootstrap.md.failed.*"))
+    assert len(archived) == 1
+    archived_character_sheets = list((anima_dir / "state" / "bootstrap_archive").glob("character_sheet-*.md"))
+    assert len(archived_character_sheets) == 1
+
+
 def test_fresh_recreates_blank_and_preserves_model_settings(tmp_path: Path) -> None:
     animas_dir = tmp_path / "animas"
     anima_dir = _make_anima_dir(tmp_path)
@@ -189,4 +217,23 @@ def test_repair_bootstrap_retry_command_restores_failed_artifact(tmp_path: Path,
     out = capsys.readouterr().out
     assert "Prepared bootstrap retry" in out
     assert (anima_dir / "bootstrap.md").exists()
+    assert not (anima_dir / "bootstrap.md.failed").exists()
+
+
+def test_repair_bootstrap_complete_command_finishes_defined_runtime(tmp_path: Path, monkeypatch, capsys) -> None:
+    anima_dir = _make_anima_dir(tmp_path)
+    (anima_dir / "identity.md").write_text("# Midori\n\nDefined identity\n", encoding="utf-8")
+    (anima_dir / "injection.md").write_text("# Role\n\nDefined role\n", encoding="utf-8")
+    (anima_dir / "bootstrap.md").rename(anima_dir / "bootstrap.md.failed")
+    monkeypatch.setenv("ANIMAWORKS_DATA_DIR", str(tmp_path))
+
+    from cli.commands.anima_mgmt import cmd_anima_repair_bootstrap
+
+    cmd_anima_repair_bootstrap(
+        Namespace(anima="midori", status=False, retry=False, complete=True, fresh=False, gateway_url=None)
+    )
+
+    out = capsys.readouterr().out
+    assert "Completed bootstrap repair" in out
+    assert "State: completed" in out
     assert not (anima_dir / "bootstrap.md.failed").exists()

@@ -220,6 +220,17 @@ class RAGConfig(BaseModel):
     repair_window_minutes: int = 5
     repair_cooldown_minutes: int = 60
     repair_max_consecutive_failures: int = 2
+    repair_timeout_seconds: int = 1800
+    repair_poll_interval_seconds: int = 5
+    startup_repair_preflight_enabled: bool = True
+    startup_repair_window_minutes: int = 1440
+    vector_worker_enabled: bool = True
+    vector_worker_host: str = "127.0.0.1"
+    vector_worker_port: int = 0
+    vector_worker_startup_timeout_seconds: float = 10.0
+    vector_worker_request_timeout_seconds: float = 30.0
+    vector_worker_restart_backoff_seconds: float = 2.0
+    vector_worker_fallback_direct: bool = False
 
 
 class Neo4jConfig(BaseModel):

@@ -256,6 +256,11 @@ def cli_main() -> None:
 
     setup_index_command(sub)
 
+    # ── RAG Repair ───────────────────────────────────────
+    from cli.commands.repair_rag_cmd import setup_repair_rag_command
+
+    setup_repair_rag_command(sub)
+
     # ── Skills ────────────────────────────────────────────
     from cli.commands.skills import register_skills_command
 
@@ -424,6 +429,11 @@ def cli_main() -> None:
         "--retry",
         action="store_true",
         help="Restore bootstrap artifacts and prepare another bootstrap attempt",
+    )
+    repair_group.add_argument(
+        "--complete",
+        action="store_true",
+        help="Archive stale bootstrap artifacts and mark a fully defined Anima as completed",
     )
     repair_group.add_argument(
         "--fresh",
