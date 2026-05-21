@@ -30,7 +30,7 @@ logger = logging.getLogger("animaworks")
 # Matches both direct invocation (main.py start) and entry point (animaworks start).
 _SERVER_CMD_MARKERS = ("main.py start", "animaworks start", "-m cli start")
 
-_DAEMON_STARTUP_TIMEOUT = 300
+_DAEMON_STARTUP_TIMEOUT = 600
 _DAEMON_POLL_INTERVAL = 0.3
 
 
@@ -782,7 +782,7 @@ def cmd_restart(args: argparse.Namespace) -> None:
     daemon_log = _get_daemon_log_path()
 
     print("Waiting for server to start...")
-    deadline = time.monotonic() + 580
+    deadline = time.monotonic() + 660
     started = False
     while time.monotonic() < deadline:
         if _is_port_listening(check_host, port):
@@ -810,7 +810,7 @@ def cmd_restart(args: argparse.Namespace) -> None:
         print(f"  Dashboard: http://{display_host}:{port}/")
         print(f"  Logs:      {daemon_log}")
     else:
-        print("Error: Server did not start within 30 seconds.")
+        print("Error: Server did not start within 660 seconds.")
         print(f"  Helper log: {helper_log}")
         print(f"  Daemon log: {daemon_log}")
         sys.exit(1)
