@@ -30,7 +30,7 @@ logger = logging.getLogger("animaworks")
 # Matches both direct invocation (main.py start) and entry point (animaworks start).
 _SERVER_CMD_MARKERS = ("main.py start", "animaworks start", "-m cli start")
 
-_DAEMON_STARTUP_TIMEOUT = 10
+_DAEMON_STARTUP_TIMEOUT = 300
 _DAEMON_POLL_INTERVAL = 0.3
 
 
@@ -580,8 +580,8 @@ host = {host!r}
 port = {port!r}
 _SERVER_CMD_MARKERS = {_SERVER_CMD_MARKERS!r}
 MAX_RETRIES = 3
-RETRY_DELAY = 5
-PORT_WAIT_TIMEOUT = 15
+RETRY_DELAY = 10
+PORT_WAIT_TIMEOUT = 600
 
 def _log(msg):
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
@@ -653,6 +653,25 @@ cmd = [sys.executable, "-m", "cli", "start", "--host", host, "--port", str(port)
 os.environ["_ANIMAWORKS_RESTART_HELPER_PID"] = str(os.getpid())
 
 for attempt in range(1, MAX_RETRIES + 1):
+    # Skip starting new instance if a server from previous attempt is still alive
+    existing_srv = _find_server_process()
+    if existing_srv and _alive(existing_srv):
+        _log(f"Server from previous attempt still alive (pid={{existing_srv}}), waiting for port...")
+        port_deadline = time.monotonic() + PORT_WAIT_TIMEOUT
+        while time.monotonic() < port_deadline:
+            if not _alive(existing_srv):
+                _log(f"Server died (pid={{existing_srv}})")
+                break
+            if _is_port_listening(check_host, port):
+                _write_status(True, f"Server started (pid={{existing_srv}}, attempt={{attempt}})")
+                _log(f"SUCCESS: Server listening on {{check_host}}:{{port}} (pid={{existing_srv}})")
+                sys.exit(0)
+            time.sleep(1)
+        _log(f"Attempt {{attempt}} failed: existing server did not bind to port")
+        if attempt < MAX_RETRIES:
+            _log(f"Retrying in {{RETRY_DELAY}}s...")
+            time.sleep(RETRY_DELAY)
+        continue
     _log(f"Starting server (attempt {{attempt}}/{{MAX_RETRIES}})...")
     try:
         proc = subprocess.Popen(cmd, cwd={project_root!r}, **subprocess_session_kwargs())
@@ -669,14 +688,26 @@ for attempt in range(1, MAX_RETRIES + 1):
     # Wait for port to become available
     port_deadline = time.monotonic() + PORT_WAIT_TIMEOUT
     started = False
+    daemon_exited = False
     while time.monotonic() < port_deadline:
-        if proc.poll() is not None:
-            _log(f"Server exited immediately (code={{proc.returncode}})")
-            break
+        if not daemon_exited and proc.poll() is not None:
+            daemon_exited = True
+            _log(f"Daemon wrapper exited (code={{proc.returncode}})")
+            if proc.returncode != 0:
+                srv = _find_server_process()
+                if srv is None:
+                    _log("No server process found after daemon failure")
+                    break
+                _log(f"Found server process pid={{srv}}, continuing to wait for port...")
         if _is_port_listening(check_host, port):
             started = True
             break
-        time.sleep(0.5)
+        if daemon_exited:
+            srv = _find_server_process()
+            if srv is None:
+                _log("Server process disappeared while waiting for port")
+                break
+        time.sleep(1)
 
     if started:
         _write_status(True, f"Server started (pid={{proc.pid}}, attempt={{attempt}})")
@@ -751,7 +782,7 @@ def cmd_restart(args: argparse.Namespace) -> None:
     daemon_log = _get_daemon_log_path()
 
     print("Waiting for server to start...")
-    deadline = time.monotonic() + 30
+    deadline = time.monotonic() + 580
     started = False
     while time.monotonic() < deadline:
         if _is_port_listening(check_host, port):
