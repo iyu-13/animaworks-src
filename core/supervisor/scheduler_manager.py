@@ -434,7 +434,7 @@ class SchedulerManager:
 
         self.scheduler.add_job(
             self._cron_health_tick,
-            CronTrigger(minute=0, hour=f"*/{_HEALTH_CHECK_HOURS}"),
+            CronTrigger(minute=0, hour=f"*/{_HEALTH_CHECK_INTERVAL_HOURS}"),
             id=f"{self._anima_name}_cron_health",
             name=f"{self._anima_name} cron health check",
             replace_existing=True,
@@ -494,9 +494,9 @@ class SchedulerManager:
                 return
 
             # Only treat a missing execution as unhealthy when at least one
-            # cron was actually expected to fire inside the health window.
+            # cron was actually expected to fire inside the no-execution window.
             now = now_local()
-            window_start = now - timedelta(hours=_HEALTH_CHECK_HOURS)
+            window_start = now - timedelta(hours=_HEALTH_CHECK_WINDOW_HOURS)
             if not self._any_cron_expected_in_window(cron_jobs, window_start, now):
                 return
 
