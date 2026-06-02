@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from benchmarks.locomo.adapter import load_dataset
-from benchmarks.locomo.metrics import CATEGORY_NAMES, compute_summary, eval_by_category, llm_judge_sync
+from benchmarks.locomo.metrics import compute_summary, eval_by_category, llm_judge_sync
 from benchmarks.locomo.neo4j_adapter import AblationFlags, Neo4jLoCoMoAdapter
 
 logger = logging.getLogger(__name__)
@@ -65,7 +65,7 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"\n{'=' * 60}")
-    print(f"  LoCoMo Neo4j Benchmark")
+    print("  LoCoMo Neo4j Benchmark")
     print(f"  Conversations: {len(samples)}, top_k: {args.top_k}")
     print(f"  Answer model: {args.answer_model}")
     print(f"  Exclude cat5: {args.exclude_cat5}")
@@ -136,7 +136,7 @@ def main() -> None:
                         continue
 
                     try:
-                        context = adapter.retrieve(question)
+                        context = adapter.retrieve(question, category=category)
                     except Exception as exc:
                         errors += 1
                         logger.exception("Retrieve failed: %s", exc)
@@ -144,7 +144,11 @@ def main() -> None:
 
                     prediction = ""
                     try:
-                        prediction = adapter.answer(question, context)
+                        prediction = adapter.answer(
+                            question,
+                            context,
+                            category=category,
+                        )
                     except Exception as exc:
                         errors += 1
                         logger.exception("Answer failed: %s", exc)
@@ -160,7 +164,7 @@ def main() -> None:
                             errors += 1
                             logger.exception("Judge failed: %s", exc)
 
-                    results.append({
+                    result: dict[str, Any] = {
                         "sample_id": str(sample_id),
                         "question_index": j,
                         "category": category,
@@ -170,7 +174,20 @@ def main() -> None:
                         "f1": f1,
                         "judge_score": judge_score,
                         "context_count": len(context),
-                    })
+                    }
+                    raw_prediction = getattr(adapter, "_last_raw_answer", None)
+                    normalized_prediction = getattr(adapter, "_last_normalized_answer", None)
+                    abstain_reason = getattr(adapter, "_last_abstain_reason", "")
+                    top_score = getattr(adapter, "_last_top_score", None)
+                    if isinstance(raw_prediction, str):
+                        result["raw_prediction"] = raw_prediction
+                    if isinstance(normalized_prediction, str):
+                        result["normalized_prediction"] = normalized_prediction
+                    if isinstance(abstain_reason, str) and abstain_reason:
+                        result["abstain_reason"] = abstain_reason
+                    if isinstance(top_score, int | float):
+                        result["top_retrieval_score"] = float(top_score)
+                    results.append(result)
 
                     if (j + 1) % 50 == 0:
                         print(f"  Questions: {j + 1}/{len(qa_list)}")

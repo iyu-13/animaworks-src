@@ -14,6 +14,16 @@ import time
 from pathlib import Path
 from typing import Any
 
+from benchmarks.locomo.answer_prompt import (
+    ANSWER_SYSTEM as _ANSWER_SYSTEM,
+)
+from benchmarks.locomo.answer_prompt import (
+    LOCOMO_ANSWER_MAX_TOKENS,
+    build_answer_user_content,
+    merge_pipeline_gate_settings,
+    normalize_locomo_answer,
+)
+
 # Project root (development / `python -m` from repo root)
 _ROOT = Path(__file__).resolve().parents[2]
 if str(_ROOT) not in sys.path:
@@ -26,31 +36,6 @@ logger = logging.getLogger(__name__)
 ANIMA_NAME = "locomo_bench"
 SEARCH_MODES: tuple[str, ...] = ("vector", "vector_graph", "scope_all")
 _SESSION_RE = re.compile(r"^session_(\d+)$")
-
-_ANSWER_SYSTEM = (
-    "You are an expert assistant answering questions about past conversations based on the provided context."
-)
-
-_ANSWER_TEMPLATE = """# INSTRUCTIONS:
-1. Carefully analyze all provided memories
-2. Pay special attention to timestamps (event_time) to determine when events occurred
-3. If memories contain contradictory information, prioritize the most recent memory
-4. Always convert relative time references (yesterday, last week, next month) to specific dates using the event_time timestamps
-5. Timestamps represent the actual time the event occurred, not when it was mentioned
-6. When multiple items are asked for, answer with a comma-separated list of short phrases
-7. If the context supports a reasonable inference, provide your best answer — only say "No information available." when the context has absolutely no relevant information
-8. Keep your answer as brief and direct as possible — a short phrase or sentence
-
-Example:
-Memory: (event_time: 2023-05-08T13:56:00) I went to the vet yesterday.
-Question: When did I go to the vet?
-Answer: 7 May 2023
-
-Context:
-{context}
-
-Question: {question}
-Answer:"""
 
 # ── Dependency checks ──────────
 
@@ -232,6 +217,9 @@ class AnimaWorksLoCoMoAdapter:
         self._bm25_index: Any = None
         self._last_abstain: bool = False
         self._last_abstain_reason: str = ""
+        self._last_top_score: float | None = None
+        self._last_raw_answer: str = ""
+        self._last_normalized_answer: str = ""
         # Deferred heavy init
         self._init_isolated_rag()
 
@@ -376,6 +364,13 @@ class AnimaWorksLoCoMoAdapter:
             },
         }
 
+    def _remember_retrieval_diagnostics(self, items: list[dict[str, Any]]) -> None:
+        """Store lightweight retrieval diagnostics for benchmark output."""
+        if not items:
+            self._last_top_score = None
+            return
+        self._last_top_score = max(float(item.get("score", 0.0) or 0.0) for item in items)
+
     def _load_pipeline_settings(self) -> dict[str, object]:
         """Resolve RAG pipeline knobs (same defaults as ``RAGMemorySearch``)."""
         defaults: dict[str, object] = {
@@ -420,10 +415,11 @@ class AnimaWorksLoCoMoAdapter:
             logger.debug("Using default pipeline settings for LoCoMo adapter", exc_info=True)
         return defaults
 
-    def retrieve(self, question: str) -> list[dict[str, Any]]:
+    def retrieve(self, question: str, *, category: int | None = None) -> list[dict[str, Any]]:
         """Run retrieval for ``question`` following ``self._search_mode``."""
         self._last_abstain = False
         self._last_abstain_reason = ""
+        self._last_top_score = None
         assert self._retriever is not None
         if self._search_mode == "vector":
             res = self._retriever.search(
@@ -433,7 +429,9 @@ class AnimaWorksLoCoMoAdapter:
                 top_k=self._top_k,
                 enable_spreading_activation=False,
             )
-            return self._retrieval_to_dicts(res)
+            items = self._retrieval_to_dicts(res)
+            self._remember_retrieval_diagnostics(items)
+            return items
         if self._search_mode == "vector_graph":
             res = self._retriever.search(
                 query=question,
@@ -442,7 +440,9 @@ class AnimaWorksLoCoMoAdapter:
                 top_k=self._top_k,
                 enable_spreading_activation=True,
             )
-            return self._retrieval_to_dicts(res)
+            items = self._retrieval_to_dicts(res)
+            self._remember_retrieval_diagnostics(items)
+            return items
         # scope_all: vector + graph + BM25 → shared RetrievalPipeline (prod parity)
         from core.memory.retrieval.pipeline import RetrievalPipeline  # noqa: PLC0415
 
@@ -474,6 +474,7 @@ class AnimaWorksLoCoMoAdapter:
         ]
 
         pipeline = RetrievalPipeline(cross_encoder_model=str(settings["cross_encoder_model"]))
+        gate = merge_pipeline_gate_settings(settings, category=category)
         result = pipeline.run(
             question,
             ranked_lists,
@@ -481,12 +482,14 @@ class AnimaWorksLoCoMoAdapter:
             pool_k=pool_k,
             rerank_enabled=bool(settings["rerank_enabled"]),
             abstain_on_low_confidence=bool(settings["abstain_on_low_confidence"]),
-            confidence_threshold=float(settings["confidence_threshold"]),
-            rrf_confidence_threshold=float(settings["rrf_confidence_threshold"]),
+            confidence_threshold=gate["confidence_threshold"],
+            rrf_confidence_threshold=gate["rrf_confidence_threshold"],
         )
         self._last_abstain = result.abstain
         self._last_abstain_reason = result.abstain_reason
-        return [self._adapter_hit_from_pipeline_item(x) for x in result.items]
+        items = [self._adapter_hit_from_pipeline_item(x) for x in result.items]
+        self._remember_retrieval_diagnostics(items)
+        return items
 
     def _build_bm25_cache(self) -> None:
         """Build BM25 index from episode files; cached until reset/ingest."""
@@ -590,7 +593,7 @@ class AnimaWorksLoCoMoAdapter:
                     model=litellm_model,
                     messages=messages,
                     temperature=0.0,
-                    max_tokens=512,
+                    max_tokens=LOCOMO_ANSWER_MAX_TOKENS,
                     **extra,
                 )
                 ch = r.choices[0].message
@@ -615,7 +618,7 @@ class AnimaWorksLoCoMoAdapter:
                     model=litellm_model,
                     messages=messages,
                     temperature=0.0,
-                    max_tokens=512,
+                    max_tokens=LOCOMO_ANSWER_MAX_TOKENS,
                     **extra,
                 )
                 ch = r.choices[0].message
@@ -628,22 +631,38 @@ class AnimaWorksLoCoMoAdapter:
         assert last is not None
         raise last
 
-    def answer(self, question: str, context: list[dict], *, model: str | None = None) -> str:
+    def answer(
+        self,
+        question: str,
+        context: list[dict],
+        *,
+        model: str | None = None,
+        category: int | None = None,
+    ) -> str:
         """Generate a short answer from retrieved ``context`` using LiteLLM."""
         if getattr(self, "_last_abstain", False):
-            return "No information available."
+            self._last_raw_answer = ""
+            self._last_normalized_answer = "No information available."
+            return self._last_normalized_answer
         parts = []
         for i, c in enumerate(context, start=1):
             t = (c.get("content") or "").strip()
             if t:
                 parts.append(f"[{i}] {t}")
         ctx_joined = "\n\n".join(parts)
-        user_content = _ANSWER_TEMPLATE.format(context=ctx_joined, question=question)
+        user_content = build_answer_user_content(
+            question,
+            ctx_joined,
+            category=category,
+        )
         messages = [
             {"role": "system", "content": _ANSWER_SYSTEM},
             {"role": "user", "content": user_content},
         ]
-        return self._complete_sync(messages, model or default_answer_model())
+        raw = self._complete_sync(messages, model or default_answer_model())
+        self._last_raw_answer = raw
+        self._last_normalized_answer = normalize_locomo_answer(raw, category=category)
+        return self._last_normalized_answer
 
     def cleanup(self) -> None:
         """Remove temp data directory and restore ``ANIMAWORKS_DATA_DIR``."""

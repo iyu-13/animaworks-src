@@ -4,6 +4,7 @@ import argparse
 
 import pytest
 
+from benchmarks.locomo.llm_config import default_answer_model
 from benchmarks.locomo.runner import (
     _REFERENCE_SCORES,
     EMBEDDING_MODEL_DEFAULT,
@@ -25,7 +26,7 @@ class TestArgParser:
         assert args.top_k == 10
         assert args.judge is False
         assert args.judge_model == "gpt-4o"
-        assert args.answer_model == "gpt-4o-mini"
+        assert args.answer_model == default_answer_model()
         assert args.verbose is False
 
     def test_mode_choice(self):

@@ -296,6 +296,10 @@ class TestRunnerWithMockedAdapter:
             {"content": "Alice went to Paris", "score": 0.9, "metadata": {}},
         ]
         mock_adapter.answer.return_value = "Paris"
+        mock_adapter._last_raw_answer = "The answer is Paris."
+        mock_adapter._last_normalized_answer = "Paris"
+        mock_adapter._last_abstain_reason = ""
+        mock_adapter._last_top_score = 0.9
 
         with patch(
             "benchmarks.locomo.runner.AnimaWorksLoCoMoAdapter",
@@ -318,6 +322,10 @@ class TestRunnerWithMockedAdapter:
 
         assert "vector" in results
         assert results["vector"]["summary"]["overall_f1"] > 0
+        first = results["vector"]["results"][0]
+        assert first["raw_prediction"] == "The answer is Paris."
+        assert first["normalized_prediction"] == "Paris"
+        assert first["top_retrieval_score"] == 0.9
         result_files = list((tmp_path / "results").glob("*.json"))
         assert len(result_files) == 1
 
