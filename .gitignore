@@ -42,6 +42,7 @@ tests/evaluation/_experiment_data/
 
 # Root files
 .cursorrules
+AGENTS.md
 CLA.md
 CLAUDE.md
 mkdocs.yml

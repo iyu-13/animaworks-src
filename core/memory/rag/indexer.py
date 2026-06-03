@@ -24,6 +24,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
+from core.memory.rag.episode_time import apply_episode_heading_event_time
+from core.memory.rag.facts_chunker import chunk_facts_jsonl
 from core.time_utils import ensure_aware, now_iso
 
 if TYPE_CHECKING:
@@ -31,9 +33,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("animaworks.rag.indexer")
 
-# ── Configuration ───────────────────────────────────────────────────
-
-# Index metadata file
 INDEX_META_FILE = "index_meta.json"
 
 # Maximum episode file size to index in full.  Files larger than this
@@ -42,16 +41,13 @@ INDEX_META_FILE = "index_meta.json"
 MAX_EPISODE_INDEX_SIZE = 204800  # 200 KB
 
 
-# ── Data structures ─────────────────────────────────────────────────
-
-
 @dataclass
 class MemoryChunk:
     """A chunk of memory content ready for indexing."""
 
     id: str
     content: str
-    metadata: dict[str, str | int | float | list[str]]
+    metadata: dict[str, str | int | float | bool | list[str]]
 
 
 # ── MemoryIndexer ───────────────────────────────────────────────────
@@ -389,10 +385,8 @@ class MemoryIndexer:
             logger.warning("Directory not found: %s", directory)
             return 0
 
-        if memory_type in ("skills", "common_skills"):
-            md_files = sorted(directory.rglob("SKILL.md"))
-        else:
-            md_files = sorted(directory.rglob("*.md"))
+        patterns = {"facts": "*.jsonl", "skills": "SKILL.md", "common_skills": "SKILL.md"}
+        md_files = sorted(directory.rglob(patterns.get(memory_type, "*.md")))
         total_chunks = 0
         for md_file in md_files:
             total_chunks += self.index_file(md_file, memory_type, force=force)
@@ -604,13 +598,14 @@ class MemoryIndexer:
     ) -> list[MemoryChunk]:
         """Chunk file based on memory type.
 
-        Strategies:
-        - knowledge / common_knowledge: Markdown heading sections
-        - episodes: Time headings (``## HH:MM``) when present, else Markdown headings
-        - procedures: Whole file (don't split procedures)
-        - skills / common_skills: Whole file
-        - shared_users: Whole file
+        Markdown memory is split by headings/time headings; facts use JSONL
+        records; procedures, skills, and shared users are indexed whole.
         """
+        if memory_type == "facts":
+            return chunk_facts_jsonl(
+                file_path, content, anima_dir=self.anima_dir, collection_prefix=self.collection_prefix,
+                make_chunk_id=self._make_chunk_id, chunk_factory=MemoryChunk, origin=origin,
+            )
         if memory_type in ("knowledge", "common_knowledge"):
             return self._chunk_by_markdown_headings(file_path, content, memory_type, origin=origin)
         if memory_type == "episodes":
@@ -643,7 +638,7 @@ class MemoryIndexer:
         frontmatter = self._parse_frontmatter(content)
         content = self._strip_frontmatter(content)
         chunks: list[MemoryChunk] = []
-        sections = re.split(r"\n(##\s+.+)", content)
+        sections = re.split(r"\n(##\s+.+)", f"\n{content}")
 
         preamble = sections[0].strip()
         chunk_idx = 0
@@ -687,6 +682,8 @@ class MemoryIndexer:
                         frontmatter=frontmatter,
                         origin=origin,
                     )
+                    if memory_type == "episodes":
+                        apply_episode_heading_event_time(metadata, heading)
                     chunks.append(
                         MemoryChunk(
                             id=chunk_id,
@@ -715,7 +712,7 @@ class MemoryIndexer:
         base_date_str = date_match.group(1) if date_match else None
 
         # Match headings like ## 09:30, ## 14:15 optional — title
-        sections = re.split(r"\n(##\s+\d{1,2}:\d{2}.*)", content)
+        sections = re.split(r"\n(##\s+\d{1,2}:\d{2}.*)", f"\n{content}")
 
         if len(sections) <= 1:
             return []
@@ -859,7 +856,7 @@ class MemoryIndexer:
         total_chunks: int,
         frontmatter: dict | None = None,
         origin: str = "",
-    ) -> dict[str, str | int | float | list[str]]:
+    ) -> dict[str, str | int | float | bool | list[str]]:
         """Extract metadata from file and content.
 
         Args:
@@ -872,7 +869,7 @@ class MemoryIndexer:
                 If provided, ``valid_until`` is extracted from it.
             origin: Provenance origin category for trust resolution.
         """
-        metadata: dict[str, str | int | float | list[str]] = {
+        metadata: dict[str, str | int | float | bool | list[str]] = {
             "anima": self.collection_prefix,
             "memory_type": memory_type,
             "source_file": str(file_path.relative_to(self.anima_dir)),
