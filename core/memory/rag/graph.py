@@ -393,10 +393,9 @@ class KnowledgeGraph:
             if expected_schema_version is not None and graph.graph.get("schema_version") != expected_schema_version:
                 logger.info("Ignoring stale graph cache schema at %s", cache_path)
                 return False
-            if (
-                entity_aware_graph_enabled is not None
-                and bool(graph.graph.get("entity_aware_graph_enabled", False)) != bool(entity_aware_graph_enabled)
-            ):
+            if entity_aware_graph_enabled is not None and bool(
+                graph.graph.get("entity_aware_graph_enabled", False)
+            ) != bool(entity_aware_graph_enabled):
                 logger.info("Ignoring graph cache with mismatched entity-aware setting at %s", cache_path)
                 return False
             self.graph = graph

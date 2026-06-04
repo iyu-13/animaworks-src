@@ -722,11 +722,7 @@ class MemoryRetriever:
                         if _cfg
                         else 0.75
                     )
-                    cache_enabled = (
-                        bool(getattr(_cfg.rag, "graph_cache_enabled", True))
-                        if _cfg
-                        else True
-                    )
+                    cache_enabled = bool(getattr(_cfg.rag, "graph_cache_enabled", True)) if _cfg else True
                     loaded = False
                     if cache_enabled:
                         loaded = self._knowledge_graph.load_graph(

@@ -603,8 +603,13 @@ class MemoryIndexer:
         """
         if memory_type == "facts":
             return chunk_facts_jsonl(
-                file_path, content, anima_dir=self.anima_dir, collection_prefix=self.collection_prefix,
-                make_chunk_id=self._make_chunk_id, chunk_factory=MemoryChunk, origin=origin,
+                file_path,
+                content,
+                anima_dir=self.anima_dir,
+                collection_prefix=self.collection_prefix,
+                make_chunk_id=self._make_chunk_id,
+                chunk_factory=MemoryChunk,
+                origin=origin,
             )
         if memory_type in ("knowledge", "common_knowledge"):
             return self._chunk_by_markdown_headings(file_path, content, memory_type, origin=origin)

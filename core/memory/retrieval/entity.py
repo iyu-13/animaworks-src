@@ -141,9 +141,7 @@ def apply_entity_boost(
     ignored = {_normalize_entity(v) for v in config.ignored_entities}
     ignored.discard("")
     query_entities = {
-        _normalize_entity(value)
-        for value in config.query_entities
-        if _valid_entity(_normalize_entity(value), ignored)
+        _normalize_entity(value) for value in config.query_entities if _valid_entity(_normalize_entity(value), ignored)
     }
     if config.require_query_entities and not query_entities:
         return candidates

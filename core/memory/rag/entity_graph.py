@@ -107,8 +107,7 @@ def add_entity_aware_layers(
             entity_carriers.setdefault(owner, []).append((fact_node, fact_time))
 
     entity_fanout = {
-        key: max(1, len({carrier for carrier, _recency in carriers}))
-        for key, carriers in entity_carriers.items()
+        key: max(1, len({carrier for carrier, _recency in carriers})) for key, carriers in entity_carriers.items()
     }
 
     for node_id, mentioned, recency in memory_mentions:
@@ -271,9 +270,7 @@ def _weighted_similarity(
         weight *= 1.0 / math.sqrt(max(1, int(fanout)))
     if recency_weight and recency is not None:
         age_days = max(0.0, (now_local() - ensure_aware(recency)).total_seconds() / 86400.0)
-        recency_multiplier = 1.0 + (_RECENCY_MAX_MULTIPLIER - 1.0) * (
-            0.5 ** (age_days / _RECENCY_HALF_LIFE_DAYS)
-        )
+        recency_multiplier = 1.0 + (_RECENCY_MAX_MULTIPLIER - 1.0) * (0.5 ** (age_days / _RECENCY_HALF_LIFE_DAYS))
         weight *= recency_multiplier
     return max(0.0, weight)
 
