@@ -75,6 +75,18 @@ def summarize_results(results: list[dict[str, Any]]) -> dict[str, Any]:
             "all_answer_tokens_present_at_10": _mean(cat_rows, "all_answer_tokens_present_at_10"),
             "all_answer_tokens_present_at_50": _mean(cat_rows, "all_answer_tokens_present_at_50"),
         }
+    multi_hop_rows = by_cat.get(1, [])
+    helper_counts: Counter[str] = Counter()
+    for row in multi_hop_rows:
+        helpers = row.get("locomo_multihop_helpers", {})
+        if isinstance(helpers, dict):
+            helper_counts.update({str(key): int(value) for key, value in helpers.items()})
+    multi_hop_summary = summary["by_category"].get("multi_hop", {})
+    summary["multi_hop_zero_context_count"] = sum(1 for row in multi_hop_rows if int(row.get("context_count", 0) or 0) == 0)
+    summary["multi_hop_helper_hit_counts"] = dict(sorted(helper_counts.items()))
+    summary["multi_hop_feature_recall_at_10"] = (
+        multi_hop_summary.get("answer_token_recall_at_10") if isinstance(multi_hop_summary, dict) else None
+    )
     return summary
 
 
@@ -128,6 +140,7 @@ def run_retrieval_diagnostics(
                         continue
                     try:
                         top_context = _retrieve_at_k(adapter, question, category=category, top_k=top_k)
+                        multihop_meta = dict(getattr(adapter, "_last_multihop_meta", {}) or {})
                         ceiling_context = (
                             top_context
                             if ceiling_top_k == top_k
@@ -137,6 +150,7 @@ def run_retrieval_diagnostics(
                         errors += 1
                         top_context = []
                         ceiling_context = []
+                        multihop_meta = {}
 
                     recall_10, all_10 = answer_token_recall(answer, top_context)
                     recall_50, all_50 = answer_token_recall(answer, ceiling_context)
@@ -160,6 +174,14 @@ def run_retrieval_diagnostics(
                             "top_event_time_iso": str(top_meta.get("event_time_iso", "") or ""),
                             "top_entity_boost": top_meta.get("entity_boost"),
                             "top_entity_overlap": top_meta.get("entity_overlap", []),
+                            "top_locomo_multihop_helper": str(top_meta.get("locomo_multihop_helper", "") or ""),
+                            "top_locomo_multihop_query": str(top_meta.get("locomo_multihop_query", "") or ""),
+                            "locomo_multihop_enabled": bool(multihop_meta.get("enabled", False)),
+                            "locomo_multihop_query_count": int(multihop_meta.get("query_count", 0) or 0),
+                            "locomo_multihop_fallback_used": bool(multihop_meta.get("fallback_used", False)),
+                            "locomo_multihop_helpers": dict(multihop_meta.get("helper_hit_counts", {}) or {}),
+                            "locomo_multihop_queries": list(multihop_meta.get("queries", []) or []),
+                            "locomo_multihop_aliases": list(multihop_meta.get("aliases", []) or []),
                             "answer_token_recall_at_10": None if excluded else recall_10,
                             "answer_token_recall_at_50": None if excluded else recall_50,
                             "all_answer_tokens_present_at_10": None if excluded else all_10,
@@ -189,6 +211,7 @@ def write_diagnostics_json(
     temporal_ablation: dict[str, Any] | None = None,
     entity_ablation: dict[str, Any] | None = None,
     entity_aware_graph_ablation: dict[str, Any] | None = None,
+    feature_on_ablation: dict[str, Any] | None = None,
     fact_index: bool = False,
     fact_ablation: dict[str, Any] | None = None,
 ) -> Path:
@@ -216,6 +239,8 @@ def write_diagnostics_json(
         payload["entity_ablation"] = entity_ablation
     if entity_aware_graph_ablation is not None:
         payload["entity_aware_graph_ablation"] = entity_aware_graph_ablation
+    if feature_on_ablation is not None:
+        payload["feature_on_ablation"] = feature_on_ablation
     if fact_ablation is not None:
         payload["fact_ablation"] = fact_ablation
 
@@ -281,6 +306,54 @@ def _ablation_delta(base: dict[str, Any], boosted: dict[str, Any]) -> dict[str, 
                 key: _numeric_delta(base_cat.get(key), boosted_cat.get(key)) for key in keys
             }
     return delta
+
+
+def _per_question_deltas(
+    base_results: list[dict[str, Any]],
+    boosted_results: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return per-question retrieval deltas for common diagnostics rows."""
+    base_by_key = {_question_key(row): row for row in base_results}
+    boosted_by_key = {_question_key(row): row for row in boosted_results}
+    rows: list[dict[str, Any]] = []
+    for key in sorted(set(base_by_key) & set(boosted_by_key)):
+        base = base_by_key[key]
+        boosted = boosted_by_key[key]
+        category = int(boosted.get("category", base.get("category", 0)) or 0)
+        if category == 5:
+            continue
+        recall_10_delta = _numeric_delta(
+            base.get("answer_token_recall_at_10"),
+            boosted.get("answer_token_recall_at_10"),
+        )
+        recall_50_delta = _numeric_delta(
+            base.get("answer_token_recall_at_50"),
+            boosted.get("answer_token_recall_at_50"),
+        )
+        rows.append(
+            {
+                "sample_id": key[0],
+                "question_index": key[1],
+                "category": category,
+                "category_name": CATEGORY_NAMES.get(category, str(category)),
+                "question": key[2],
+                "reference": str(boosted.get("reference", base.get("reference", "")) or ""),
+                "answer_token_recall_at_10_delta": recall_10_delta,
+                "answer_token_recall_at_50_delta": recall_50_delta,
+                "base_top_memory_type": str(base.get("top_memory_type", "") or ""),
+                "boosted_top_memory_type": str(boosted.get("top_memory_type", "") or ""),
+            },
+        )
+    rows.sort(key=lambda row: (row["answer_token_recall_at_10_delta"] is None, row["answer_token_recall_at_10_delta"] or 0.0))
+    return rows
+
+
+def _question_key(row: dict[str, Any]) -> tuple[str, int, str]:
+    return (
+        str(row.get("sample_id", "") or ""),
+        int(row.get("question_index", 0) or 0),
+        str(row.get("question", "") or ""),
+    )
 
 
 def _numeric_delta(base: Any, boosted: Any) -> float | None:
@@ -358,6 +431,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--temporal-ablation", action="store_true")
     parser.add_argument("--entity-ablation", action="store_true")
     parser.add_argument("--entity-aware-graph-ablation", action="store_true")
+    parser.add_argument("--feature-on-ablation", action="store_true")
     parser.add_argument("--fact-ablation", action="store_true")
     return parser.parse_args(argv)
 
@@ -370,7 +444,7 @@ def main(argv: list[str] | None = None) -> int:
     data_path = args.data if args.data.is_absolute() else (_ROOT / args.data).resolve()
     samples = load_dataset(data_path)[: max(0, int(args.conversations))]
     primary_fact_index = locomo_fact_index_enabled()
-    if args.fact_ablation:
+    if args.fact_ablation or args.feature_on_ablation:
         primary_fact_index = False
 
     started = time.perf_counter()
@@ -389,6 +463,7 @@ def main(argv: list[str] | None = None) -> int:
     temporal_ablation: dict[str, Any] | None = None
     entity_ablation: dict[str, Any] | None = None
     entity_aware_graph_ablation: dict[str, Any] | None = None
+    feature_on_ablation: dict[str, Any] | None = None
     fact_ablation: dict[str, Any] | None = None
     if args.temporal_ablation:
         boosted_results, boosted_errors = run_retrieval_diagnostics(
@@ -470,6 +545,32 @@ def main(argv: list[str] | None = None) -> int:
             "deltas": _ablation_delta(summary, boosted_summary),
         }
         errors += boosted_errors
+    if args.feature_on_ablation:
+        boosted_results, boosted_errors = run_retrieval_diagnostics(
+            samples=samples,
+            mode=str(args.mode),
+            top_k=int(args.top_k),
+            ceiling_top_k=int(args.ceiling_top_k),
+            temporal_boost=False,
+            entity_boost=True,
+            entity_aware_graph=True,
+            fact_index=True,
+        )
+        boosted_summary = summarize_results(boosted_results)
+        feature_on_ablation = {
+            "config": {
+                "fact_index": True,
+                "entity_boost": True,
+                "entity_aware_graph": True,
+                "temporal_boost": False,
+            },
+            "summary": boosted_summary,
+            "results": boosted_results,
+            "errors": boosted_errors,
+            "deltas": _ablation_delta(summary, boosted_summary),
+            "per_question_deltas": _per_question_deltas(results, boosted_results),
+        }
+        errors += boosted_errors
 
     out = write_diagnostics_json(
         args.output,
@@ -487,6 +588,7 @@ def main(argv: list[str] | None = None) -> int:
         temporal_ablation=temporal_ablation,
         entity_ablation=entity_ablation,
         entity_aware_graph_ablation=entity_aware_graph_ablation,
+        feature_on_ablation=feature_on_ablation,
         fact_ablation=fact_ablation,
     )
     elapsed = time.perf_counter() - started

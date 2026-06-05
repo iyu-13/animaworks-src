@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from core.memory.retrieval.entity import EntityBoostConfig, extract_entities
+from core.memory.retrieval.access_boost import AccessBoostConfig
+from core.memory.retrieval.entity import EntityBoostConfig, expand_alias_terms, extract_entities
 from core.memory.retrieval.pipeline import RetrievalPipeline
 from core.memory.retrieval.temporal import TemporalBoostConfig
 
@@ -143,6 +144,55 @@ def test_pipeline_temporal_boost_adds_score_for_temporal_year_match() -> None:
     assert item["score"] == item["base_score"] + 0.10
 
 
+def test_pipeline_access_boost_applies_after_rrf_when_rerank_disabled() -> None:
+    ranked = [
+        [
+            {"content": "low access", "score": 0.9, "source_file": "a.md", "chunk_index": 0, "access_count": 0},
+            {"content": "high access", "score": 0.9, "source_file": "b.md", "chunk_index": 0, "access_count": 20},
+        ],
+    ]
+    pipeline = RetrievalPipeline(reranker=MagicMock())
+
+    result = pipeline.run(
+        "q",
+        ranked,
+        limit=2,
+        rerank_enabled=False,
+        abstain_on_low_confidence=False,
+        access_boost=AccessBoostConfig(weight=0.05, cap=0.25),
+    )
+
+    assert result.items[0]["content"] == "high access"
+    assert result.items[0]["access_boost"] > 0.0
+
+
+def test_pipeline_access_boost_applies_after_cross_encoder_scores() -> None:
+    reranker = MagicMock()
+    reranker.rerank_sync.return_value = [
+        {"content": "low access", "score": 0.8, "search_method": "cross_encoder", "access_count": 0},
+        {"content": "high access", "score": 0.8, "search_method": "cross_encoder", "access_count": 20},
+    ]
+    ranked = [
+        [
+            {"content": "low access", "score": 0.9, "source_file": "a.md", "chunk_index": 0, "access_count": 0},
+            {"content": "high access", "score": 0.9, "source_file": "b.md", "chunk_index": 0, "access_count": 20},
+        ],
+    ]
+    pipeline = RetrievalPipeline(reranker=reranker)
+
+    result = pipeline.run(
+        "q",
+        ranked,
+        limit=2,
+        rerank_enabled=True,
+        abstain_on_low_confidence=False,
+        access_boost=AccessBoostConfig(weight=0.05, cap=0.25),
+    )
+
+    assert result.items[0]["content"] == "high access"
+    assert result.items[0]["search_method"] == "cross_encoder"
+
+
 def test_extract_entities_deduplicates_phrases_and_ignores_speakers() -> None:
     entities = extract_entities(
         'What book did Melanie read from Caroline\'s suggestion, "Becoming Nicole"?',
@@ -154,6 +204,15 @@ def test_extract_entities_deduplicates_phrases_and_ignores_speakers() -> None:
     assert "becoming nicole" in entities
     assert "book" in entities
     assert "suggestion" in entities
+
+
+def test_expand_alias_terms_returns_triggered_aliases_deterministically() -> None:
+    aliases = expand_alias_terms(
+        "What is Caroline's identity?",
+        {"identity": ("transgender", "woman", "transgender woman"), "pets": ("dog",)},
+    )
+
+    assert aliases == ("transgender", "woman", "transgender woman")
 
 
 def test_pipeline_entity_boost_absent_keeps_default_order() -> None:
@@ -269,3 +328,74 @@ def test_pipeline_entity_boost_applies_to_category_4() -> None:
 
     assert result.items[0]["entity_boost"] > 0.0
     assert "adoption agency" in result.items[0]["entity_overlap"]
+
+
+def test_pipeline_entity_boost_strict_mode_ignores_generic_single_token_overlap() -> None:
+    ranked = [
+        [
+            {"content": "first generic result", "score": 0.5, "source_file": "a.md", "chunk_index": 0},
+            {
+                "content": "Caroline mentioned research activity during the conversation.",
+                "score": 0.4,
+                "source_file": "b.md",
+                "chunk_index": 0,
+            },
+        ],
+    ]
+    pipeline = RetrievalPipeline(reranker=MagicMock())
+
+    result = pipeline.run(
+        "What activity did Caroline research?",
+        ranked,
+        limit=2,
+        rerank_enabled=False,
+        abstain_on_low_confidence=False,
+        entity_boost=EntityBoostConfig(
+            enabled=True,
+            category=1,
+            ignored_entities=("Caroline",),
+            use_content_tokens=False,
+            require_multi_token_overlap=True,
+        ),
+    )
+
+    assert [item["content"] for item in result.items] == [
+        "first generic result",
+        "Caroline mentioned research activity during the conversation.",
+    ]
+    assert "entity_boost" not in result.items[1]
+
+
+def test_pipeline_entity_boost_strict_mode_allows_metadata_multi_token_overlap() -> None:
+    ranked = [
+        [
+            {"content": "generic", "score": 0.5, "source_file": "a.md", "chunk_index": 0},
+            {
+                "content": "Caroline researched the adoption process.",
+                "score": 0.4,
+                "source_file": "b.md",
+                "chunk_index": 0,
+                "entities": ["adoption process"],
+            },
+        ],
+    ]
+    pipeline = RetrievalPipeline(reranker=MagicMock())
+
+    result = pipeline.run(
+        "What did Caroline research?",
+        ranked,
+        limit=2,
+        rerank_enabled=False,
+        abstain_on_low_confidence=False,
+        entity_boost=EntityBoostConfig(
+            enabled=True,
+            category=1,
+            ignored_entities=("Caroline",),
+            query_entities=("adoption process",),
+            require_query_entities=True,
+            require_multi_token_overlap=True,
+        ),
+    )
+
+    assert result.items[0]["content"] == "Caroline researched the adoption process."
+    assert result.items[0]["entity_overlap"] == ["adoption process"]
