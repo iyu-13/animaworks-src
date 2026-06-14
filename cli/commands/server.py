@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import atexit
 import logging
 import os
@@ -32,6 +33,9 @@ _SERVER_CMD_MARKERS = ("main.py start", "animaworks start", "-m cli start")
 
 _DAEMON_STARTUP_TIMEOUT = 600
 _DAEMON_POLL_INTERVAL = 0.3
+# systemd unit templates set RestartPreventExitStatus=3 so an
+# already-running process does not trigger Restart=on-failure loops.
+EXIT_ALREADY_RUNNING = 3
 
 
 # ── PID helpers ───────────────────────────────────────────
@@ -260,7 +264,7 @@ def _spawn_daemon(args: argparse.Namespace) -> None:
     if existing_pid is not None and _is_process_alive(existing_pid):
         print(f"Error: Server is already running (pid={existing_pid}).")
         print("Use 'animaworks stop' first, or 'animaworks restart'.")
-        sys.exit(1)
+        sys.exit(EXIT_ALREADY_RUNNING)
     elif existing_pid is not None:
         _remove_pid_file()
 
@@ -268,11 +272,17 @@ def _spawn_daemon(args: argparse.Namespace) -> None:
     if orphan_pid is not None and _is_process_alive(orphan_pid):
         print(f"Error: Server is already running (pid={orphan_pid}, PID file was missing).")
         print("Use 'animaworks stop' first, or 'animaworks restart'.")
-        sys.exit(1)
+        sys.exit(EXIT_ALREADY_RUNNING)
 
     cmd = [sys.executable, "-m", "cli", "start", "--foreground", "--host", args.host, "--port", str(args.port)]
 
     log_path = _get_daemon_log_path()
+    try:
+        from core.memory.housekeeping import _rotate_daemon_log
+
+        _rotate_daemon_log(log_path, max_size_mb=50, keep_generations=5)
+    except Exception:
+        logger.debug("Failed to rotate daemon log before spawn: %s", log_path, exc_info=True)
     log_file = open(log_path, "a", encoding="utf-8")  # noqa: SIM115
 
     proc = subprocess.Popen(
@@ -374,38 +384,47 @@ def _pin_native_threads() -> None:
 def _run_rag_startup_preflight(*, force_all_vectordb: bool = False) -> None:
     """Repair suspected corrupt RAG DBs before the server imports Chroma."""
     try:
+        from core import startup_progress
         from core.config import load_config
-        from core.paths import get_animas_dir
 
+        startup_progress.set_phase("preflight", detail="Checking RAG vector databases", reset_counts=True)
+        startup_progress.raise_if_cancelled()
         config = load_config()
         rag = config.rag
         if not config.setup_complete:
+            startup_progress.update_progress(detail="Setup is not complete", done_count=0, total_count=0)
             return
         if not bool(getattr(rag, "repair_enabled", True)):
+            startup_progress.update_progress(detail="RAG repair is disabled", done_count=0, total_count=0)
             return
         if not bool(getattr(rag, "startup_repair_preflight_enabled", True)):
+            startup_progress.update_progress(detail="RAG startup preflight is disabled", done_count=0, total_count=0)
             return
 
         from core.memory.rag.repair import get_repair_service
 
         service = get_repair_service()
         window_minutes = int(getattr(rag, "startup_repair_window_minutes", 1440))
-        suspects = service.discover_suspect_animas(window_minutes=window_minutes)
+        quick_check_timeout = float(getattr(rag, "quick_check_timeout_seconds", 10.0))
+        suspects = service.discover_suspect_animas(
+            window_minutes=window_minutes,
+            quick_check_timeout_seconds=quick_check_timeout,
+            quick_check_source="startup_quick_check",
+        )
+        startup_progress.raise_if_cancelled()
         reason = "startup_chroma_crash_preflight"
-        if not suspects and force_all_vectordb:
-            animas_dir = get_animas_dir()
-            suspects = [
-                name
-                for name in service.list_repairable_animas(animas_dir=animas_dir)
-                if (animas_dir / name / "vectordb").exists()
-            ]
-            reason = "startup_unclean_exit_preflight"
+        if force_all_vectordb:
+            logger.info(
+                "Ignoring startup full repair request from unclean previous exit; using corruption suspects only"
+            )
         if not suspects:
             logger.info("RAG startup preflight: no suspect DBs found")
+            startup_progress.update_progress(detail="No suspect vector databases found", done_count=0, total_count=0)
             return
 
         joined = ", ".join(suspects)
         print(f"RAG startup preflight: repairing suspected vector DB(s): {joined}")
+        startup_progress.set_phase("repairing", detail=joined, done_count=0, total_count=len(suspects))
         results = service.repair_animas_if_allowed(
             suspects,
             reason=reason,
@@ -428,6 +447,8 @@ def _run_rag_startup_preflight(*, force_all_vectordb: bool = False) -> None:
                     result.stage,
                     result.error,
                 )
+    except asyncio.CancelledError:
+        raise
     except Exception:
         logger.exception("RAG startup preflight failed unexpectedly; continuing server startup")
 
@@ -455,12 +476,16 @@ def _run_rag_startup_preflight_via_worker(*, force_all_vectordb: bool = False) -
             config=config,
             log_dir=get_data_dir() / "logs",
         )
+    except asyncio.CancelledError:
+        raise
     except Exception:
         logger.exception("RAG startup preflight vector worker unavailable; continuing server startup")
         return
 
     try:
         _run_rag_startup_preflight(force_all_vectordb=force_all_vectordb)
+    except asyncio.CancelledError:
+        raise
     finally:
         worker.stop()
 
@@ -476,29 +501,25 @@ def _start_foreground(args: argparse.Namespace) -> None:
     from server.app import create_app
 
     existing_pid = _read_pid()
-    unclean_previous_exit = False
     if existing_pid is not None and _is_process_alive(existing_pid):
         print(f"Error: Server is already running (pid={existing_pid}).")
         print("Use 'animaworks stop' first, or 'animaworks restart'.")
-        sys.exit(1)
+        sys.exit(EXIT_ALREADY_RUNNING)
     elif existing_pid is not None:
         logger.info("Stale PID file found (pid=%d). Cleaning up.", existing_pid)
-        unclean_previous_exit = True
         _remove_pid_file()
 
     orphan_pid = _find_server_pid_by_process()
     if orphan_pid is not None and _is_process_alive(orphan_pid):
         print(f"Error: Server is already running (pid={orphan_pid}, PID file was missing).")
         print("Use 'animaworks stop' first, or 'animaworks restart'.")
-        sys.exit(1)
+        sys.exit(EXIT_ALREADY_RUNNING)
 
     orphan_count = _kill_orphan_runners()
     if orphan_count:
-        unclean_previous_exit = True
         print(f"Killed {orphan_count} orphan runner process(es) from previous server.")
 
     ensure_runtime_dir()
-    _run_rag_startup_preflight_via_worker(force_all_vectordb=unclean_previous_exit)
     _write_pid_file()
     atexit.register(_remove_pid_file)
     _start_pid_watchdog()
@@ -512,7 +533,7 @@ def _start_foreground(args: argparse.Namespace) -> None:
     if not config.setup_complete:
         print(f"Open http://{display_host}:{args.port}/setup/ to configure your animas and settings.")
     else:
-        print(f"Dashboard ready at http://{display_host}:{args.port}/")
+        print(f"Dashboard starting at http://{display_host}:{args.port}/")
 
     try:
         app = create_app(get_animas_dir(), get_shared_dir())
@@ -677,6 +698,21 @@ while time.monotonic() < scan_deadline:
     if _find_server_process() is None:
         break
     time.sleep(0.5)
+
+lingering_pid = _find_server_process()
+if lingering_pid is not None:
+    _log(f"Lingering server process still detected (pid={{lingering_pid}}); force-stopping before restart")
+    try:
+        terminate_pid(lingering_pid, force=True, include_children=True)
+    except (OSError, ProcessLookupError):
+        pass
+    kill_deadline = time.monotonic() + 5
+    while time.monotonic() < kill_deadline and _alive(lingering_pid):
+        time.sleep(0.2)
+    if _alive(lingering_pid):
+        _write_status(False, f"Lingering server process still alive after force-stop: pid={{lingering_pid}}")
+        _log("FAILED: lingering server process survived force-stop")
+        sys.exit(1)
 
 time.sleep(0.5)
 
