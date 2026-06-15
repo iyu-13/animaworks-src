@@ -516,14 +516,61 @@ class PendingTaskExecutor:
     # ── Watcher loop ─────────────────────────────────────────
 
     @staticmethod
-    def _recover_processing(processing_dir: Path, failed_dir: Path) -> None:
-        """Move orphaned files from processing/ to failed/ on startup."""
+    def _queue_has_resolved_terminal_status(task_id: str, queue_paths: tuple[Path, ...]) -> bool:
+        """Return True when task_queue history shows a completed terminal status."""
+        if not task_id:
+            return False
+        latest_status: str | None = None
+        for queue_path in queue_paths:
+            if not queue_path.exists():
+                continue
+            for line in queue_path.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                entry = json.loads(line)
+                if entry.get("task_id") == task_id or entry.get("id") == task_id:
+                    latest_status = str(entry.get("status") or "")
+        return latest_status in {"done", "cancelled"}
+
+    @staticmethod
+    def _recover_processing(
+        processing_dir: Path,
+        failed_dir: Path,
+        resolved_dir: Path,
+        queue_paths: tuple[Path, ...],
+    ) -> None:
+        """Move orphaned processing files to resolved/ when queue says done, else failed/."""
         if not processing_dir.exists():
             return
         for orphan in processing_dir.glob("*.json"):
             try:
-                orphan.rename(failed_dir / orphan.name)
-                logger.warning("Recovered orphaned processing task: %s", orphan.name)
+                try:
+                    task_desc = json.loads(orphan.read_text(encoding="utf-8"))
+                    raw_task_id = task_desc.get("task_id")
+                    if not raw_task_id:
+                        task_id = orphan.stem
+                        target_dir = failed_dir
+                    else:
+                        task_id = str(raw_task_id)
+                        target_dir = (
+                            resolved_dir
+                            if PendingTaskExecutor._queue_has_resolved_terminal_status(task_id, queue_paths)
+                            else failed_dir
+                        )
+                except Exception:
+                    task_id = orphan.stem
+                    target_dir = failed_dir
+                    logger.warning(
+                        "Could not inspect orphaned processing task; recovering to failed: %s",
+                        orphan.name,
+                        exc_info=True,
+                    )
+                orphan.rename(target_dir / orphan.name)
+                logger.warning(
+                    "Recovered orphaned processing task to %s: %s",
+                    target_dir.name,
+                    orphan.name,
+                )
             except OSError:
                 logger.exception("Failed to recover orphaned task: %s", orphan.name)
 
@@ -543,6 +590,8 @@ class PendingTaskExecutor:
         cmd_processing_dir.mkdir(exist_ok=True)
         cmd_failed_dir = pending_dir / "failed"
         cmd_failed_dir.mkdir(exist_ok=True)
+        cmd_resolved_dir = pending_dir / "resolved"
+        cmd_resolved_dir.mkdir(exist_ok=True)
 
         llm_pending_dir = self._anima_dir / "state" / "pending"
         llm_pending_dir.mkdir(parents=True, exist_ok=True)
@@ -550,13 +599,19 @@ class PendingTaskExecutor:
         llm_processing_dir.mkdir(exist_ok=True)
         llm_failed_dir = llm_pending_dir / "failed"
         llm_failed_dir.mkdir(exist_ok=True)
+        llm_resolved_dir = llm_pending_dir / "resolved"
+        llm_resolved_dir.mkdir(exist_ok=True)
         llm_deferred_dir = llm_pending_dir / "deferred"
         llm_deferred_dir.mkdir(exist_ok=True)
         llm_suppressed_dir = llm_pending_dir / "suppressed"
         llm_suppressed_dir.mkdir(exist_ok=True)
 
-        self._recover_processing(cmd_processing_dir, cmd_failed_dir)
-        self._recover_processing(llm_processing_dir, llm_failed_dir)
+        queue_paths = (
+            self._anima_dir / "state" / "task_queue.jsonl",
+            self._anima_dir / "state" / "task_queue_archive.jsonl",
+        )
+        self._recover_processing(cmd_processing_dir, cmd_failed_dir, cmd_resolved_dir, queue_paths)
+        self._recover_processing(llm_processing_dir, llm_failed_dir, llm_resolved_dir, queue_paths)
 
         logger.info("Pending task watcher started for %s", self._anima_name)
 

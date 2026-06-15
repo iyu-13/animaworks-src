@@ -175,21 +175,100 @@ class TestRecoverProcessing:
         processing_dir.mkdir()
         failed_dir = tmp_path / "failed"
         failed_dir.mkdir()
+        resolved_dir = tmp_path / "resolved"
+        resolved_dir.mkdir()
 
         (processing_dir / "orphan1.json").write_text('{"task_id":"o1"}')
         (processing_dir / "orphan2.json").write_text('{"task_id":"o2"}')
 
-        PendingTaskExecutor._recover_processing(processing_dir, failed_dir)
+        PendingTaskExecutor._recover_processing(processing_dir, failed_dir, resolved_dir, ())
 
         assert not list(processing_dir.glob("*.json"))
         assert (failed_dir / "orphan1.json").exists()
         assert (failed_dir / "orphan2.json").exists()
 
+    def test_recovers_resolved_orphan_when_queue_done(self, tmp_path: Path) -> None:
+        processing_dir = tmp_path / "processing"
+        processing_dir.mkdir()
+        failed_dir = tmp_path / "failed"
+        failed_dir.mkdir()
+        resolved_dir = tmp_path / "resolved"
+        resolved_dir.mkdir()
+        queue_path = tmp_path / "task_queue.jsonl"
+
+        (processing_dir / "orphan-done.json").write_text('{"task_id":"done-orphan"}')
+        queue_path.write_text(json.dumps({"task_id": "done-orphan", "status": "done"}) + "\n")
+
+        PendingTaskExecutor._recover_processing(processing_dir, failed_dir, resolved_dir, (queue_path,))
+
+        assert not list(processing_dir.glob("*.json"))
+        assert (resolved_dir / "orphan-done.json").exists()
+        assert not (failed_dir / "orphan-done.json").exists()
+
+    def test_recovers_resolved_orphan_when_queue_cancelled(self, tmp_path: Path) -> None:
+        processing_dir = tmp_path / "processing"
+        processing_dir.mkdir()
+        failed_dir = tmp_path / "failed"
+        failed_dir.mkdir()
+        resolved_dir = tmp_path / "resolved"
+        resolved_dir.mkdir()
+        queue_path = tmp_path / "task_queue.jsonl"
+
+        (processing_dir / "orphan-cancelled.json").write_text('{"task_id":"cancelled-orphan"}')
+        queue_path.write_text(json.dumps({"task_id": "cancelled-orphan", "status": "cancelled"}) + "\n")
+
+        PendingTaskExecutor._recover_processing(processing_dir, failed_dir, resolved_dir, (queue_path,))
+
+        assert not list(processing_dir.glob("*.json"))
+        assert (resolved_dir / "orphan-cancelled.json").exists()
+        assert not (failed_dir / "orphan-cancelled.json").exists()
+
+    def test_recovers_invalid_json_orphan_to_failed(self, tmp_path: Path) -> None:
+        processing_dir = tmp_path / "processing"
+        processing_dir.mkdir()
+        failed_dir = tmp_path / "failed"
+        failed_dir.mkdir()
+        resolved_dir = tmp_path / "resolved"
+        resolved_dir.mkdir()
+        queue_path = tmp_path / "task_queue.jsonl"
+
+        (processing_dir / "done-orphan.json").write_text("{invalid")
+        queue_path.write_text(json.dumps({"task_id": "done-orphan", "status": "done"}) + "\n")
+
+        PendingTaskExecutor._recover_processing(processing_dir, failed_dir, resolved_dir, (queue_path,))
+
+        assert not list(processing_dir.glob("*.json"))
+        assert (failed_dir / "done-orphan.json").exists()
+        assert not (resolved_dir / "done-orphan.json").exists()
+
+    @pytest.mark.parametrize("task_payload", [{}, {"task_id": ""}, {"task_id": None}])
+    def test_recovers_missing_or_empty_task_id_orphan_to_failed(
+        self, tmp_path: Path, task_payload: dict[str, object]
+    ) -> None:
+        processing_dir = tmp_path / "processing"
+        processing_dir.mkdir()
+        failed_dir = tmp_path / "failed"
+        failed_dir.mkdir()
+        resolved_dir = tmp_path / "resolved"
+        resolved_dir.mkdir()
+        queue_path = tmp_path / "task_queue.jsonl"
+
+        (processing_dir / "done-orphan.json").write_text(json.dumps(task_payload))
+        queue_path.write_text(json.dumps({"task_id": "done-orphan", "status": "done"}) + "\n")
+
+        PendingTaskExecutor._recover_processing(processing_dir, failed_dir, resolved_dir, (queue_path,))
+
+        assert not list(processing_dir.glob("*.json"))
+        assert (failed_dir / "done-orphan.json").exists()
+        assert not (resolved_dir / "done-orphan.json").exists()
+
     def test_no_op_when_processing_dir_missing(self, tmp_path: Path) -> None:
         processing_dir = tmp_path / "processing"
         failed_dir = tmp_path / "failed"
         failed_dir.mkdir()
-        PendingTaskExecutor._recover_processing(processing_dir, failed_dir)
+        resolved_dir = tmp_path / "resolved"
+        resolved_dir.mkdir()
+        PendingTaskExecutor._recover_processing(processing_dir, failed_dir, resolved_dir, ())
 
     @pytest.mark.asyncio
     async def test_watcher_loop_recovers_on_startup(self, tmp_path: Path) -> None:
