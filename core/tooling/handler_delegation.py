@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json as _json
 import logging
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -21,6 +22,39 @@ if TYPE_CHECKING:
     from core.messenger import Messenger
 
 logger = logging.getLogger("animaworks.tool_handler")
+
+
+def _record_taskboard_delegation(
+    *,
+    delegated_to: str,
+    delegated_task_id: str,
+    delegator: str,
+    tracking_task_id: str | None = None,
+) -> None:
+    """Record delegation rows in TaskBoard before legacy queue compatibility writes."""
+    from core.taskboard.models import AttentionVisibility, BoardColumn
+    from core.taskboard.store import TaskBoardStore
+
+    store = TaskBoardStore()
+    store.upsert_metadata(
+        anima_name=delegated_to,
+        task_id=delegated_task_id,
+        actor=delegator,
+        event_type="metadata_upserted",
+        visibility=AttentionVisibility.ACTIVE,
+        column=BoardColumn.TODO,
+        source_ref=f"task_queue:{delegated_to}:{delegated_task_id}",
+    )
+    if tracking_task_id:
+        store.upsert_metadata(
+            anima_name=delegator,
+            task_id=tracking_task_id,
+            actor=delegator,
+            event_type="metadata_upserted",
+            visibility=AttentionVisibility.ACTIVE,
+            column=BoardColumn.WAITING,
+            source_ref=f"task_queue:{delegator}:{tracking_task_id}",
+        )
 
 
 class DelegationMixin(OrgHelpersMixin):
@@ -72,6 +106,8 @@ class DelegationMixin(OrgHelpersMixin):
 
         target_dir = get_animas_dir() / target_name
 
+        sub_task_id = uuid.uuid4().hex[:12]
+        tracking_task_id = uuid.uuid4().hex[:12]
         sub_tqm = TaskQueueManager(target_dir)
         try:
             sub_entry = sub_tqm.add_task(
@@ -81,12 +117,31 @@ class DelegationMixin(OrgHelpersMixin):
                 summary=summary,
                 deadline=deadline,
                 relay_chain=[self._anima_name],
+                task_id=sub_task_id,
             )
         except ValueError as e:
             return _error_result("InvalidArguments", str(e))
         except Exception as e:
             logger.error("Task persistence failed in delegate_task (subordinate queue): %s", e)
             return _error_result("PersistenceFailed", f"Failed to persist task to subordinate queue: {e}")
+
+        own_tqm = TaskQueueManager(self._anima_dir)
+        try:
+            own_entry = own_tqm.add_delegated_task(
+                original_instruction=instruction,
+                assignee=target_name,
+                summary=t("handler.delegation_summary", summary=summary),
+                deadline=deadline,
+                relay_chain=[self._anima_name, target_name],
+                task_id=tracking_task_id,
+                meta={
+                    "delegated_to": target_name,
+                    "delegated_task_id": sub_entry.task_id,
+                },
+            )
+        except Exception as e:
+            logger.error("Task persistence failed in delegate_task (tracking queue): %s", e)
+            return _error_result("PersistenceFailed", f"Failed to persist delegation tracking task: {e}")
 
         # Write pending task JSON so PendingTaskExecutor picks it up for immediate execution
         task_desc = {
@@ -110,6 +165,16 @@ class DelegationMixin(OrgHelpersMixin):
             _json.dumps(task_desc, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
+
+        try:
+            _record_taskboard_delegation(
+                delegated_to=target_name,
+                delegated_task_id=sub_entry.task_id,
+                delegator=self._anima_name,
+                tracking_task_id=own_entry.task_id,
+            )
+        except Exception as e:
+            logger.warning("TaskBoard write failed in delegate_task; queue entries remain authoritative: %s", e)
 
         # Build outgoing origin_chain (provenance Phase 3)
         outgoing_chain = build_outgoing_origin_chain(
@@ -153,24 +218,7 @@ class DelegationMixin(OrgHelpersMixin):
         except Exception:
             logger.debug("Failed to check subordinate process status for %s", target_name, exc_info=True)
 
-        own_tqm = TaskQueueManager(self._anima_dir)
-        try:
-            own_entry = own_tqm.add_delegated_task(
-                original_instruction=instruction,
-                assignee=target_name,
-                summary=t("handler.delegation_summary", summary=summary),
-                deadline=deadline,
-                relay_chain=[self._anima_name, target_name],
-                meta={
-                    "delegated_to": target_name,
-                    "delegated_task_id": sub_entry.task_id,
-                },
-            )
-        except Exception as e:
-            logger.warning("Failed to persist tracking entry for delegate_task (DM already sent): %s", e)
-            own_entry = None
-
-        own_id = own_entry.task_id if own_entry else "persist_failed"
+        own_id = own_entry.task_id
         self._activity.log(
             "tool_use",
             tool="delegate_task",
