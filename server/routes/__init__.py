@@ -17,7 +17,6 @@ from server.routes.chat_ui_state import create_chat_ui_state_router
 from server.routes.config_routes import create_config_router
 from server.routes.external_tasks import create_external_tasks_router
 from server.routes.internal import create_internal_router
-from server.routes.libera_routes import create_libera_router
 from server.routes.logs_routes import create_logs_router
 from server.routes.memory_routes import create_memory_router
 from server.routes.room import create_room_router
@@ -32,6 +31,13 @@ from server.routes.users import create_users_router
 from server.routes.voice import create_voice_router
 from server.routes.webhooks import create_webhooks_router
 from server.routes.websocket_route import create_websocket_router
+
+try:
+    from server.routes.libera_routes import create_libera_router
+except ImportError as exc:
+    if exc.name != "server.routes.libera_routes":
+        raise
+    create_libera_router = None
 
 
 def create_router() -> APIRouter:
@@ -50,7 +56,8 @@ def create_router() -> APIRouter:
     api.include_router(create_system_router())
     api.include_router(create_taskboard_router())
     api.include_router(create_config_router())
-    api.include_router(create_libera_router())
+    if create_libera_router is not None:
+        api.include_router(create_libera_router())
     api.include_router(create_logs_router())
     api.include_router(create_assets_router())
     api.include_router(create_internal_router())
