@@ -1,0 +1,23 @@
+[Unit]
+Description=AnimaWorks cgroup-limited RAG repair for %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/deploy/animaworks
+Environment=HOME=/home/deploy
+Environment=PATH=/home/deploy/animaworks/.venv/bin:/home/deploy/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=ANIMAWORKS_ROOT=/home/deploy/animaworks
+Environment=ANIMAWORKS_DATA_DIR=/home/deploy/.animaworks
+Environment=TOKENIZERS_PARALLELISM=false
+ExecStart=/bin/bash /home/deploy/animaworks/deploy/animaworks-repair-rag-runner.sh %i
+MemoryHigh=1.2G
+MemoryMax=1.5G
+CPUQuota=200%
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=7200
+
+[Install]
+WantedBy=multi-user.target

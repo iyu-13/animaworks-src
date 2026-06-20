@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import sys
 from pathlib import Path
 
 from core.memory.rag import repair_state
@@ -317,19 +316,10 @@ class RAGRepairMixin:
         reason: str,
         include_shared: bool,
     ) -> dict[str, object]:
-        cmd = [
-            sys.executable,
-            "-m",
-            "cli",
-            "repair-rag",
-            "--anima",
-            anima_name,
-            "--full",
-            "--reason",
-            reason,
-        ]
-        if include_shared:
-            cmd.append("--shared")
+        from core.memory.rag.repair_service import repair_rag_systemd_unit_name
+
+        unit_name = repair_rag_systemd_unit_name(anima_name)
+        cmd = ["systemctl", "start", unit_name]
         timeout = self._rag_repair_timeout_seconds()
         repo_root = Path(__file__).resolve().parents[2]
         proc = await asyncio.create_subprocess_exec(
@@ -347,6 +337,7 @@ class RAGRepairMixin:
                 "started_at": repair_state.now_iso(),
                 "reason": reason,
                 "include_shared": include_shared,
+                "systemd_unit": unit_name,
                 "last_error": None,
             },
         )
@@ -355,21 +346,30 @@ class RAGRepairMixin:
         except TimeoutError:
             proc.kill()
             await proc.communicate()
+            stop_proc = await asyncio.create_subprocess_exec(
+                "systemctl",
+                "stop",
+                unit_name,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            await stop_proc.communicate()
             return {
                 "ok": False,
                 "status": "timeout",
-                "error": f"repair-rag timed out after {timeout}s",
+                "error": f"{unit_name} timed out after {timeout}s",
             }
         stdout = stdout_b.decode(errors="replace").strip()
         stderr = stderr_b.decode(errors="replace").strip()
         if proc.returncode == 0:
-            return {"ok": True, "status": "success", "stdout": stdout, "stderr": stderr}
+            return {"ok": True, "status": "success", "stdout": stdout, "stderr": stderr, "systemd_unit": unit_name}
         return {
             "ok": False,
             "status": "failed",
             "stdout": stdout,
             "stderr": stderr,
-            "error": stderr or stdout or f"repair-rag exited with code {proc.returncode}",
+            "systemd_unit": unit_name,
+            "error": stderr or stdout or f"{unit_name} exited with code {proc.returncode}",
         }
 
     async def _broadcast_rag_repair_event(

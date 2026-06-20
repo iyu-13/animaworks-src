@@ -64,6 +64,20 @@ _KNOWN_CORRUPTION_REASONS = {
 # Segment/process-level reasons (hnsw_corruption, native_segfault) are NOT in
 # this set because a SQLite check cannot vouch for hnsw segment files.
 _SQLITE_REFUTABLE_REASONS = {"chroma_corruption", "sqlite_malformed"}
+_SYSTEMD_SAFE_INSTANCE_RE = re.compile(r"^[A-Za-z0-9_.:-]+$")
+REPAIR_RAG_SYSTEMD_TEMPLATE = "animaworks-repair-rag@{instance}.service"
+
+
+def repair_rag_systemd_unit_name(anima_name: str) -> str:
+    """Return the systemd unit used to run cgroup-limited RAG repair.
+
+    Anima names are normally simple directory names.  Keep the accepted
+    instance syntax deliberately narrow so supervisor code never builds a
+    surprising systemd unit name from untrusted state.
+    """
+    if not _SYSTEMD_SAFE_INSTANCE_RE.fullmatch(anima_name):
+        raise ValueError(f"invalid anima name for systemd repair unit: {anima_name!r}")
+    return REPAIR_RAG_SYSTEMD_TEMPLATE.format(instance=anima_name)
 
 
 class RAGRepairService:

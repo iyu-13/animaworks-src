@@ -242,7 +242,7 @@ async def test_reconcile_defers_restart_requested_during_rag_repair(tmp_path: Pa
 
 
 @pytest.mark.asyncio
-async def test_repair_cli_process_passes_reason_to_subprocess(tmp_path: Path, monkeypatch) -> None:
+async def test_repair_cli_process_starts_systemd_unit(tmp_path: Path, monkeypatch) -> None:
     sup = _make_supervisor(tmp_path)
     anima_dir = _create_anima(sup)
     captured: dict[str, object] = {}
@@ -273,11 +273,10 @@ async def test_repair_cli_process_passes_reason_to_subprocess(tmp_path: Path, mo
     assert result["ok"] is True
     cmd = captured["cmd"]
     assert isinstance(cmd, tuple)
-    assert "--reason" in cmd
-    assert cmd[cmd.index("--reason") + 1] == "sqlite_malformed"
-    assert "--shared" in cmd
+    assert cmd == ("systemctl", "start", "animaworks-repair-rag@sora.service")
     state = _read_state(anima_dir)
     assert state["pid"] == 12345
+    assert state["systemd_unit"] == "animaworks-repair-rag@sora.service"
 
 
 @pytest.mark.asyncio
@@ -303,7 +302,17 @@ async def test_repair_cli_process_timeout_kills_subprocess(tmp_path: Path, monke
 
     proc = FakeProc()
 
-    async def fake_create_subprocess_exec(*cmd, cwd, stdout, stderr):
+    captured: list[tuple[str, ...]] = []
+
+    async def fake_create_subprocess_exec(*cmd, cwd=None, stdout=None, stderr=None):
+        captured.append(cmd)
+        if cmd[:2] == ("systemctl", "stop"):
+
+            class StopProc:
+                async def communicate(self):
+                    return b"", b""
+
+            return StopProc()
         return proc
 
     monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create_subprocess_exec)
@@ -318,3 +327,4 @@ async def test_repair_cli_process_timeout_kills_subprocess(tmp_path: Path, monke
     assert result["ok"] is False
     assert result["status"] == "timeout"
     assert proc.killed is True
+    assert ("systemctl", "stop", "animaworks-repair-rag@sora.service") in captured
