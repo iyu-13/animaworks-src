@@ -297,7 +297,7 @@ def test_vector_worker_resolves_store_inside_native_executor(monkeypatch) -> Non
     assert all(thread.startswith("vector-worker-native") for _name, thread in call_threads)
 
 
-def test_vector_worker_drops_native_store_after_each_action(monkeypatch) -> None:
+def test_vector_worker_keeps_native_store_after_successful_action(monkeypatch) -> None:
     monkeypatch.delenv("ANIMAWORKS_VECTOR_URL", raising=False)
 
     from core.memory.rag.vector_worker import create_app
@@ -315,7 +315,7 @@ def test_vector_worker_drops_native_store_after_each_action(monkeypatch) -> None
 
     assert resp.status_code == 200
     assert resp.json() == {"collections": ["knowledge"]}
-    reset.assert_called_once_with("sora")
+    reset.assert_not_called()
 
 
 def test_vector_worker_native_exception_does_not_escape_asgi(monkeypatch) -> None:
@@ -328,13 +328,14 @@ def test_vector_worker_native_exception_does_not_escape_asgi(monkeypatch) -> Non
 
     with (
         patch("core.memory.rag.singleton.get_vector_store", return_value=store),
-        patch("core.memory.rag.singleton.reset_vector_store"),
+        patch("core.memory.rag.singleton.reset_vector_store") as reset,
         TestClient(create_app()) as client,
     ):
         resp = client.post("/list-collections", json={"anima_name": "natsume"})
 
     assert resp.status_code == 200
     assert resp.json() == {"collections": []}
+    reset.assert_called_once_with("natsume")
 
 
 def test_vector_worker_write_endpoints_success(monkeypatch) -> None:

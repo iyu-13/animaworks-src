@@ -12,6 +12,7 @@ import concurrent.futures
 import functools
 import logging
 import os
+import threading
 import time
 from collections.abc import Callable
 from contextlib import asynccontextmanager
@@ -30,6 +31,12 @@ _CIRCUIT_BACKOFF_BASE_SECONDS = float(os.environ.get("ANIMAWORKS_VECTOR_CIRCUIT_
 _CIRCUIT_BACKOFF_MAX_SECONDS = float(os.environ.get("ANIMAWORKS_VECTOR_CIRCUIT_BACKOFF_MAX_SECONDS", "300"))
 _write_circuit_breakers: dict[str, dict[str, Any]] = {}
 _VECTOR_ACTION_ERROR = object()
+_LATCH_RECOVERY_BACKOFF_SECONDS = float(os.environ.get("ANIMAWORKS_VECTOR_LATCH_RECOVERY_BACKOFF_SECONDS", "5"))
+_LATCH_RECOVERY_RETRY_STATUSES = {"ok", "missing"}
+_ACTIVE_REPAIR_STATUSES = {"requested", "stopping", "repairing"}
+_latched_store_recovery_lock = threading.Lock()
+_latched_store_recovery_backoff_until: dict[str, float] = {}
+_latched_store_recovery_in_progress: set[str] = set()
 
 _native_executor = concurrent.futures.ThreadPoolExecutor(
     max_workers=1,
@@ -99,19 +106,130 @@ async def _run_native(fn, *args, **kwargs):
     return await loop.run_in_executor(_native_executor, call)
 
 
+def _has_active_repair_state(anima_name: str) -> bool:
+    try:
+        from core.memory.rag import repair_state
+
+        return repair_state.read_state(anima_name).get("status") in _ACTIVE_REPAIR_STATUSES
+    except Exception:
+        logger.debug("Failed to read RAG repair state for owner=%s", anima_name, exc_info=True)
+        return True
+
+
+def _begin_latched_store_recovery(anima_name: str) -> bool:
+    now = time.monotonic()
+    with _latched_store_recovery_lock:
+        retry_at = float(_latched_store_recovery_backoff_until.get(anima_name) or 0.0)
+        if retry_at > now:
+            return False
+        if retry_at:
+            _latched_store_recovery_backoff_until.pop(anima_name, None)
+        if anima_name in _latched_store_recovery_in_progress:
+            return False
+        _latched_store_recovery_in_progress.add(anima_name)
+        return True
+
+
+def _end_latched_store_recovery(anima_name: str) -> None:
+    with _latched_store_recovery_lock:
+        _latched_store_recovery_in_progress.discard(anima_name)
+
+
+def _set_latched_store_recovery_backoff(anima_name: str) -> None:
+    with _latched_store_recovery_lock:
+        _latched_store_recovery_backoff_until[anima_name] = time.monotonic() + _LATCH_RECOVERY_BACKOFF_SECONDS
+
+
+def _clear_latched_store_recovery_backoff(anima_name: str) -> None:
+    with _latched_store_recovery_lock:
+        _latched_store_recovery_backoff_until.pop(anima_name, None)
+
+
+def _try_recover_latched_store(anima_name: str | None) -> Any | None:
+    if anima_name is None:
+        return None
+
+    from core.memory.rag.singleton import (
+        clear_vector_store_init_failed,
+        get_vector_store,
+        is_global_vector_store_init_failed,
+        is_vector_store_init_failed,
+    )
+
+    if is_global_vector_store_init_failed() or not is_vector_store_init_failed(anima_name):
+        return None
+    if _has_active_repair_state(anima_name):
+        return None
+    if not _begin_latched_store_recovery(anima_name):
+        return None
+
+    try:
+        if is_global_vector_store_init_failed() or not is_vector_store_init_failed(anima_name):
+            return None
+        if _has_active_repair_state(anima_name):
+            return None
+
+        from core.memory.rag.sqlite_health import check_anima_vectordb_health
+
+        health = check_anima_vectordb_health(
+            anima_name,
+            source="worker_store_unavailable",
+            record_repair=True,
+        )
+        if health.status not in _LATCH_RECOVERY_RETRY_STATUSES:
+            _set_latched_store_recovery_backoff(anima_name)
+            logger.info(
+                "Skipping latched vector-store recovery for owner=%s: health_status=%s; backing off for %.1fs",
+                anima_name,
+                health.status,
+                _LATCH_RECOVERY_BACKOFF_SECONDS,
+            )
+            return None
+
+        clear_vector_store_init_failed(anima_name)
+        store = get_vector_store(anima_name)
+        if store is not None:
+            _clear_latched_store_recovery_backoff(anima_name)
+            _clear_owner_write_circuit_breakers(anima_name)
+            logger.info("Recovered latched vector store for owner=%s", anima_name)
+            return store
+
+        _set_latched_store_recovery_backoff(anima_name)
+        logger.warning(
+            "Latched vector-store recovery did not reopen a store for owner=%s; backing off for %.1fs",
+            anima_name,
+            _LATCH_RECOVERY_BACKOFF_SECONDS,
+        )
+        return None
+    except Exception:
+        _set_latched_store_recovery_backoff(anima_name)
+        logger.warning("Latched vector-store recovery failed for owner=%s", anima_name, exc_info=True)
+        return None
+    finally:
+        _end_latched_store_recovery(anima_name)
+
+
 def _call_vector_store(anima_name: str | None, action: Callable[[Any], Any]) -> Any | None:
     from core.memory.rag.singleton import get_vector_store, reset_vector_store
 
-    store = get_vector_store(anima_name)
-    if store is None:
-        return None
     try:
+        store = get_vector_store(anima_name)
+        if store is None:
+            store = _try_recover_latched_store(anima_name)
+            if store is None:
+                return None
         return action(store)
     except Exception:
         logger.warning("Vector worker native store action failed for owner=%s", anima_name or "shared", exc_info=True)
+        try:
+            reset_vector_store(anima_name)
+        except Exception:
+            logger.debug(
+                "Vector worker failed to reset native store after action failure for owner=%s",
+                anima_name or "shared",
+                exc_info=True,
+            )
         return _VECTOR_ACTION_ERROR
-    finally:
-        reset_vector_store(anima_name)
 
 
 def _vector_write_failed(operation: str, collection: str) -> JSONResponse:
@@ -270,6 +388,8 @@ async def _close_native_vector_stores() -> None:
 def create_app() -> FastAPI:
     os.environ.pop("ANIMAWORKS_VECTOR_URL", None)
     _write_circuit_breakers.clear()
+    _latched_store_recovery_backoff_until.clear()
+    _latched_store_recovery_in_progress.clear()
     from core.memory.rag.direct_access import enable_direct_chroma_for_process
 
     enable_direct_chroma_for_process()

@@ -47,6 +47,11 @@ from core.prompt.context import ContextTracker
 # ── Fixtures ─────────────────────────────────────────────────
 
 
+@pytest.fixture(autouse=True)
+def _fake_openai_codex_sdk(fake_openai_codex_sdk):
+    pass
+
+
 @pytest.fixture
 def anima_dir(tmp_path: Path) -> Path:
     d = tmp_path / "animas" / "test-codex"
@@ -480,9 +485,7 @@ class TestExecutorInit:
         assert "summary" not in kwargs
         assert "sandbox" not in kwargs
 
-    def test_codex_turn_kwargs_invalid_reasoning_summary_falls_back_to_concise(
-        self, model_config, anima_dir, caplog
-    ):
+    def test_codex_turn_kwargs_invalid_reasoning_summary_falls_back_to_concise(self, model_config, anima_dir, caplog):
         caplog.set_level(logging.WARNING, logger="animaworks.execution.codex_sdk")
         model_config.extra_keys = {"codex_reasoning_summary": "verbose"}
         exc = CodexSDKExecutor(model_config=model_config, anima_dir=anima_dir)

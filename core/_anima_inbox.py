@@ -66,6 +66,11 @@ _RESCUE_QUEUE_ACTIVE_STATUSES = {"pending", "in_progress", "blocked", "delegated
 _RESCUE_QUEUE_CANCEL_REASONS = {"expired", "archived", "tombstoned"}
 
 
+async def _append_episode_off_loop(memory: Any, episode: str, *, origin: str) -> None:
+    """Append an episode without blocking the async inbox event loop."""
+    await asyncio.to_thread(memory.append_episode, episode, origin=origin)
+
+
 def _truncate_with_thread_ctx(
     content: str,
     *,
@@ -349,7 +354,7 @@ def _rescue_regenerate_pending(anima_dir: Path, task_id: str, msg: Any) -> None:
     )
 
 
-def _handle_delegation_dms(anima_mixin: Any, delegation_items: list[InboxItem]) -> None:
+async def _handle_delegation_dms(anima_mixin: Any, delegation_items: list[InboxItem]) -> None:
     """Handle delegation DMs at framework level without involving LLM.
 
     Checks task state and either archives (task exists/completed) or
@@ -394,7 +399,7 @@ def _handle_delegation_dms(anima_mixin: Any, delegation_items: list[InboxItem]) 
             + "\n"
         )
         try:
-            anima_mixin.memory.append_episode(_episode, origin=ORIGIN_ANIMA)
+            await _append_episode_off_loop(anima_mixin.memory, _episode, origin=ORIGIN_ANIMA)
         except Exception:
             logger.debug(
                 "[%s] Failed to record delegation DM episode from %s",
@@ -941,7 +946,7 @@ class InboxMixin:
         # ── Delegation DM framework-level handling ──
         delegation_items, non_delegation_items = _split_delegation_items(inbox_items, messages)
         if delegation_items:
-            _handle_delegation_dms(self, delegation_items)
+            await _handle_delegation_dms(self, delegation_items)
             inbox_items = non_delegation_items
             messages = [item.msg for item in non_delegation_items]
             unread_count = len(messages)
@@ -1077,7 +1082,7 @@ class InboxMixin:
             )
             _ep_origin = _SOURCE_TO_ORIGIN.get(_m.source, ORIGIN_UNKNOWN)
             try:
-                self.memory.append_episode(_episode, origin=_ep_origin)
+                await _append_episode_off_loop(self.memory, _episode, origin=_ep_origin)
             except Exception:
                 logger.debug(
                     "[%s] Failed to record message episode from %s",
