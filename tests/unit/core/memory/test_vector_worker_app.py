@@ -401,3 +401,99 @@ def test_vector_worker_write_store_unavailable(monkeypatch) -> None:
 
     assert resp.status_code == 503
     assert resp.json() == {"detail": "Vector store unavailable"}
+
+
+def test_vector_worker_read_endpoint_waits_then_empty_fallback_during_repair_state(monkeypatch) -> None:
+    monkeypatch.delenv("ANIMAWORKS_VECTOR_URL", raising=False)
+
+    from core.memory.rag import vector_worker
+    from core.memory.rag.vector_worker import create_app
+
+    monkeypatch.setattr(vector_worker, "_REPAIR_LOCK_WAIT_TIMEOUT_SECONDS", 0.001)
+    monkeypatch.setattr(vector_worker, "_REPAIR_LOCK_POLL_SECONDS", 0.001)
+
+    store = MagicMock()
+    with (
+        patch("core.memory.rag.repair_state.read_state", return_value={"status": "repairing", "stage": "swap"}),
+        patch("core.memory.rag.repair_utils.is_repair_locked", return_value=False),
+        patch("core.memory.rag.singleton.get_vector_store", return_value=store),
+        TestClient(create_app()) as client,
+    ):
+        resp = client.post(
+            "/query",
+            json={"anima_name": "sora", "collection": "knowledge", "embedding": [0.1], "top_k": 1},
+        )
+
+    assert resp.status_code == 200
+    assert resp.json() == {"results": []}
+    store.query.assert_not_called()
+
+
+def test_vector_worker_write_endpoint_waits_then_503_during_repair_file_lock(monkeypatch) -> None:
+    monkeypatch.delenv("ANIMAWORKS_VECTOR_URL", raising=False)
+
+    from core.memory.rag import vector_worker
+    from core.memory.rag.vector_worker import create_app
+
+    monkeypatch.setattr(vector_worker, "_REPAIR_LOCK_WAIT_TIMEOUT_SECONDS", 0.001)
+    monkeypatch.setattr(vector_worker, "_REPAIR_LOCK_POLL_SECONDS", 0.001)
+
+    store = MagicMock()
+    with (
+        patch("core.memory.rag.repair_state.read_state", return_value={"status": "healthy", "stage": "complete"}),
+        patch("core.memory.rag.repair_utils.is_repair_locked", return_value=True),
+        patch("core.memory.rag.singleton.get_vector_store", return_value=store),
+        TestClient(create_app()) as client,
+    ):
+        resp = client.post(
+            "/upsert",
+            json={
+                "anima_name": "sora",
+                "collection": "knowledge",
+                "documents": [{"id": "doc1", "content": "hello", "embedding": [0.1], "metadata": {}}],
+            },
+        )
+
+    assert resp.status_code == 503
+    body = resp.json()
+    assert body["detail"] == "Vector store unavailable during repair lock timeout"
+    assert body["owner"] == "sora"
+    assert body["collection"] == "knowledge"
+    assert body["operation"] == "upsert"
+    store.upsert.assert_not_called()
+
+
+def test_vector_worker_diagnostic_endpoints_do_not_wait_on_repair_lock(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("ANIMAWORKS_VECTOR_URL", raising=False)
+
+    from core.memory.rag import vector_worker
+    from core.memory.rag.vector_worker import create_app
+
+    monkeypatch.setattr(vector_worker, "_REPAIR_LOCK_WAIT_TIMEOUT_SECONDS", 0.001)
+    monkeypatch.setattr(vector_worker, "_REPAIR_LOCK_POLL_SECONDS", 0.001)
+
+    check = MagicMock(
+        return_value=SQLiteHealthResult(
+            db_path=tmp_path / "chroma.sqlite3",
+            ok=True,
+            status="ok",
+            details=("ok",),
+        )
+    )
+    with (
+        patch("core.memory.rag.repair_state.read_state", return_value={"status": "repairing", "stage": "swap"}),
+        patch("core.memory.rag.repair_utils.is_repair_locked", return_value=True),
+        patch("core.memory.rag.sqlite_health.check_anima_vectordb_health", check),
+        TestClient(create_app()) as client,
+    ):
+        health = client.get("/health")
+        status = client.get("/status")
+        quick_check = client.post("/quick-check", json={"anima_name": "sora"})
+
+    assert health.status_code == 200
+    assert health.json() == {"status": "ok"}
+    assert status.status_code == 200
+    assert status.json()["status"] == "ok"
+    assert quick_check.status_code == 200
+    assert quick_check.json()["ok"] is True
+    check.assert_called_once()

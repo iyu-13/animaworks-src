@@ -34,6 +34,8 @@ _VECTOR_ACTION_ERROR = object()
 _LATCH_RECOVERY_BACKOFF_SECONDS = float(os.environ.get("ANIMAWORKS_VECTOR_LATCH_RECOVERY_BACKOFF_SECONDS", "5"))
 _LATCH_RECOVERY_RETRY_STATUSES = {"ok", "missing"}
 _ACTIVE_REPAIR_STATUSES = {"requested", "stopping", "repairing"}
+_REPAIR_LOCK_WAIT_TIMEOUT_SECONDS = float(os.environ.get("ANIMAWORKS_REPAIR_LOCK_WAIT_TIMEOUT_SECONDS", "60"))
+_REPAIR_LOCK_POLL_SECONDS = float(os.environ.get("ANIMAWORKS_REPAIR_LOCK_POLL_SECONDS", "0.25"))
 _latched_store_recovery_lock = threading.Lock()
 _latched_store_recovery_backoff_until: dict[str, float] = {}
 _latched_store_recovery_in_progress: set[str] = set()
@@ -107,13 +109,80 @@ async def _run_native(fn, *args, **kwargs):
 
 
 def _has_active_repair_state(anima_name: str) -> bool:
+    return _repair_state_snapshot(anima_name).get("status") in _ACTIVE_REPAIR_STATUSES
+
+
+def _repair_state_snapshot(anima_name: str) -> dict[str, Any]:
     try:
         from core.memory.rag import repair_state
 
-        return repair_state.read_state(anima_name).get("status") in _ACTIVE_REPAIR_STATUSES
+        state = repair_state.read_state(anima_name)
     except Exception:
         logger.debug("Failed to read RAG repair state for owner=%s", anima_name, exc_info=True)
+        return {"status": "unknown", "stage": "unknown"}
+    return state if isinstance(state, dict) else {}
+
+
+def _is_repair_active_or_locked(anima_name: str) -> tuple[bool, dict[str, Any]]:
+    state = _repair_state_snapshot(anima_name)
+    status = state.get("status")
+    if status in _ACTIVE_REPAIR_STATUSES:
+        return True, state
+    try:
+        from core.memory.rag.repair_utils import is_repair_locked
+
+        if is_repair_locked(anima_name):
+            return True, state
+    except Exception:
+        logger.debug("Failed to inspect RAG repair lock for owner=%s", anima_name, exc_info=True)
+        state = dict(state)
+        state.setdefault("status", "unknown")
+        state.setdefault("stage", "lock_check_failed")
+        return True, state
+    return False, state
+
+
+async def _wait_until_repair_unlocked(
+    anima_name: str | None,
+    *,
+    operation: str,
+    collection: str | None = None,
+    timeout_seconds: float | None = None,
+) -> bool:
+    if not anima_name:
         return True
+    timeout = _REPAIR_LOCK_WAIT_TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds
+    deadline = time.monotonic() + max(0.0, timeout)
+    while True:
+        active, state = _is_repair_active_or_locked(anima_name)
+        if not active:
+            return True
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            logger.error(
+                "Vector runtime operation timed out waiting for RAG repair lock: "
+                "owner=%s collection=%s operation=%s timeout=%.1fs repair_status=%s repair_stage=%s",
+                anima_name,
+                collection,
+                operation,
+                timeout,
+                state.get("status"),
+                state.get("stage"),
+            )
+            return False
+        await asyncio.sleep(min(max(_REPAIR_LOCK_POLL_SECONDS, 0.001), remaining))
+
+
+def _repair_lock_timeout_write_response(anima_name: str | None, collection: str, operation: str) -> JSONResponse:
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": "Vector store unavailable during repair lock timeout",
+            "collection": collection,
+            "owner": anima_name or "shared",
+            "operation": operation,
+        },
+    )
 
 
 def _begin_latched_store_recovery(anima_name: str) -> bool:
@@ -423,6 +492,10 @@ def create_app() -> FastAPI:
 
     @app.post("/query")
     async def vector_query(body: VectorQueryRequest):
+        if not await _wait_until_repair_unlocked(
+            body.anima_name, operation="query", collection=body.collection
+        ):
+            return {"results": []}
         results = await _run_native(
             _call_vector_store,
             body.anima_name,
@@ -443,6 +516,10 @@ def create_app() -> FastAPI:
     async def vector_upsert(body: VectorUpsertRequest):
         from core.memory.rag.store import Document
 
+        if not await _wait_until_repair_unlocked(
+            body.anima_name, operation="upsert", collection=body.collection
+        ):
+            return _repair_lock_timeout_write_response(body.anima_name, body.collection, "upsert")
         breaker = _before_vector_write(body.anima_name, body.collection)
         if breaker is not None:
             return breaker
@@ -468,6 +545,10 @@ def create_app() -> FastAPI:
 
     @app.post("/update-metadata")
     async def vector_update_metadata(body: VectorUpdateMetadataRequest):
+        if not await _wait_until_repair_unlocked(
+            body.anima_name, operation="update-metadata", collection=body.collection
+        ):
+            return _repair_lock_timeout_write_response(body.anima_name, body.collection, "update-metadata")
         breaker = _before_vector_write(body.anima_name, body.collection)
         if breaker is not None:
             return breaker
@@ -488,6 +569,10 @@ def create_app() -> FastAPI:
 
     @app.post("/delete-documents")
     async def vector_delete_documents(body: VectorDeleteDocumentsRequest):
+        if not await _wait_until_repair_unlocked(
+            body.anima_name, operation="delete-documents", collection=body.collection
+        ):
+            return _repair_lock_timeout_write_response(body.anima_name, body.collection, "delete-documents")
         breaker = _before_vector_write(body.anima_name, body.collection)
         if breaker is not None:
             return breaker
@@ -504,6 +589,10 @@ def create_app() -> FastAPI:
 
     @app.post("/get-by-metadata")
     async def vector_get_by_metadata(body: VectorGetByMetadataRequest):
+        if not await _wait_until_repair_unlocked(
+            body.anima_name, operation="get-by-metadata", collection=body.collection
+        ):
+            return {"results": []}
         results = await _run_native(
             _call_vector_store,
             body.anima_name,
@@ -521,6 +610,10 @@ def create_app() -> FastAPI:
 
     @app.post("/get-by-ids")
     async def vector_get_by_ids(body: VectorGetByIdsRequest):
+        if not await _wait_until_repair_unlocked(
+            body.anima_name, operation="get-by-ids", collection=body.collection
+        ):
+            return {"documents": []}
         docs = await _run_native(
             _call_vector_store,
             body.anima_name,
@@ -534,6 +627,10 @@ def create_app() -> FastAPI:
 
     @app.post("/create-collection")
     async def vector_create_collection(body: VectorCollectionRequest):
+        if not await _wait_until_repair_unlocked(
+            body.anima_name, operation="create-collection", collection=body.collection
+        ):
+            return _repair_lock_timeout_write_response(body.anima_name, body.collection, "create-collection")
         breaker = _before_vector_write(body.anima_name, body.collection)
         if breaker is not None:
             return breaker
@@ -550,6 +647,10 @@ def create_app() -> FastAPI:
 
     @app.post("/delete-collection")
     async def vector_delete_collection(body: VectorCollectionRequest):
+        if not await _wait_until_repair_unlocked(
+            body.anima_name, operation="delete-collection", collection=body.collection
+        ):
+            return _repair_lock_timeout_write_response(body.anima_name, body.collection, "delete-collection")
         breaker = _before_vector_write(body.anima_name, body.collection)
         if breaker is not None:
             return breaker
@@ -566,6 +667,10 @@ def create_app() -> FastAPI:
 
     @app.post("/list-collections")
     async def vector_list_collections(body: VectorListCollectionsRequest):
+        if not await _wait_until_repair_unlocked(
+            body.anima_name, operation="list-collections", collection=None
+        ):
+            return {"collections": []}
         collections = await _run_native(
             _call_vector_store,
             body.anima_name,

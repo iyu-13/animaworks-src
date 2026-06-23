@@ -254,7 +254,11 @@ def test_vector_worker_active_repair_state_skips_latched_store_recovery(
     state_dir.mkdir(parents=True, exist_ok=True)
     (state_dir / "rag_repair.json").write_text(json.dumps({"status": repair_status}), encoding="utf-8")
 
+    from core.memory.rag import vector_worker
     from core.memory.rag.vector_worker import create_app
+
+    monkeypatch.setattr(vector_worker, "_REPAIR_LOCK_WAIT_TIMEOUT_SECONDS", 0.001)
+    monkeypatch.setattr(vector_worker, "_REPAIR_LOCK_POLL_SECONDS", 0.001)
 
     get_store = MagicMock(return_value=None)
 
@@ -271,8 +275,9 @@ def test_vector_worker_active_repair_state_skips_latched_store_recovery(
             )
 
     assert resp.status_code == 503
-    assert resp.json() == {"detail": "Vector store unavailable"}
-    get_store.assert_called_once_with("sora")
+    assert resp.json()["detail"] == "Vector store unavailable during repair lock timeout"
+    assert resp.json()["operation"] == "delete-collection"
+    get_store.assert_not_called()
     mocks.health_check.assert_not_called()
     mocks.clear_init_failed.assert_not_called()
     mocks.reset_store.assert_not_called()
