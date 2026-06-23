@@ -261,6 +261,10 @@ class RAGConfig(BaseModel):
     # and leaves schema-less stub DBs that re-trigger repair — a destructive loop.
     # Serialize repairs (1) by default so each rebuild runs in isolation.
     repair_max_concurrent: int = 1
+    repair_swap_gate_enabled: bool = True
+    repair_swap_gate_swap_used_pct_threshold: float = 80.0
+    repair_swap_gate_mem_available_min_mb: int = 512
+    repair_swap_gate_retry_seconds: int = 60
     startup_repair_preflight_enabled: bool = True
     startup_repair_window_minutes: int = 1440
     quick_check_timeout_seconds: float = 10.0

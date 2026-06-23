@@ -16,6 +16,7 @@ import logging
 import os
 import re
 import threading
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -66,6 +67,135 @@ _KNOWN_CORRUPTION_REASONS = {
 _SQLITE_REFUTABLE_REASONS = {"chroma_corruption", "sqlite_malformed"}
 _SYSTEMD_SAFE_INSTANCE_RE = re.compile(r"^[A-Za-z0-9_.:-]+$")
 REPAIR_RAG_SYSTEMD_TEMPLATE = "animaworks-repair-rag@{instance}.service"
+
+
+@dataclass(frozen=True)
+class RepairResourceState:
+    """Read-only host memory state used to gate expensive RAG repair."""
+
+    swap_total_bytes: int | None
+    swap_free_bytes: int | None
+    swap_used_pct: float | None
+    mem_available_bytes: int | None
+
+
+@dataclass(frozen=True)
+class RepairResourceGateDecision:
+    """Decision for whether repair-rag may start under current resource pressure."""
+
+    allowed: bool
+    reason: str | None
+    state: RepairResourceState
+    next_retry_seconds: int
+
+
+def parse_meminfo_kb(meminfo_path: Path = Path("/proc/meminfo")) -> dict[str, int]:
+    """Parse Linux /proc/meminfo style kB counters."""
+    values: dict[str, int] = {}
+    try:
+        text = meminfo_path.read_text(encoding="utf-8")
+    except OSError:
+        logger.debug("Failed to read meminfo for RAG repair resource gate: %s", meminfo_path, exc_info=True)
+        return values
+    for line in text.splitlines():
+        if ":" not in line:
+            continue
+        key, rest = line.split(":", 1)
+        parts = rest.strip().split()
+        if not parts:
+            continue
+        try:
+            values[key] = int(parts[0])
+        except ValueError:
+            continue
+    return values
+
+
+def get_repair_resource_state(meminfo_path: Path = Path("/proc/meminfo")) -> RepairResourceState:
+    """Return current swap/memory state from read-only meminfo."""
+    values = parse_meminfo_kb(meminfo_path)
+    mem_available = values.get("MemAvailable")
+    swap_total = values.get("SwapTotal")
+    swap_free = values.get("SwapFree")
+
+    mem_available_bytes = mem_available * 1024 if mem_available is not None else None
+    swap_total_bytes = swap_total * 1024 if swap_total is not None else None
+    swap_free_bytes = swap_free * 1024 if swap_free is not None else None
+    if swap_total_bytes is None or swap_free_bytes is None:
+        swap_used_pct = None
+    elif swap_total_bytes <= 0:
+        swap_used_pct = 0.0
+    else:
+        swap_used_pct = ((swap_total_bytes - swap_free_bytes) / swap_total_bytes) * 100.0
+    return RepairResourceState(
+        swap_total_bytes=swap_total_bytes,
+        swap_free_bytes=swap_free_bytes,
+        swap_used_pct=swap_used_pct,
+        mem_available_bytes=mem_available_bytes,
+    )
+
+
+def evaluate_repair_resource_gate(
+    *,
+    swap_used_pct_threshold: float = 80.0,
+    mem_available_min_bytes: int = 512 * 1024 * 1024,
+    retry_seconds: int = 60,
+    disabled: bool | None = None,
+    meminfo_path: Path = Path("/proc/meminfo"),
+) -> RepairResourceGateDecision:
+    """Return a fail-open gate decision before starting expensive repair-rag work."""
+    state = get_repair_resource_state(meminfo_path)
+    retry_seconds = max(1, int(retry_seconds))
+    if disabled is None:
+        disabled = os.environ.get("DISABLE_REPAIR_SWAP_GATE") == "1"
+    if disabled:
+        return RepairResourceGateDecision(True, None, state, retry_seconds)
+
+    if state.mem_available_bytes is not None and state.mem_available_bytes < mem_available_min_bytes:
+        available_mib = int(state.mem_available_bytes / (1024 * 1024))
+        return RepairResourceGateDecision(False, f"mem_low: {available_mib}MB", state, retry_seconds)
+    if state.swap_used_pct is not None and state.swap_used_pct > swap_used_pct_threshold:
+        return RepairResourceGateDecision(False, f"swap_pressure: {state.swap_used_pct:.1f}%", state, retry_seconds)
+    return RepairResourceGateDecision(True, None, state, retry_seconds)
+
+
+def repair_resource_gate_config() -> dict[str, int | float | bool]:
+    """Load repair-rag resource gate thresholds with safe defaults."""
+    cfg: dict[str, int | float | bool] = {
+        "enabled": True,
+        "swap_used_pct_threshold": 80.0,
+        "mem_available_min_mb": 512,
+        "retry_seconds": 60,
+    }
+    try:
+        from core.config import load_config
+
+        rag = load_config().rag
+        cfg["enabled"] = bool(getattr(rag, "repair_swap_gate_enabled", cfg["enabled"]))
+        cfg["swap_used_pct_threshold"] = float(
+            getattr(rag, "repair_swap_gate_swap_used_pct_threshold", cfg["swap_used_pct_threshold"])
+        )
+        cfg["mem_available_min_mb"] = int(
+            getattr(rag, "repair_swap_gate_mem_available_min_mb", cfg["mem_available_min_mb"])
+        )
+        cfg["retry_seconds"] = int(getattr(rag, "repair_swap_gate_retry_seconds", cfg["retry_seconds"]))
+    except Exception:
+        logger.debug("Using default RAG repair resource gate config", exc_info=True)
+    return cfg
+
+
+def evaluate_configured_repair_resource_gate(
+    meminfo_path: Path = Path("/proc/meminfo"),
+) -> RepairResourceGateDecision:
+    cfg = repair_resource_gate_config()
+    disabled = (not bool(cfg["enabled"])) or os.environ.get("DISABLE_REPAIR_SWAP_GATE") == "1"
+    return evaluate_repair_resource_gate(
+        swap_used_pct_threshold=float(cfg["swap_used_pct_threshold"]),
+        mem_available_min_bytes=int(cfg["mem_available_min_mb"]) * 1024 * 1024,
+        retry_seconds=int(cfg["retry_seconds"]),
+        disabled=disabled,
+        meminfo_path=meminfo_path,
+    )
 
 
 def repair_rag_systemd_unit_name(anima_name: str) -> str:
@@ -639,6 +769,12 @@ class RAGRepairService:
         blocked = self._request_blocked(anima_name, reason=reason)
         if blocked is not None:
             return blocked
+        gate = evaluate_configured_repair_resource_gate()
+        if not gate.allowed:
+            logger.warning("RAG repair deferred by resource gate: anima=%s reason=%s", anima_name, gate.reason)
+            return RepairResult(
+                status="deferred", anima_name=anima_name, reason=reason, error=gate.reason, stage="resource_gate"
+            )
         with self._lock:
             if anima_name in self._active_repairs:
                 logger.info("RAG repair already active: %s", anima_name)

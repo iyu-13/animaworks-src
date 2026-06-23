@@ -328,3 +328,108 @@ async def test_repair_cli_process_timeout_kills_subprocess(tmp_path: Path, monke
     assert result["status"] == "timeout"
     assert proc.killed is True
     assert ("systemctl", "stop", "animaworks-repair-rag@sora.service") in captured
+
+
+@pytest.mark.asyncio
+async def test_run_rag_repair_step_defers_under_resource_gate(tmp_path: Path) -> None:
+    sup = _make_supervisor(tmp_path)
+    anima_dir = _create_anima(sup)
+    repair_called = False
+
+    async def repair_cli(name: str, *, reason: str, include_shared: bool) -> dict[str, object]:
+        nonlocal repair_called
+        repair_called = True
+        return {"ok": True, "status": "success"}
+
+    sup._run_rag_repair_cli_process = repair_cli
+    sup._evaluate_rag_repair_resource_gate = lambda: {
+        "allowed": False,
+        "reason": "swap_pressure: 90.0%",
+        "next_retry_seconds": 60,
+        "resource_state": {"swap_used_pct": 90.0, "mem_available_bytes": 1024 * 1024 * 1024},
+    }
+
+    result = await sup._run_rag_repair_step("sora", "sqlite_malformed", True)
+
+    assert result["status"] == "deferred"
+    assert repair_called is False
+    state = _read_state(anima_dir)
+    assert state["status"] == "deferred"
+    assert state["stage"] == "resource_gate"
+    assert state["defer_reason"] == "swap_pressure: 90.0%"
+    assert state["next_retry_at"] > 0
+
+
+@pytest.mark.asyncio
+async def test_poll_deferred_rag_repair_waits_until_next_retry(tmp_path: Path) -> None:
+    sup = _make_supervisor(tmp_path)
+    anima_dir = _create_anima(sup)
+    (anima_dir / "state" / "rag_repair.json").write_text(
+        json.dumps({"status": "deferred", "reason": "sqlite_malformed", "next_retry_at": 9999999999.0}),
+        encoding="utf-8",
+    )
+    sup._rag_repair_poll_interval_seconds = lambda: 0.0
+    calls: list[str] = []
+
+    async def run_repair(name: str, state: dict[str, object]) -> None:
+        calls.append(name)
+
+    sup._run_supervised_rag_repair = run_repair
+
+    await sup._poll_requested_rag_repairs()
+    await asyncio.sleep(0)
+
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_poll_deferred_rag_repair_retries_after_next_retry(tmp_path: Path) -> None:
+    sup = _make_supervisor(tmp_path)
+    anima_dir = _create_anima(sup)
+    (anima_dir / "state" / "rag_repair.json").write_text(
+        json.dumps({"status": "deferred", "reason": "sqlite_malformed", "next_retry_at": 0.0}),
+        encoding="utf-8",
+    )
+    sup._rag_repair_poll_interval_seconds = lambda: 0.0
+    started = asyncio.Event()
+    calls: list[str] = []
+
+    async def run_repair(name: str, state: dict[str, object]) -> None:
+        calls.append(name)
+        started.set()
+
+    sup._run_supervised_rag_repair = run_repair
+
+    await sup._poll_requested_rag_repairs()
+    await asyncio.wait_for(started.wait(), timeout=1)
+
+    assert calls == ["sora"]
+
+
+@pytest.mark.asyncio
+async def test_pre_restart_rag_repair_defers_under_resource_gate(tmp_path: Path) -> None:
+    sup = _make_supervisor(tmp_path)
+    anima_dir = _create_anima(sup)
+
+    class Stats:
+        exit_code = -11
+
+    class Handle:
+        stats = Stats()
+
+    sup._evaluate_rag_repair_resource_gate = lambda: {
+        "allowed": False,
+        "reason": "mem_low: 256MB",
+        "next_retry_seconds": 60,
+        "resource_state": {"swap_used_pct": 0.0, "mem_available_bytes": 256 * 1024 * 1024},
+    }
+    sup._run_rag_repair_cli_process = AsyncMock(return_value={"ok": True, "status": "success"})
+
+    result = await sup._maybe_repair_rag_before_restart("sora", Handle())
+
+    assert result is False
+    sup._run_rag_repair_cli_process.assert_not_called()
+    state = _read_state(anima_dir)
+    assert state["status"] == "deferred"
+    assert state["stage"] == "resource_gate"
+    assert state["defer_reason"] == "mem_low: 256MB"

@@ -998,3 +998,68 @@ def test_repair_if_allowed_retries_before_failure_limit(data_dir: Path):
 
     assert result.status == "success"
     service.repair_anima.assert_called_once()
+
+
+def test_repair_resource_state_reads_meminfo(tmp_path: Path) -> None:
+    from core.memory.rag.repair_service import get_repair_resource_state
+
+    meminfo = tmp_path / "meminfo"
+    meminfo.write_text(
+        "MemAvailable:     262144 kB\nSwapTotal:       1048576 kB\nSwapFree:         104858 kB\n",
+        encoding="utf-8",
+    )
+
+    state = get_repair_resource_state(meminfo)
+
+    assert state.mem_available_bytes == 262144 * 1024
+    assert state.swap_total_bytes == 1048576 * 1024
+    assert state.swap_free_bytes == 104858 * 1024
+    assert state.swap_used_pct is not None
+    assert round(state.swap_used_pct, 1) == 90.0
+
+
+def test_repair_resource_gate_defers_on_low_memory(tmp_path: Path) -> None:
+    from core.memory.rag.repair_service import evaluate_repair_resource_gate
+
+    meminfo = tmp_path / "meminfo"
+    meminfo.write_text(
+        "MemAvailable:     262144 kB\nSwapTotal:       1048576 kB\nSwapFree:        1048576 kB\n",
+        encoding="utf-8",
+    )
+
+    decision = evaluate_repair_resource_gate(disabled=False, meminfo_path=meminfo)
+
+    assert decision.allowed is False
+    assert decision.reason == "mem_low: 256MB"
+    assert decision.next_retry_seconds == 60
+
+
+def test_repair_resource_gate_defers_on_swap_pressure(tmp_path: Path) -> None:
+    from core.memory.rag.repair_service import evaluate_repair_resource_gate
+
+    meminfo = tmp_path / "meminfo"
+    meminfo.write_text(
+        "MemAvailable:    1048576 kB\nSwapTotal:       1048576 kB\nSwapFree:         104858 kB\n",
+        encoding="utf-8",
+    )
+
+    decision = evaluate_repair_resource_gate(disabled=False, meminfo_path=meminfo)
+
+    assert decision.allowed is False
+    assert decision.reason == "swap_pressure: 90.0%"
+
+
+def test_repair_resource_gate_disable_env_allows(monkeypatch, tmp_path: Path) -> None:
+    from core.memory.rag.repair_service import evaluate_repair_resource_gate
+
+    meminfo = tmp_path / "meminfo"
+    meminfo.write_text(
+        "MemAvailable:     128000 kB\nSwapTotal:       1048576 kB\nSwapFree:              0 kB\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DISABLE_REPAIR_SWAP_GATE", "1")
+
+    decision = evaluate_repair_resource_gate(meminfo_path=meminfo)
+
+    assert decision.allowed is True
+    assert decision.reason is None

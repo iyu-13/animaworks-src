@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from pathlib import Path
 
 from core.memory.rag import repair_state
@@ -64,6 +65,22 @@ class RAGRepairMixin:
                 reason,
                 handle.stats.exit_code,
             )
+            gate = self._evaluate_rag_repair_resource_gate()
+            if not gate["allowed"]:
+                self._write_rag_repair_deferred_state(
+                    anima_name,
+                    reason=reason,
+                    include_shared=True,
+                    source="supervisor_pre_restart",
+                    gate=gate,
+                )
+                logger.warning(
+                    "Deferring pre-restart RAG repair by resource gate: anima=%s reason=%s",
+                    anima_name,
+                    gate["reason"],
+                )
+                return False
+
             self._write_rag_repair_state(
                 anima_name,
                 {
@@ -156,7 +173,10 @@ class RAGRepairMixin:
             if anima_name in in_progress or anima_name in self._restarting:
                 continue
             state = self._read_rag_repair_state(anima_name)
-            if state.get("status") == "requested":
+            status = state.get("status")
+            if status == "deferred" and float(state.get("next_retry_at") or 0.0) > time.time():
+                continue
+            if status in {"requested", "deferred"}:
                 in_progress.add(anima_name)
                 self._rag_repairs_in_progress = in_progress
                 asyncio.create_task(self._run_supervised_rag_repair(anima_name, state))
@@ -179,6 +199,13 @@ class RAGRepairMixin:
                 return
 
             result = await self._run_rag_repair_step(anima_name, reason, include_shared)
+            if result.get("status") == "deferred":
+                if (self.animas_dir / anima_name / "vectordb").exists():
+                    try:
+                        await self.start_anima(anima_name)
+                    except Exception:
+                        logger.debug("Failed to restart %s after deferred RAG repair", anima_name, exc_info=True)
+                return
             if not result["ok"]:
                 await self._handle_failed_rag_repair(anima_name, reason, include_shared, result)
                 return
@@ -219,6 +246,22 @@ class RAGRepairMixin:
             return False
 
     async def _run_rag_repair_step(self, anima_name: str, reason: str, include_shared: bool) -> dict[str, object]:
+        gate = self._evaluate_rag_repair_resource_gate()
+        if not gate["allowed"]:
+            self._write_rag_repair_deferred_state(
+                anima_name,
+                reason=reason,
+                include_shared=include_shared,
+                source="supervisor",
+                gate=gate,
+            )
+            logger.warning(
+                "Deferring RAG repair by resource gate: anima=%s reason=%s",
+                anima_name,
+                gate["reason"],
+            )
+            return {"ok": False, "status": "deferred", "error": gate["reason"]}
+
         self._write_rag_repair_state(
             anima_name,
             {
@@ -391,6 +434,50 @@ class RAGRepairMixin:
             )
         except Exception:
             logger.debug("Failed to broadcast rag_repair event", exc_info=True)
+
+    def _evaluate_rag_repair_resource_gate(self) -> dict[str, object]:
+        from core.memory.rag.repair_service import evaluate_configured_repair_resource_gate
+
+        decision = evaluate_configured_repair_resource_gate()
+        state = decision.state
+        return {
+            "allowed": decision.allowed,
+            "reason": decision.reason,
+            "next_retry_seconds": decision.next_retry_seconds,
+            "resource_state": {
+                "swap_total_bytes": state.swap_total_bytes,
+                "swap_free_bytes": state.swap_free_bytes,
+                "swap_used_pct": state.swap_used_pct,
+                "mem_available_bytes": state.mem_available_bytes,
+            },
+        }
+
+    def _write_rag_repair_deferred_state(
+        self,
+        anima_name: str,
+        *,
+        reason: str,
+        include_shared: bool,
+        source: str,
+        gate: dict[str, object],
+    ) -> None:
+        retry_seconds = max(1, int(gate.get("next_retry_seconds") or 60))
+        self._write_rag_repair_state(
+            anima_name,
+            {
+                "status": "deferred",
+                "stage": "resource_gate",
+                "pid": None,
+                "reason": reason,
+                "source": source,
+                "include_shared": include_shared,
+                "defer_reason": gate.get("reason"),
+                "last_error": gate.get("reason"),
+                "next_retry_at": time.time() + retry_seconds,
+                "next_retry_seconds": retry_seconds,
+                "resource_state": gate.get("resource_state"),
+            },
+        )
 
     def _rag_repair_timeout_seconds(self) -> int:
         try:
