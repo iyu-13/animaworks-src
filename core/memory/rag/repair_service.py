@@ -904,16 +904,31 @@ class RAGRepairService:
                 reset_vector_store(anima_name)
                 state = repair_state.read_state(anima_name)
                 failures = int(state.get("consecutive_failures") or 0) + 1
-                repair_state.update_repair_state(
-                    anima_name,
-                    status="failed",
-                    stage="failed",
-                    pid=None,
-                    last_failure_at=iso(),
-                    last_error=str(exc),
-                    consecutive_failures=failures,
-                    last_quarantine_path=str(quarantine_path) if quarantine_path else None,
-                )
+                incident_snapshot_path = getattr(exc, "incident_snapshot_path", None)
+                archive_path = getattr(exc, "archive_path", None)
+                escalation_required = failures >= 3
+                failure_updates: dict[str, Any] = {
+                    "status": "failed",
+                    "stage": "failed",
+                    "pid": None,
+                    "last_failure_at": iso(),
+                    "last_error": str(exc),
+                    "consecutive_failures": failures,
+                    "last_quarantine_path": str(quarantine_path or archive_path) if (quarantine_path or archive_path) else None,
+                }
+                if incident_snapshot_path is not None:
+                    failure_updates["last_incident_snapshot_path"] = str(incident_snapshot_path)
+                if getattr(exc, "rollback_failed", False):
+                    failure_updates["danger_state"] = "post_swap_rollback_failed"
+                if escalation_required:
+                    failure_updates.update(
+                        {
+                            "escalation_required": True,
+                            "escalation_reason": "repair_rebuild_failed_repeatedly",
+                            "escalation_at": iso(),
+                        }
+                    )
+                repair_state.update_repair_state(anima_name, **failure_updates)
                 logger.exception("RAG repair failed: anima=%s reason=%s", anima_name, reason)
                 return RepairResult(
                     status="failed",

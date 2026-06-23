@@ -45,14 +45,7 @@ def quarantine_vectordb(anima_name: str) -> Path | None:
     if not source.exists():
         return None
 
-    archive_dir = source.parent / "archive"
-    archive_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-    dest = archive_dir / f"vectordb-corrupt-{stamp}"
-    suffix = 1
-    while dest.exists():
-        suffix += 1
-        dest = archive_dir / f"vectordb-corrupt-{stamp}-{suffix}"
+    dest = _unique_archive_path(source.parent / "archive", "vectordb-corrupt")
     shutil.move(str(source), str(dest))
 
     # Recreate an empty vectordb dir and drop any worker handle that a concurrent
@@ -78,6 +71,101 @@ class RebuildVerificationError(RuntimeError):
     cooldown engages instead of reporting a false success that immediately
     re-triggers another repair.
     """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        incident_snapshot_path: Path | None = None,
+        archive_path: Path | None = None,
+        rollback_failed: bool = False,
+    ) -> None:
+        super().__init__(message)
+        self.incident_snapshot_path = incident_snapshot_path
+        self.archive_path = archive_path
+        self.rollback_failed = rollback_failed
+
+
+def _unique_archive_path(archive_dir: Path, prefix: str) -> Path:
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+    dest = archive_dir / f"{prefix}-{stamp}"
+    suffix = 1
+    while dest.exists():
+        suffix += 1
+        dest = archive_dir / f"{prefix}-{stamp}-{suffix}"
+    return dest
+
+
+def _verify_post_swap_live_sqlite(live: Path) -> None:
+    from core.memory.rag.sqlite_health import chroma_sqlite_path, quick_check_chroma_sqlite
+
+    db_path = chroma_sqlite_path(live)
+    if not db_path.exists():
+        raise RebuildVerificationError(f"post-swap Chroma SQLite missing: {db_path}")
+    health = quick_check_chroma_sqlite(live)
+    if not health.ok:
+        detail = health.error or "; ".join(health.details) or health.status
+        raise RebuildVerificationError(
+            "post-swap Chroma SQLite quick_check failed: "
+            f"status={health.status} detail={detail} db={health.db_path}"
+        )
+
+
+def _rollback_post_swap_failure(
+    *,
+    anima_name: str,
+    live: Path,
+    archive: Path | None,
+    original_error: BaseException,
+) -> None:
+    from core.memory.rag.singleton import reset_vector_store
+
+    archive_dir = live.parent / "archive"
+    incident: Path | None = None
+    reset_worker_vector_store(anima_name)
+    reset_vector_store(anima_name)
+    try:
+        if live.exists():
+            incident = _unique_archive_path(archive_dir, "vectordb-post-swap-failed")
+            shutil.move(str(live), str(incident))
+        if archive is not None and archive.exists():
+            shutil.move(str(archive), str(live))
+        else:
+            live.mkdir(parents=True, exist_ok=True)
+    except BaseException as rollback_exc:
+        logger.critical(
+            "RAG atomic swap rollback failed: anima=%s live=%s archive=%s incident=%s",
+            anima_name,
+            live,
+            archive,
+            incident,
+            exc_info=True,
+        )
+        raise RebuildVerificationError(
+            "post-swap quick_check failed; rollback failed; "
+            f"live={live} archive={archive} incident={incident}; "
+            f"quick_check_error={original_error}; rollback_error={rollback_exc}",
+            incident_snapshot_path=incident,
+            archive_path=archive,
+            rollback_failed=True,
+        ) from rollback_exc
+    finally:
+        reset_worker_vector_store(anima_name)
+        reset_vector_store(anima_name)
+
+    logger.warning(
+        "Rolled back RAG atomic swap after post-swap quick_check failure: anima=%s archive=%s incident=%s",
+        anima_name,
+        archive,
+        incident,
+    )
+    raise RebuildVerificationError(
+        "post-swap quick_check failed; rolled back live DB; "
+        f"archive={archive} incident={incident}; error={original_error}",
+        incident_snapshot_path=incident,
+        archive_path=archive,
+    ) from original_error
 
 
 def verify_rebuilt_vectordb(anima_name: str, *, expected_chunks: int) -> None:
@@ -221,18 +309,20 @@ def atomic_rebuild_vectordb(anima_name: str, *, include_shared: bool) -> tuple[i
     reset_worker_vector_store(anima_name)
     reset_vector_store(anima_name)
     if live.exists():
-        archive_dir = live.parent / "archive"
-        archive_dir.mkdir(parents=True, exist_ok=True)
-        stamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-        archive = archive_dir / f"vectordb-corrupt-{stamp}"
-        suffix = 1
-        while archive.exists():
-            suffix += 1
-            archive = archive_dir / f"vectordb-corrupt-{stamp}-{suffix}"
+        archive = _unique_archive_path(live.parent / "archive", "vectordb-corrupt")
         shutil.move(str(live), str(archive))
-    shutil.move(str(staging), str(live))
-    reset_worker_vector_store(anima_name)
-    reset_vector_store(anima_name)
+    try:
+        shutil.move(str(staging), str(live))
+        reset_worker_vector_store(anima_name)
+        reset_vector_store(anima_name)
+        _verify_post_swap_live_sqlite(live)
+    except BaseException as exc:
+        _rollback_post_swap_failure(
+            anima_name=anima_name,
+            live=live,
+            archive=archive,
+            original_error=exc,
+        )
     return chunks, archive
 
 

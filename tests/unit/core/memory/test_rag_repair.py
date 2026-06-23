@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -672,7 +673,8 @@ def test_repair_animas_if_allowed_runs_each_target(data_dir: Path):
     assert service.repair_anima_if_allowed.call_count == 2
 
 
-def test_request_repair_sync_uses_guard(data_dir: Path):
+def test_request_repair_sync_uses_guard(data_dir: Path, monkeypatch):
+    monkeypatch.setenv("DISABLE_REPAIR_SWAP_GATE", "1")
     (data_dir / "animas" / "sora" / "state").mkdir(parents=True)
     service = RAGRepairService(enabled=True)
     service.repair_anima = MagicMock(  # type: ignore[method-assign]
@@ -767,7 +769,14 @@ class _FakeBuildStore:
         self.closed = True
 
 
-def _patch_atomic_build(monkeypatch, *, chunks_per_dir=2, collections=None, indexer_calls=None):
+def _patch_atomic_build(
+    monkeypatch,
+    *,
+    chunks_per_dir=2,
+    collections=None,
+    indexer_calls=None,
+    create_sqlite: bool = True,
+):
     """Patch the pieces ``atomic_rebuild_vectordb`` builds with (no real chroma)."""
 
     class FakeIndexer:
@@ -783,9 +792,18 @@ def _patch_atomic_build(monkeypatch, *, chunks_per_dir=2, collections=None, inde
             return chunks_per_dir
 
     monkeypatch.setattr("core.memory.rag.MemoryIndexer", FakeIndexer)
+    def fake_create_chroma_vector_store(*args, **kwargs):
+        persist_dir = Path(kwargs["persist_dir"])
+        if create_sqlite:
+            with sqlite3.connect(persist_dir / "chroma.sqlite3") as conn:
+                conn.execute("CREATE TABLE t(id INTEGER PRIMARY KEY)")
+        else:
+            (persist_dir / "new.bin").write_text("new-data", encoding="utf-8")
+        return _FakeBuildStore(collections=collections)
+
     monkeypatch.setattr(
         "core.memory.rag.store.create_chroma_vector_store",
-        lambda *a, **k: _FakeBuildStore(collections=collections),
+        fake_create_chroma_vector_store,
     )
     monkeypatch.setattr("core.memory.rag.repair_rebuild.reset_worker_vector_store", lambda anima_name: True)
 
@@ -873,6 +891,129 @@ def test_repair_failure_preserves_live_db_and_records_state(data_dir: Path, monk
     state = json.loads((anima_dir / "state" / "rag_repair.json").read_text(encoding="utf-8"))
     assert state["status"] == "failed"
     assert state["consecutive_failures"] == 1
+
+
+def test_post_swap_quick_check_corrupt_rolls_back_and_records_incident(data_dir: Path, monkeypatch):
+    anima_dir = data_dir / "animas" / "sora"
+    (anima_dir / "knowledge").mkdir(parents=True)
+    (anima_dir / "knowledge" / "topic.md").write_text("# Topic", encoding="utf-8")
+    (anima_dir / "state").mkdir()
+    vectordb = anima_dir / "vectordb"
+    vectordb.mkdir()
+    (vectordb / "live.bin").write_text("live-data", encoding="utf-8")
+
+    _patch_atomic_build(monkeypatch, chunks_per_dir=1)
+    monkeypatch.setattr("core.memory.rag.singleton.reset_vector_store", lambda anima_name=None: None)
+    monkeypatch.setattr(
+        "core.memory.rag.sqlite_health.quick_check_chroma_sqlite",
+        lambda persist_dir: SQLiteHealthResult(
+            db_path=persist_dir / "chroma.sqlite3",
+            ok=False,
+            status="corrupt",
+            error="database disk image is malformed",
+        ),
+    )
+
+    result = RAGRepairService(enabled=True).repair_anima("sora", reason="chroma_corruption", source="test")
+
+    assert result.status == "failed"
+    assert "post-swap quick_check failed" in (result.error or "")
+    assert (vectordb / "live.bin").read_text(encoding="utf-8") == "live-data"
+    incident_dirs = list((anima_dir / "archive").glob("vectordb-post-swap-failed-*"))
+    assert len(incident_dirs) == 1
+    assert (incident_dirs[0] / "chroma.sqlite3").exists()
+    state = json.loads((anima_dir / "state" / "rag_repair.json").read_text(encoding="utf-8"))
+    assert state["status"] == "failed"
+    assert state["consecutive_failures"] == 1
+    assert state["last_incident_snapshot_path"] == str(incident_dirs[0])
+    assert "post-swap" in state["last_error"]
+
+
+def test_post_swap_missing_sqlite_rolls_back(data_dir: Path, monkeypatch):
+    anima_dir = data_dir / "animas" / "sora"
+    (anima_dir / "knowledge").mkdir(parents=True)
+    (anima_dir / "knowledge" / "topic.md").write_text("# Topic", encoding="utf-8")
+    (anima_dir / "state").mkdir()
+    vectordb = anima_dir / "vectordb"
+    vectordb.mkdir()
+    (vectordb / "live.bin").write_text("live-data", encoding="utf-8")
+
+    _patch_atomic_build(monkeypatch, chunks_per_dir=1, create_sqlite=False)
+    monkeypatch.setattr("core.memory.rag.singleton.reset_vector_store", lambda anima_name=None: None)
+
+    result = RAGRepairService(enabled=True).repair_anima("sora", reason="chroma_corruption", source="test")
+
+    assert result.status == "failed"
+    assert "post-swap Chroma SQLite missing" in (result.error or "")
+    assert (vectordb / "live.bin").read_text(encoding="utf-8") == "live-data"
+    incident_dirs = list((anima_dir / "archive").glob("vectordb-post-swap-failed-*"))
+    assert len(incident_dirs) == 1
+    assert (incident_dirs[0] / "new.bin").read_text(encoding="utf-8") == "new-data"
+
+
+def test_post_swap_rollback_failure_marks_danger_state(data_dir: Path, monkeypatch):
+    import shutil
+
+    anima_dir = data_dir / "animas" / "sora"
+    (anima_dir / "knowledge").mkdir(parents=True)
+    (anima_dir / "knowledge" / "topic.md").write_text("# Topic", encoding="utf-8")
+    (anima_dir / "state").mkdir()
+    vectordb = anima_dir / "vectordb"
+    vectordb.mkdir()
+    (vectordb / "live.bin").write_text("live-data", encoding="utf-8")
+
+    _patch_atomic_build(monkeypatch, chunks_per_dir=1)
+    monkeypatch.setattr("core.memory.rag.singleton.reset_vector_store", lambda anima_name=None: None)
+    monkeypatch.setattr(
+        "core.memory.rag.sqlite_health.quick_check_chroma_sqlite",
+        lambda persist_dir: SQLiteHealthResult(
+            db_path=persist_dir / "chroma.sqlite3",
+            ok=False,
+            status="timeout",
+            error="quick_check exceeded 10s",
+        ),
+    )
+    real_move = shutil.move
+
+    def fail_archive_restore(src, dst, *args, **kwargs):
+        src_path = Path(str(src))
+        dst_path = Path(str(dst))
+        if src_path.name.startswith("vectordb-corrupt-") and dst_path == vectordb:
+            raise OSError("restore failed")
+        return real_move(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr("core.memory.rag.repair_rebuild.shutil.move", fail_archive_restore)
+
+    result = RAGRepairService(enabled=True).repair_anima("sora", reason="chroma_corruption", source="test")
+
+    assert result.status == "failed"
+    assert "rollback failed" in (result.error or "")
+    state = json.loads((anima_dir / "state" / "rag_repair.json").read_text(encoding="utf-8"))
+    assert state["danger_state"] == "post_swap_rollback_failed"
+    assert "rollback failed" in state["last_error"]
+
+
+def test_third_repair_failure_marks_escalation_required(data_dir: Path, monkeypatch):
+    anima_dir = data_dir / "animas" / "sora"
+    (anima_dir / "state").mkdir(parents=True)
+    (anima_dir / "state" / "rag_repair.json").write_text(
+        json.dumps({"status": "failed", "consecutive_failures": 2}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "core.memory.rag.repair_service.atomic_rebuild_vectordb",
+        lambda anima_name, include_shared=False: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+    monkeypatch.setattr("core.memory.rag.singleton.reset_vector_store", lambda anima_name=None: None)
+
+    result = RAGRepairService(enabled=True).repair_anima("sora", reason="chroma_corruption", source="test")
+
+    assert result.status == "failed"
+    state = json.loads((anima_dir / "state" / "rag_repair.json").read_text(encoding="utf-8"))
+    assert state["consecutive_failures"] == 3
+    assert state["escalation_required"] is True
+    assert state["escalation_reason"] == "repair_rebuild_failed_repeatedly"
+    assert state["escalation_at"]
 
 
 def test_atomic_rebuild_stub_fails_and_keeps_live_db(data_dir: Path, monkeypatch):
@@ -970,7 +1111,8 @@ def test_repair_if_allowed_respects_failed_cooldown(data_dir: Path):
     assert result.status == "cooldown"
 
 
-def test_repair_if_allowed_retries_before_failure_limit(data_dir: Path):
+def test_repair_if_allowed_retries_before_failure_limit(data_dir: Path, monkeypatch):
+    monkeypatch.setenv("DISABLE_REPAIR_SWAP_GATE", "1")
     anima_dir = data_dir / "animas" / "sora"
     (anima_dir / "state").mkdir(parents=True)
     (anima_dir / "state" / "rag_repair.json").write_text(
