@@ -75,7 +75,7 @@ class HttpVectorStore(VectorStore):
         if self._client is None:
             import httpx
 
-            self._client = httpx.Client(base_url=self._base_url, timeout=10.0)
+            self._client = httpx.Client(base_url=self._base_url, timeout=30.0)
         return self._client
 
     def _write_circuit_open(self, collection: str) -> bool:
@@ -112,10 +112,7 @@ class HttpVectorStore(VectorStore):
             return None
         try:
             resp = self._get_client().post(path, json=payload)
-            if resp.status_code == 503:
-                logger.debug("Vector DB unavailable (503) for %s, skipping", path)
-                return None
-            if resp.status_code == 429 and write_collection:
+            if resp.status_code in {429, 503} and write_collection:
                 self._record_write_circuit(write_collection, resp.headers.get("Retry-After"))
             resp.raise_for_status()
             return resp.json()
