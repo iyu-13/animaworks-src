@@ -421,15 +421,23 @@ def _is_vector_action_error(value: Any) -> bool:
 
 def _write_failure_response(anima_name: str | None, collection: str, operation: str) -> JSONResponse:
     state = _record_vector_write_failure(anima_name, collection, operation)
+    retry_at = float(state.get("next_retry_at") or 0.0)
+    retry_after = max(0, int(retry_at - time.monotonic()))
+    content = {
+        "detail": f"Vector {operation} failed",
+        "collection": collection,
+        "owner": anima_name or "shared",
+        "consecutive_failures": state["consecutive_failures"],
+        "circuit_breaker_threshold": state["threshold"],
+    }
+    headers = None
+    if retry_after > 0:
+        content["retry_after_seconds"] = retry_after
+        headers = {"Retry-After": str(retry_after)}
     return JSONResponse(
         status_code=500,
-        content={
-            "detail": f"Vector {operation} failed",
-            "collection": collection,
-            "owner": anima_name or "shared",
-            "consecutive_failures": state["consecutive_failures"],
-            "circuit_breaker_threshold": state["threshold"],
-        },
+        content=content,
+        headers=headers,
     )
 
 
